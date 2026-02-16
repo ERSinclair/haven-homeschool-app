@@ -64,3 +64,5 @@ git push  # Auto-deploys via GitHub → Vercel
 ---
 
 **Fresh start = Clean code = Happy users!** 🇦🇺
+
+*Last deployed: 16 Feb 2026 - Admin badges, private events, clean forms*
