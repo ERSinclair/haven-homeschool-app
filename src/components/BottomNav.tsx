@@ -63,10 +63,30 @@ export default function BottomNav() {
           }
         );
         
+        let connectionRequestsCount = 0;
         if (requestsRes.ok) {
           const pendingRequests = await requestsRes.json();
-          setPendingRequestsCount(pendingRequests.length);
+          connectionRequestsCount = pendingRequests.length;
         }
+
+        // Check pending circle invitations
+        const circleInvitesRes = await fetch(
+          `${supabaseUrl}/rest/v1/circle_members?status=eq.pending&member_id=eq.${session.user.id}&select=id`,
+          {
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          }
+        );
+        
+        let circleInvitesCount = 0;
+        if (circleInvitesRes.ok) {
+          const pendingCircleInvites = await circleInvitesRes.json();
+          circleInvitesCount = pendingCircleInvites.length;
+        }
+
+        setPendingRequestsCount(connectionRequestsCount + circleInvitesCount);
 
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {

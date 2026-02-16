@@ -1,74 +1,153 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { getStoredSession } from '@/lib/session';
 import HavenHeader from '@/components/HavenHeader';
+import ProtectedRoute from '@/components/ProtectedRoute';
 
-const initialNotifications = [
-  {
-    id: 1,
-    type: 'message',
-    title: 'Emma sent you a message',
-    body: 'Perfect! The kids are so excited for Thursday...',
-    time: '2h ago',
-    read: false,
-    link: '/messages',
-  },
-  {
-    id: 2,
-    type: 'nearby',
-    title: 'New family nearby',
-    body: 'Priya & Sam joined in Belmont with kids 4, 7',
-    time: '6h ago',
-    read: false,
-    link: '/discover',
-  },
-  {
-    id: 3,
-    type: 'event',
-    title: 'Event tomorrow',
-    body: 'Beach Playdate at Torquay Foreshore, 10am',
-    time: '1d ago',
-    read: true,
-    link: '/events',
-  },
-  {
-    id: 4,
-    type: 'message',
-    title: 'Michelle shared resources',
-    body: 'Here are those curriculum links I mentioned...',
-    time: '1d ago',
-    read: true,
-    link: '/messages',
-  },
-  {
-    id: 5,
-    type: 'nearby',
-    title: '3 new families this week',
-    body: 'Torquay, Jan Juc, and Geelong areas',
-    time: '3d ago',
-    read: true,
-    link: '/discover',
-  },
-  {
-    id: 6,
-    type: 'system',
-    title: 'Welcome to Haven!',
-    body: 'Your profile is set up. Start connecting!',
-    time: '1w ago',
-    read: true,
-    link: '/discover',
-  },
-];
+type CircleInvitation = {
+  id: string;
+  circle_id: string;
+  circle_name: string;
+  circle_description?: string;
+  circle_emoji: string;
+  circle_color: string;
+  inviter_name: string;
+  inviter_display_name?: string;
+  invited_at: string;
+  status: 'pending' | 'active' | 'declined';
+};
+
+type Notification = {
+  id: string;
+  type: 'circle_invite' | 'message' | 'system';
+  title: string;
+  body: string;
+  time: string;
+  read: boolean;
+  link?: string;
+  invitation?: CircleInvitation;
+};
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [loading, setLoading] = useState(true);
+  const [processingInvites, setProcessingInvites] = useState<Set<string>>(new Set());
+
+  // Load circle invitations
+  useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const session = getStoredSession();
+        if (!session?.user) return;
+
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+        // Load pending circle invitations
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/pending_circle_invitations?member_id=eq.${session.user.id}&order=invited_at.desc`,
+          {
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          }
+        );
+
+        if (response.ok) {
+          const invitations = await response.json();
+          
+          const circleNotifications: Notification[] = invitations.map((inv: any) => ({
+            id: inv.id,
+            type: 'circle_invite',
+            title: `Circle invitation from ${inv.inviter_display_name || inv.inviter_name}`,
+            body: `You've been invited to join "${inv.circle_name}" ${inv.circle_emoji}`,
+            time: formatTimeAgo(inv.invited_at),
+            read: false,
+            invitation: inv
+          }));
+
+          setNotifications(circleNotifications);
+        }
+      } catch (error) {
+        console.error('Error loading notifications:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadNotifications();
+  }, []);
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return `${Math.floor(diffDays / 7)}w ago`;
+  };
+
+  const handleInviteResponse = async (invitationId: string, accept: boolean) => {
+    setProcessingInvites(prev => new Set(prev).add(invitationId));
+    
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      const functionName = accept ? 'accept_circle_invitation' : 'decline_circle_invitation';
+      
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/rpc/${functionName}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            invitation_id: invitationId
+          }),
+        }
+      );
+
+      if (response.ok) {
+        // Remove the notification from the list
+        setNotifications(prev => prev.filter(n => n.id !== invitationId));
+        
+        if (accept) {
+          alert('Circle invitation accepted! Welcome to the circle.');
+        }
+      } else {
+        throw new Error('Failed to process invitation');
+      }
+    } catch (error) {
+      console.error('Error processing invitation:', error);
+      alert('Failed to process invitation. Please try again.');
+    } finally {
+      setProcessingInvites(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(invitationId);
+        return newSet;
+      });
+    }
+  };
 
   const unreadCount = notifications.filter(n => !n.read).length;
   const filtered = filter === 'all' ? notifications : notifications.filter(n => !n.read);
 
-  const markAsRead = (id: number) => {
+  const markAsRead = (id: string) => {
     setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
   };
 
@@ -78,25 +157,34 @@ export default function NotificationsPage() {
 
   const getIcon = (type: string) => {
     switch (type) {
-      case 'message': return '';
-      case 'nearby': return '';
-      case 'event': return '';
-      case 'system': return '';
-      default: return '';
+      case 'circle_invite': return '👥';
+      case 'message': return '💬';
+      case 'event': return '📅';
+      case 'system': return 'ℹ️';
+      default: return '📢';
     }
   };
 
   const getColor = (type: string) => {
     switch (type) {
+      case 'circle_invite': return 'bg-purple-500';
       case 'message': return 'bg-emerald-500';
-      case 'nearby': return 'bg-green-500';
       case 'event': return 'bg-yellow-500';
-      case 'system': return 'bg-purple-500';
+      case 'system': return 'bg-blue-500';
       default: return 'bg-gray-500';
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
+    <ProtectedRoute>
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
@@ -169,33 +257,81 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-2">
             {filtered.map((notification, index) => (
-              <Link
-                key={notification.id}
-                href={notification.link}
-                onClick={() => markAsRead(notification.id)}
-                className={`block bg-white rounded-xl p-4 transition-all hover:shadow-md ${
-                  !notification.read ? 'ring-2 ring-emerald-100' : ''
-                }`}
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <div className="flex gap-3">
-                  <div className={`w-10 h-10 ${getColor(notification.type)} rounded-full flex items-center justify-center flex-shrink-0`}>
-                    <span className="text-white text-lg">{getIcon(notification.type)}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className={`font-medium ${!notification.read ? 'text-gray-900' : 'text-gray-700'}`}>
-                        {notification.title}
-                        {!notification.read && (
-                          <span className="inline-block w-2 h-2 bg-emerald-600 rounded-full ml-2"></span>
-                        )}
-                      </p>
-                      <span className="text-xs text-gray-400 flex-shrink-0">{notification.time}</span>
+              notification.type === 'circle_invite' ? (
+                // Circle invitation with accept/decline buttons
+                <div
+                  key={notification.id}
+                  className={`bg-white rounded-xl p-4 transition-all ${
+                    !notification.read ? 'ring-2 ring-purple-100' : ''
+                  }`}
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div className="flex gap-3">
+                    <div className={`w-10 h-10 ${getColor(notification.type)} rounded-full flex items-center justify-center flex-shrink-0`}>
+                      <span className="text-white text-lg">{getIcon(notification.type)}</span>
                     </div>
-                    <p className="text-sm text-gray-500 mt-0.5 truncate">{notification.body}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p className={`font-medium ${!notification.read ? 'text-gray-900' : 'text-gray-700'}`}>
+                          {notification.title}
+                          {!notification.read && (
+                            <span className="inline-block w-2 h-2 bg-purple-600 rounded-full ml-2"></span>
+                          )}
+                        </p>
+                        <span className="text-xs text-gray-400 flex-shrink-0">{notification.time}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 mb-3">{notification.body}</p>
+                      
+                      {/* Action buttons */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleInviteResponse(notification.id, true)}
+                          disabled={processingInvites.has(notification.id)}
+                          className="flex-1 px-3 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        >
+                          {processingInvites.has(notification.id) ? 'Accepting...' : 'Accept'}
+                        </button>
+                        <button
+                          onClick={() => handleInviteResponse(notification.id, false)}
+                          disabled={processingInvites.has(notification.id)}
+                          className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        >
+                          {processingInvites.has(notification.id) ? 'Declining...' : 'Decline'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </Link>
+              ) : (
+                // Regular notification as link
+                <Link
+                  key={notification.id}
+                  href={notification.link || '/'}
+                  onClick={() => markAsRead(notification.id)}
+                  className={`block bg-white rounded-xl p-4 transition-all hover:shadow-md ${
+                    !notification.read ? 'ring-2 ring-emerald-100' : ''
+                  }`}
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div className="flex gap-3">
+                    <div className={`w-10 h-10 ${getColor(notification.type)} rounded-full flex items-center justify-center flex-shrink-0`}>
+                      <span className="text-white text-lg">{getIcon(notification.type)}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className={`font-medium ${!notification.read ? 'text-gray-900' : 'text-gray-700'}`}>
+                          {notification.title}
+                          {!notification.read && (
+                            <span className="inline-block w-2 h-2 bg-emerald-600 rounded-full ml-2"></span>
+                          )}
+                        </p>
+                        <span className="text-xs text-gray-400 flex-shrink-0">{notification.time}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-0.5 truncate">{notification.body}</p>
+                    </div>
+                  </div>
+                </Link>
+              )
             ))}
           </div>
         )}
@@ -228,5 +364,6 @@ export default function NotificationsPage() {
         )}
       </div>
     </div>
+    </ProtectedRoute>
   );
 }

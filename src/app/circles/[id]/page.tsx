@@ -288,7 +288,7 @@ export default function CirclePage() {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-      // Add member to circle
+      // Send invitation (status = 'pending')
       const response = await fetch(
         `${supabaseUrl}/rest/v1/circle_members`,
         {
@@ -302,16 +302,19 @@ export default function CirclePage() {
           body: JSON.stringify({
             circle_id: circleId,
             member_id: userId,
-            role: 'member'
+            role: 'member',
+            status: 'pending',
+            invited_by: session.user.id,
+            invited_at: new Date().toISOString()
           }),
         }
       );
 
       if (!response.ok) {
-        throw new Error('Failed to invite member');
+        throw new Error('Failed to send invitation');
       }
 
-      // Update member count
+      // Update last activity (but don't increment member count until accepted)
       await fetch(
         `${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`,
         {
@@ -322,18 +325,22 @@ export default function CirclePage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            member_count: (circle?.member_count || 0) + 1,
             last_activity_at: new Date().toISOString()
           }),
         }
       );
 
-      // Reload data
-      window.location.reload();
+      // Show success message and update UI
+      setShowInviteModal(false);
+      setError('');
+      alert('Circle invitation sent! They will receive a notification to accept or decline.');
+      
+      // Refresh connections to remove invited user from list
+      await loadConnections();
 
     } catch (err) {
-      console.error('Error inviting member:', err);
-      setError('Failed to invite member');
+      console.error('Error sending invitation:', err);
+      setError('Failed to send invitation');
     } finally {
       setInviteLoading(false);
     }
@@ -518,15 +525,20 @@ export default function CirclePage() {
 
             {/* Message Input */}
             <div className="bg-white border-t border-gray-200 p-4">
-              <div className="flex gap-2">
-                <input
-                  type="text"
+              <div className="flex gap-2 items-end">
+                <textarea
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Type a message..."
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
                   maxLength={500}
+                  rows={1}
+                  style={{
+                    minHeight: '40px',
+                    maxHeight: '120px',
+                    height: Math.min(120, Math.max(40, (newMessage.split('\n').length * 20) + 20)) + 'px'
+                  }}
                 />
                 <button
                   onClick={sendMessage}
