@@ -167,6 +167,11 @@ function MessagesContent() {
       const session = getStoredSession();
       if (!session) return;
 
+      // Handle saved messages separately - don't query the database
+      if (selectedId === 'saved-messages') {
+        return; // Let loadSavedMessages handle this
+      }
+
       try {
         const res = await fetch(
           `${supabaseUrl}/rest/v1/messages?conversation_id=eq.${selectedId}&select=*&order=created_at.asc`,
@@ -218,7 +223,11 @@ function MessagesContent() {
       }
     };
 
-    loadMessages();
+    if (selectedId === 'saved-messages') {
+      loadSavedMessages();
+    } else {
+      loadMessages();
+    }
     
     return () => {
       abortController.abort();
