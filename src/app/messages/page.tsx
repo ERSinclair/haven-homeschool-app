@@ -47,7 +47,7 @@ function MessagesContent() {
   const [conversationSelectionMode, setConversationSelectionMode] = useState(false);
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [showDeleteConversationModal, setShowDeleteConversationModal] = useState(false);
-  const [connectionRequests, setConnectionRequests] = useState<Set<string>>(new Set());
+  const [connectionRequests, setConnectionRequests] = useState<Map<string, {status: string, isRequester: boolean}>>(new Map());
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [savedMessages, setSavedMessages] = useState<Message[]>([]);
@@ -663,6 +663,28 @@ function MessagesContent() {
     setSelectedMessages([]);
   };
 
+  // Helper function to get connection button state
+  const getConnectionButtonState = (userId: string) => {
+    const connection = connectionRequests.get(userId);
+    
+    if (!connection) {
+      return { text: 'Connect', disabled: false, style: 'bg-teal-600 text-white hover:bg-teal-700' };
+    }
+    
+    switch (connection.status) {
+      case 'accepted':
+        return { text: 'Connected', disabled: true, style: 'bg-green-100 text-green-700 border border-green-200' };
+      case 'pending':
+        if (connection.isRequester) {
+          return { text: 'Requested', disabled: false, style: 'bg-gray-100 text-gray-600 border border-gray-300' };
+        } else {
+          return { text: 'Accept Request', disabled: false, style: 'bg-blue-600 text-white hover:bg-blue-700' };
+        }
+      default:
+        return { text: 'Connect', disabled: false, style: 'bg-teal-600 text-white hover:bg-teal-700' };
+    }
+  };
+
   // Connection request functionality
   const sendConnectionRequest = async (userId: string) => {
     try {
@@ -672,8 +694,16 @@ function MessagesContent() {
         return;
       }
 
-      // Check if request already exists - if so, remove it (unsend)
-      if (connectionRequests.has(userId)) {
+      const existingConnection = connectionRequests.get(userId);
+
+      // If already connected, do nothing
+      if (existingConnection?.status === 'accepted') {
+        alert('You are already connected with this user.');
+        return;
+      }
+
+      // If pending request exists and user is the requester, allow unsending
+      if (existingConnection?.status === 'pending' && existingConnection.isRequester) {
         // Remove/unsend the connection request
         const response = await fetch(
           `${supabaseUrl}/rest/v1/connections?requester_id=eq.${session.user.id}&receiver_id=eq.${userId}`,
@@ -690,45 +720,57 @@ function MessagesContent() {
           throw new Error('Failed to remove connection request');
         }
 
-        // Update UI state - remove from set
+        // Update UI state - remove from map
         setConnectionRequests(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(userId);
-          return newSet;
+          const newMap = new Map(prev);
+          newMap.delete(userId);
+          return newMap;
         });
         
         console.log('Connection request removed for user:', userId);
         return;
       }
 
-      // Create new connection request
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/connections`,
-        {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal',
-          },
-          body: JSON.stringify({
-            requester_id: session.user.id,
-            receiver_id: userId,
-            status: 'pending'
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+      // If there's a pending request where current user is receiver, don't allow sending back
+      if (existingConnection?.status === 'pending' && !existingConnection.isRequester) {
+        alert('This user has already sent you a connection request. Please check your connections page to accept it.');
+        return;
       }
 
-      // Update UI state - add to set
-      setConnectionRequests(prev => new Set(prev).add(userId));
-      
-      console.log('Connection request sent to user:', userId);
+      // Create new connection request (only if no connection exists)
+      if (!existingConnection) {
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/connections`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal',
+            },
+            body: JSON.stringify({
+              requester_id: session.user.id,
+              receiver_id: userId,
+              status: 'pending'
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(error);
+        }
+
+        // Update UI state - add to map
+        setConnectionRequests(prev => {
+          const newMap = new Map(prev);
+          newMap.set(userId, { status: 'pending', isRequester: true });
+          return newMap;
+        });
+        
+        console.log('Connection request sent to user:', userId);
+      }
       
     } catch (error) {
       if (error instanceof Error && error.name !== 'AbortError') {
@@ -742,15 +784,15 @@ function MessagesContent() {
     }
   };
 
-  // Load existing connection requests
+  // Load existing connections and requests
   const loadConnectionRequests = async (signal?: AbortSignal) => {
     try {
       const session = getStoredSession();
       if (!session?.user) return;
 
-      // Get connection requests sent by current user
+      // Get ALL connections involving current user (sent, received, accepted, pending)
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/connections?requester_id=eq.${session.user.id}&select=receiver_id`,
+        `${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&select=requester_id,receiver_id,status`,
         {
           headers: {
             'apikey': supabaseKey!,
@@ -761,9 +803,25 @@ function MessagesContent() {
       );
 
       if (response.ok && !signal?.aborted) {
-        const requests = await response.json();
-        const requestedUserIds = new Set<string>(requests.map((req: any) => req.receiver_id as string));
-        setConnectionRequests(requestedUserIds);
+        const connections = await response.json();
+        const connectionMap = new Map<string, {status: string, isRequester: boolean}>();
+        
+        connections.forEach((conn: any) => {
+          // Map the other person's ID to connection status and role
+          if (conn.requester_id === session.user.id) {
+            connectionMap.set(conn.receiver_id, {
+              status: conn.status,
+              isRequester: true
+            });
+          } else {
+            connectionMap.set(conn.requester_id, {
+              status: conn.status,
+              isRequester: false
+            });
+          }
+        });
+        
+        setConnectionRequests(connectionMap);
       }
     } catch (error) {
       if (error instanceof Error && error.name !== 'AbortError') {
@@ -888,13 +946,10 @@ function MessagesContent() {
                   {/* Connect Button */}
                   <button
                     onClick={() => sendConnectionRequest(selected.other_user.id)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm mr-2 ${
-                      connectionRequests.has(selected.other_user.id)
-                        ? 'bg-gray-100 text-gray-600 border border-gray-300'
-                        : 'bg-teal-600 text-white hover:bg-teal-700'
-                    }`}
+                    disabled={getConnectionButtonState(selected.other_user.id).disabled}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm mr-2 ${getConnectionButtonState(selected.other_user.id).style}`}
                   >
-                    {connectionRequests.has(selected.other_user.id) ? 'Requested' : 'Connect'}
+                    {getConnectionButtonState(selected.other_user.id).text}
                   </button>
                   
                   <div className="relative">

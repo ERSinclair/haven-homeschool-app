@@ -534,8 +534,30 @@ export default function EnhancedDiscoverPage() {
     return families.filter(family => hiddenFamilies.includes(family.id));
   };
 
-  const [connectionRequests, setConnectionRequests] = useState<Set<string>>(new Set());
+  const [connectionRequests, setConnectionRequests] = useState<Map<string, {status: string, isRequester: boolean}>>(new Map());
   const [selectedFamilyDetails, setSelectedFamilyDetails] = useState<Family | null>(null);
+
+  // Helper function to get connection button state
+  const getConnectionButtonState = (familyId: string) => {
+    const connection = connectionRequests.get(familyId);
+    
+    if (!connection) {
+      return { text: 'Connect', disabled: false, style: 'bg-teal-600 text-white hover:bg-teal-700' };
+    }
+    
+    switch (connection.status) {
+      case 'accepted':
+        return { text: 'Connected', disabled: true, style: 'bg-green-100 text-green-700 border border-green-200' };
+      case 'pending':
+        if (connection.isRequester) {
+          return { text: 'Requested', disabled: false, style: 'bg-gray-100 text-gray-600 border border-gray-300' };
+        } else {
+          return { text: 'Accept Request', disabled: false, style: 'bg-blue-600 text-white hover:bg-blue-700' };
+        }
+      default:
+        return { text: 'Connect', disabled: false, style: 'bg-teal-600 text-white hover:bg-teal-700' };
+    }
+  };
 
   const sendConnectionRequest = async (familyId: string) => {
     try {
@@ -548,8 +570,16 @@ export default function EnhancedDiscoverPage() {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-      // Check if request already exists - if so, remove it (unsend)
-      if (connectionRequests.has(familyId)) {
+      const existingConnection = connectionRequests.get(familyId);
+
+      // If already connected, do nothing
+      if (existingConnection?.status === 'accepted') {
+        alert('You are already connected with this family.');
+        return;
+      }
+
+      // If pending request exists and user is the requester, allow unsending
+      if (existingConnection?.status === 'pending' && existingConnection.isRequester) {
         // Remove/unsend the connection request
         const response = await fetch(
           `${supabaseUrl}/rest/v1/connections?requester_id=eq.${session.user.id}&receiver_id=eq.${familyId}`,
@@ -566,45 +596,57 @@ export default function EnhancedDiscoverPage() {
           throw new Error('Failed to remove connection request');
         }
 
-        // Update UI state - remove from set
+        // Update UI state - remove from map
         setConnectionRequests(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(familyId);
-          return newSet;
+          const newMap = new Map(prev);
+          newMap.delete(familyId);
+          return newMap;
         });
         
         console.log('Connection request removed for family:', familyId);
         return;
       }
 
-      // Create new connection request
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/connections`,
-        {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal',
-          },
-          body: JSON.stringify({
-            requester_id: session.user.id,
-            receiver_id: familyId,
-            status: 'pending'
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+      // If there's a pending request where current user is receiver, don't allow sending back
+      if (existingConnection?.status === 'pending' && !existingConnection.isRequester) {
+        alert('This family has already sent you a connection request. Please check your connections page to accept it.');
+        return;
       }
 
-      // Update UI state - add to set
-      setConnectionRequests(prev => new Set(prev).add(familyId));
-      
-      console.log('Connection request sent to family:', familyId);
+      // Create new connection request (only if no connection exists)
+      if (!existingConnection) {
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/connections`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal',
+            },
+            body: JSON.stringify({
+              requester_id: session.user.id,
+              receiver_id: familyId,
+              status: 'pending'
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(error);
+        }
+
+        // Update UI state - add to map
+        setConnectionRequests(prev => {
+          const newMap = new Map(prev);
+          newMap.set(familyId, { status: 'pending', isRequester: true });
+          return newMap;
+        });
+        
+        console.log('Connection request sent to family:', familyId);
+      }
       
     } catch (error) {
       console.error('Error with connection request:', error);
@@ -616,7 +658,7 @@ export default function EnhancedDiscoverPage() {
     }
   };
 
-  // Load existing connection requests
+  // Load existing connections and requests
   const loadConnectionRequests = async () => {
     try {
       const session = getStoredSession();
@@ -625,9 +667,9 @@ export default function EnhancedDiscoverPage() {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-      // Get connection requests sent by current user
+      // Get ALL connections involving current user (sent, received, accepted, pending)
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/connections?requester_id=eq.${session.user.id}&select=receiver_id`,
+        `${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&select=requester_id,receiver_id,status`,
         {
           headers: {
             'apikey': supabaseKey!,
@@ -637,9 +679,25 @@ export default function EnhancedDiscoverPage() {
       );
 
       if (response.ok) {
-        const requests = await response.json();
-        const requestedFamilyIds = new Set<string>(requests.map((req: any) => req.receiver_id as string));
-        setConnectionRequests(requestedFamilyIds);
+        const connections = await response.json();
+        const connectionMap = new Map<string, {status: string, isRequester: boolean}>();
+        
+        connections.forEach((conn: any) => {
+          // Map the other person's ID to connection status and role
+          if (conn.requester_id === session.user.id) {
+            connectionMap.set(conn.receiver_id, {
+              status: conn.status,
+              isRequester: true
+            });
+          } else {
+            connectionMap.set(conn.requester_id, {
+              status: conn.status,
+              isRequester: false
+            });
+          }
+        });
+        
+        setConnectionRequests(connectionMap);
       }
     } catch (error) {
       console.error('Error loading connection requests:', error);
@@ -1145,13 +1203,10 @@ export default function EnhancedDiscoverPage() {
                       <div className="flex flex-col gap-2">
                         <button
                           onClick={() => sendConnectionRequest(family.id)}
-                          className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm min-w-[85px] ${
-                            connectionRequests.has(family.id)
-                              ? 'bg-gray-100 text-gray-600 border border-gray-300'
-                              : 'bg-teal-600 text-white hover:bg-teal-700'
-                          }`}
+                          disabled={getConnectionButtonState(family.id).disabled}
+                          className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm min-w-[85px] ${getConnectionButtonState(family.id).style}`}
                         >
-                          {connectionRequests.has(family.id) ? 'Requested' : 'Connect'}
+                          {getConnectionButtonState(family.id).text}
                         </button>
                         <button
                           onClick={() => setSelectedFamily(family)}
@@ -1217,13 +1272,10 @@ export default function EnhancedDiscoverPage() {
             <div className="mb-3">
               <button
                 onClick={() => sendConnectionRequest(selectedFamily.id)}
-                className={`w-full px-4 py-2 rounded-xl font-medium transition-colors h-10 ${
-                  connectionRequests.has(selectedFamily.id)
-                    ? 'bg-gray-100 text-gray-600 border border-gray-300'
-                    : 'bg-teal-600 text-white hover:bg-teal-700'
-                }`}
+                disabled={getConnectionButtonState(selectedFamily.id).disabled}
+                className={`w-full px-4 py-2 rounded-xl font-medium transition-colors h-10 ${getConnectionButtonState(selectedFamily.id).style}`}
               >
-                {connectionRequests.has(selectedFamily.id) ? 'Requested' : 'Send Connection Request'}
+                {getConnectionButtonState(selectedFamily.id).text}
               </button>
             </div>
             
@@ -1478,13 +1530,10 @@ export default function EnhancedDiscoverPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => sendConnectionRequest(selectedFamilyDetails.id)}
-                  className={`flex-1 px-4 py-3 rounded-xl font-medium transition-colors min-w-0 ${
-                    connectionRequests.has(selectedFamilyDetails.id)
-                      ? 'bg-gray-100 text-gray-600 border border-gray-300'
-                      : 'bg-teal-600 text-white hover:bg-teal-700'
-                  }`}
+                  disabled={getConnectionButtonState(selectedFamilyDetails.id).disabled}
+                  className={`flex-1 px-4 py-3 rounded-xl font-medium transition-colors min-w-0 ${getConnectionButtonState(selectedFamilyDetails.id).style}`}
                 >
-                  {connectionRequests.has(selectedFamilyDetails.id) ? 'Requested' : 'Connect'}
+                  {getConnectionButtonState(selectedFamilyDetails.id).text}
                 </button>
                 <button
                   onClick={() => {
