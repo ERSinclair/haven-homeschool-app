@@ -1,0 +1,290 @@
+@import "tailwindcss";
+
+/* Mobile Bottom Navigation Fixes */
+#bottom-navigation-v2 {
+  /* Ensure it works on all mobile browsers */
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  z-index: 9999 !important;
+  
+  /* Hardware acceleration for mobile */
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  
+  /* Handle mobile safe areas */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Additional mobile-specific fixes */
+@supports (-webkit-touch-callout: none) {
+  #bottom-navigation-v2 {
+    /* iOS Safari specific */
+    bottom: max(0px, env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* Force bottom positioning on mobile viewports */
+@media screen and (max-width: 768px) {
+  #bottom-navigation-v2 {
+    position: fixed !important;
+    bottom: 0 !important;
+    /* Ensure it's above mobile browser UI */
+    z-index: 999999 !important;
+  }
+}
+
+:root {
+  /* Haven Brand Colors - Soft Teal palette */
+  --ff-primary: #0D9488;        /* Teal-600 */
+  --ff-primary-light: #14B8A6;  /* Teal-500 */
+  --ff-primary-dark: #0F766E;   /* Teal-700 */
+  --ff-secondary: #10B981;       /* Emerald (for verification, success) */
+  --ff-accent: #F59E0B;         /* Amber (for highlights, warmth) */
+  --ff-warning: #EF4444;        /* Red (for safety, reports) */
+  --ff-warm: #F97316;           /* Orange - warm accent */
+  
+  /* Neutral Palette */
+  --ff-gray-50: #F9FAFB;
+  --ff-gray-100: #F3F4F6;
+  --ff-gray-200: #E5E7EB;
+  --ff-gray-300: #D1D5DB;
+  --ff-gray-400: #9CA3AF;
+  --ff-gray-500: #6B7280;
+  --ff-gray-600: #4B5563;
+  --ff-gray-700: #374151;
+  --ff-gray-800: #1F2937;
+  --ff-gray-900: #111827;
+  
+  /* Background gradients */
+  --ff-gradient-primary: linear-gradient(135deg, #F0FDFA 0%, #CCFBF1 100%);
+  --ff-gradient-hero: linear-gradient(135deg, #0D9488 0%, #0F766E 100%);
+  --ff-gradient-card: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
+  
+  /* Shadows */
+  --ff-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --ff-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --ff-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --ff-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-nunito), system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-nunito), system-ui, sans-serif;
+  overflow-x: hidden;
+  word-wrap: break-word;
+}
+
+/* Mobile-specific fixes */
+html {
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Ensure no element exceeds viewport width */
+.container, .max-w-4xl, .max-w-2xl, .max-w-md {
+  max-width: calc(100vw - 2rem);
+}
+
+/* Fix for range sliders on mobile */
+input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Mobile keyboard handling */
+@media (max-width: 768px) {
+  /* Prevent zoom on input focus */
+  input[type="text"],
+  input[type="email"], 
+  input[type="tel"],
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Loading animations */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Button loading state */
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin-left: -8px;
+  margin-top: -8px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Text utilities */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Safe area for bottom nav */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0.5rem);
+}
+
+/* BOTTOM NAVIGATION OVERRIDE - FORCE FIXED POSITIONING */
+#bottom-navigation {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 9999 !important;
+  width: 100% !important;
+}
+
+/* Override ALL mobile CSS that might interfere */
+@media (max-width: 768px) {
+  #bottom-navigation {
+    position: fixed !important;
+    bottom: 0 !important;
+    transform: none !important;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  #bottom-navigation {
+    position: fixed !important;
+    bottom: 0 !important;
+  }
+}
+
+/* Prevent mobile browser zoom on bottom nav */
+.fixed.bottom-0 * {
+  touch-action: manipulation;
+}
+
+/* Scrollbar hide for horizontal scrolls */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Card hover effects */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.08);
+}
+
+/* Glass morphism */
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Subtle animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.4s ease-out;
+}
+
+/* Better focus states */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #0D9488;
+  outline-offset: 2px;
+}
+
+/* Form input styles */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+textarea,
+select {
+  color: #111827 !important;
+  background-color: #ffffff;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #6B7280 !important;
+  opacity: 1;
+}
+
+/* Improved touch targets */
+@media (pointer: coarse) {
+  button, a, input[type="checkbox"], input[type="radio"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
