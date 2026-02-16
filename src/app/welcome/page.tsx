@@ -46,8 +46,19 @@ export default function WelcomePage() {
       return;
     }
 
-    // Check if coming from signup for celebration mode
+    // Prevent double welcome page - check if already shown in this session
+    const welcomeShown = sessionStorage.getItem('haven-welcome-shown');
     const fromSignup = new URLSearchParams(window.location.search).get('fromSignup') === 'true';
+    
+    if (welcomeShown && !fromSignup) {
+      // Already shown welcome and not from signup - go to discover
+      console.log('Welcome already shown, redirecting to discover');
+      router.push('/discover');
+      return;
+    }
+    
+    // Mark welcome as shown for this session
+    sessionStorage.setItem('haven-welcome-shown', 'true');
     setIsFromSignup(fromSignup);
 
     // Animate in steps

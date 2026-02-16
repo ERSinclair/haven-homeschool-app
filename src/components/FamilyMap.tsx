@@ -37,6 +37,7 @@ type Family = {
   interests?: string[];
   is_verified: boolean;
   created_at: string;
+  admin_level?: 'gold' | 'silver' | 'bronze' | null;
 };
 
 interface FamilyMapProps {
@@ -88,6 +89,43 @@ const getLocationCoords = (locationName: string): [number, number] => {
   
   // Default to Torquay if no match
   return LOCATION_COORDS['Torquay'];
+};
+
+// Function to generate random coordinates within 3km radius for privacy
+const getRandomizedCoords = (baseLng: number, baseLat: number, familyId: string): [number, number] => {
+  // Use family ID as seed for consistent positioning (same family always appears in same spot)
+  const seed = familyId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+  
+  // Simple seeded random number generator
+  const random = (seed: number) => {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  };
+  
+  // Generate random angle and distance
+  const angle = random(seed) * 2 * Math.PI;
+  const distance = random(seed + 1) * 3; // Random distance up to 3km
+  
+  // Convert distance to degrees (approximate)
+  const kmPerDegreeLat = 110.574;
+  const kmPerDegreeLng = 111.320 * Math.cos(baseLat * Math.PI / 180);
+  
+  const deltaLat = (distance * Math.cos(angle)) / kmPerDegreeLat;
+  const deltaLng = (distance * Math.sin(angle)) / kmPerDegreeLng;
+  
+  return [baseLng + deltaLng, baseLat + deltaLat];
+};
+
+// Function to calculate distance between two points in km
+const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
 };
 
 // Create a circle polygon for the radius visualization
@@ -252,14 +290,37 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
     const existingMarkers = document.querySelectorAll('.family-marker');
     existingMarkers.forEach(marker => marker.remove());
 
-    // Add family markers
-    families.forEach(family => {
-      const coords = getLocationCoords(family.location_name);
+    // Add family markers with privacy protection and radius filtering
+    const filteredFamilies = families.filter(family => {
+      // If radius filter is active, only show families within radius
+      if (showRadius && userLocation && searchRadius) {
+        const familyCoords = getLocationCoords(family.location_name);
+        const distance = calculateDistance(
+          userLocation.lat, userLocation.lng,
+          familyCoords[1], familyCoords[0]
+        );
+        return distance <= searchRadius;
+      }
+      return true; // Show all families if no radius filter
+    });
+
+    filteredFamilies.forEach(family => {
+      const baseCoords = getLocationCoords(family.location_name);
+      // Use randomized coordinates within 3km for privacy protection
+      const coords = getRandomizedCoords(baseCoords[0], baseCoords[1], family.id);
       
-      // Create marker element
+      // Create marker element with smaller size for better visibility
       const markerElement = document.createElement('div');
-      markerElement.className = 'family-marker w-10 h-10 bg-teal-600 rounded-full border-2 border-white shadow-lg cursor-pointer flex items-center justify-center text-white font-semibold text-sm hover:bg-teal-700 transition-colors';
-      markerElement.innerHTML = (family.family_name || family.display_name || '?').charAt(0).toUpperCase();
+      const displayName = family.display_name || family.family_name?.split(' ')[0] || 'Family';
+      
+      // Different colors for admin users
+      let markerColor = 'bg-teal-600 hover:bg-teal-700';
+      if (family.admin_level === 'gold') markerColor = 'bg-yellow-500 hover:bg-yellow-600';
+      else if (family.admin_level === 'silver') markerColor = 'bg-gray-400 hover:bg-gray-500';
+      else if (family.admin_level === 'bronze') markerColor = 'bg-amber-600 hover:bg-amber-700';
+      
+      markerElement.className = `family-marker w-8 h-8 ${markerColor} rounded-full border-2 border-white shadow-lg cursor-pointer flex items-center justify-center text-white font-semibold text-xs transition-colors`;
+      markerElement.innerHTML = displayName.charAt(0).toUpperCase();
       
       // Add click handler
       markerElement.addEventListener('click', () => {
@@ -268,17 +329,17 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
         }
       });
 
-      // Create popup
+      // Create popup with username display
       const popup = new mapboxgl.Popup({
-        offset: 25,
+        offset: 15,
         closeButton: false,
         closeOnClick: false
       }).setHTML(`
-        <div class="p-2">
-          <div class="font-semibold text-gray-900">${family.family_name || family.display_name}</div>
-          <div class="text-sm text-gray-600">${family.location_name}</div>
-          <div class="text-sm text-gray-600">Kids: ${family.kids_ages?.length ? family.kids_ages.join(', ') + ' years' : 'No info'}</div>
-          ${family.is_verified ? '<div class="text-green-600 text-sm">✓ Verified</div>' : ''}
+        <div class="p-2 text-center">
+          <div class="font-semibold text-gray-900">${displayName}</div>
+          <div class="text-xs text-gray-500">${family.location_name} area</div>
+          ${family.admin_level ? `<div class="text-xs text-amber-600 mt-1">${family.admin_level} admin</div>` : ''}
+          ${family.is_verified ? '<div class="text-green-600 text-xs">✓ Verified</div>' : ''}
         </div>
       `);
 
@@ -298,9 +359,12 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
       });
     });
 
-    // Fit map to show all families if there are any
-    if (families.length > 0) {
-      const coords = families.map(family => getLocationCoords(family.location_name));
+    // Fit map to show filtered families if there are any
+    if (filteredFamilies.length > 0) {
+      const coords = filteredFamilies.map(family => {
+        const baseCoords = getLocationCoords(family.location_name);
+        return getRandomizedCoords(baseCoords[0], baseCoords[1], family.id);
+      });
       const bounds = new mapboxgl.LngLatBounds();
       coords.forEach(coord => bounds.extend(coord));
       

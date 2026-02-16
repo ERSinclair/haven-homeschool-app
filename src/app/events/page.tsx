@@ -58,10 +58,64 @@ export default function EventsPage() {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [radiusFilter, setRadiusFilter] = useState(false);
+  const [searchRadius, setSearchRadius] = useState(15);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const router = useRouter();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // Helper function to calculate distance between two points
+  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  // Load user location from profile for radius filtering
+  const loadUserLocation = async () => {
+    const session = getStoredSession();
+    if (!session?.user) return;
+
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=location_name`,
+        {
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      const profiles = await res.json();
+      if (profiles?.[0]?.location_name) {
+        // Simple coordinate mapping for common locations
+        const locationCoords: { [key: string]: [number, number] } = {
+          'Torquay': [-38.3305, 144.3256],
+          'Geelong': [-38.1499, 144.3580],
+          'Ocean Grove': [-38.2575, 144.5208],
+          'Surf Coast': [-38.3000, 144.2500],
+        };
+        
+        const location = profiles[0].location_name;
+        const coords = locationCoords[location] || locationCoords['Torquay']; // Default to Torquay
+        setUserLocation({ lat: coords[0], lng: coords[1] });
+      }
+    } catch (err) {
+      console.error('Error loading user location:', err);
+    }
+  };
+
+  // Load user location on mount
+  useEffect(() => {
+    loadUserLocation();
+  }, []);
 
   // Load events
   useEffect(() => {
@@ -274,20 +328,32 @@ export default function EventsPage() {
   };
 
   const filteredEvents = events.filter(e => {
-    if (filter === 'all') return true;
-    
-    // Map old categories to new categories for filtering
-    const categoryMap: Record<string, string> = {
-      'playdate': 'Play',
-      'learning': 'Educational', 
-      'co-ed': 'Other',
-      'Educational': 'Educational',
-      'Play': 'Play',
-      'Other': 'Other'
-    };
-    
-    const mappedCategory = categoryMap[e.category] || 'Other';
-    return mappedCategory === filter;
+    // Category filtering
+    if (filter !== 'all') {
+      // Map old categories to new categories for filtering
+      const categoryMap: Record<string, string> = {
+        'playdate': 'Play',
+        'learning': 'Educational', 
+        'co-ed': 'Other',
+        'Educational': 'Educational',
+        'Play': 'Play',
+        'Other': 'Other'
+      };
+      
+      const mappedCategory = categoryMap[e.category] || 'Other';
+      if (mappedCategory !== filter) return false;
+    }
+
+    // Radius filtering
+    if (radiusFilter && userLocation && e.latitude && e.longitude) {
+      const distance = calculateDistance(
+        userLocation.lat, userLocation.lng,
+        e.latitude, e.longitude
+      );
+      if (distance > searchRadius) return false;
+    }
+
+    return true;
   });
 
   const myEvents = events.filter(e => e.user_rsvp || e.host_id === userId);
@@ -416,9 +482,9 @@ export default function EventsPage() {
           <div className="relative">
             <button
               onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+              className={`flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors ${radiusFilter ? 'ring-2 ring-teal-500' : ''}`}
             >
-              <span>Filter</span>
+              <span>{radiusFilter ? `${searchRadius}km` : 'Filter'}</span>
               <svg 
                 className={`w-4 h-4 transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} 
                 fill="none" 
@@ -430,7 +496,11 @@ export default function EventsPage() {
             </button>
             
             {showFilterDropdown && (
-              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 min-w-[140px]">
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 min-w-[160px]">
+                {/* Category Filters */}
+                <div className="px-2 py-1 text-xs font-semibold text-gray-500 border-b border-gray-100">
+                  Categories
+                </div>
                 {[
                   { value: 'all', label: 'All Events' },
                   { value: 'Play', label: 'Play' },
@@ -443,7 +513,7 @@ export default function EventsPage() {
                       setFilter(cat.value);
                       setShowFilterDropdown(false);
                     }}
-                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl transition-colors ${
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition-colors ${
                       filter === cat.value 
                         ? 'bg-teal-50 text-teal-700 font-medium' 
                         : 'text-gray-700'
@@ -452,6 +522,42 @@ export default function EventsPage() {
                     {cat.label}
                   </button>
                 ))}
+                
+                {/* Radius Filter */}
+                <div className="px-2 py-1 text-xs font-semibold text-gray-500 border-t border-b border-gray-100 mt-1">
+                  Distance
+                </div>
+                <button
+                  onClick={() => {
+                    setRadiusFilter(!radiusFilter);
+                    setShowFilterDropdown(false);
+                  }}
+                  className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition-colors ${
+                    radiusFilter 
+                      ? 'bg-teal-50 text-teal-700 font-medium' 
+                      : 'text-gray-700'
+                  }`}
+                >
+                  {radiusFilter ? `✓ Within ${searchRadius}km` : 'All distances'}
+                </button>
+                
+                {radiusFilter && (
+                  <div className="px-4 py-2 border-t border-gray-100">
+                    <input
+                      type="range"
+                      min="5"
+                      max="50"
+                      value={searchRadius}
+                      onChange={(e) => setSearchRadius(parseInt(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>5km</span>
+                      <span>{searchRadius}km</span>
+                      <span>50km</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
