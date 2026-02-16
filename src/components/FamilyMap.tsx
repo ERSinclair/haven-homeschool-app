@@ -329,19 +329,33 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
         }
       });
 
-      // Create popup with username display
+      // Create popup with username display and view profile button
+      const popupElement = document.createElement('div');
+      popupElement.className = 'p-3 text-center';
+      popupElement.innerHTML = `
+        <div class="font-semibold text-gray-900">${displayName}</div>
+        <div class="text-xs text-gray-500">${family.location_name} area</div>
+        ${family.admin_level ? `<div class="text-xs text-amber-600 mt-1">${family.admin_level} admin</div>` : ''}
+        ${family.is_verified ? '<div class="text-green-600 text-xs">✓ Verified</div>' : ''}
+      `;
+      
+      // Add View Profile button
+      const viewButton = document.createElement('button');
+      viewButton.className = 'mt-2 px-3 py-1 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors';
+      viewButton.textContent = 'View Profile';
+      viewButton.onclick = (e) => {
+        e.stopPropagation();
+        if (onFamilyClick) {
+          onFamilyClick(family);
+        }
+      };
+      popupElement.appendChild(viewButton);
+
       const popup = new mapboxgl.Popup({
         offset: 15,
         closeButton: false,
         closeOnClick: false
-      }).setHTML(`
-        <div class="p-2 text-center">
-          <div class="font-semibold text-gray-900">${displayName}</div>
-          <div class="text-xs text-gray-500">${family.location_name} area</div>
-          ${family.admin_level ? `<div class="text-xs text-amber-600 mt-1">${family.admin_level} admin</div>` : ''}
-          ${family.is_verified ? '<div class="text-green-600 text-xs">✓ Verified</div>' : ''}
-        </div>
-      `);
+      }).setDOMContent(popupElement);
 
       // Create marker
       const marker = new mapboxgl.Marker(markerElement)
@@ -491,14 +505,7 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
         )}
       </button>
 
-      {/* Debug Info (Development only) */}
-      {process.env.NODE_ENV === 'development' && (showRadius || userLocation) && (
-        <div className="absolute top-4 right-4 bg-yellow-100 border border-yellow-400 text-yellow-800 p-2 rounded text-xs z-10">
-          <div>Radius: {showRadius ? 'ON' : 'OFF'}</div>
-          <div>Location: {userLocation ? '✓' : '✗'}</div>
-          <div>Distance: {searchRadius}km</div>
-        </div>
-      )}
+      {/* Debug section removed */}
 
       {!isLoaded && (
         <div className="absolute inset-0 bg-gray-100 rounded-xl flex items-center justify-center">

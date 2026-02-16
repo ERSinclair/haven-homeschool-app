@@ -10,6 +10,7 @@ import AvatarUpload from '@/components/AvatarUpload';
 import HavenHeader from '@/components/HavenHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AdminBadge from '@/components/AdminBadge';
+import { submitBugReport, submitFeedback } from '@/lib/feedback';
 
 type Profile = {
   id: string;
@@ -40,6 +41,12 @@ export default function ProfilePage() {
   const [customDescriptions, setCustomDescriptions] = useState<string[]>([]);
   const [children, setChildren] = useState<{ id: number; age: string }[]>([{ id: 1, age: '' }]);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [showBugReportModal, setShowBugReportModal] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [bugReportMessage, setBugReportMessage] = useState('');
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const router = useRouter();
 
   // Load user and profile
@@ -215,6 +222,40 @@ export default function ProfilePage() {
     clearStoredSession();
     setShowSignOutModal(false);
     window.location.href = '/';
+  };
+
+  const handleBugReport = async () => {
+    if (!bugReportMessage.trim()) return;
+    
+    setSubmitting(true);
+    const result = await submitBugReport({ message: bugReportMessage });
+    
+    if (result.success) {
+      setShowBugReportModal(false);
+      setBugReportMessage('');
+      setSubmitSuccess('Bug report submitted successfully! Thank you for helping us improve Haven.');
+      setTimeout(() => setSubmitSuccess(null), 5000);
+    } else {
+      alert('Failed to submit bug report: ' + result.error);
+    }
+    setSubmitting(false);
+  };
+
+  const handleFeedback = async () => {
+    if (!feedbackMessage.trim()) return;
+    
+    setSubmitting(true);
+    const result = await submitFeedback({ message: feedbackMessage });
+    
+    if (result.success) {
+      setShowFeedbackModal(false);
+      setFeedbackMessage('');
+      setSubmitSuccess('Feedback submitted successfully! We appreciate your input.');
+      setTimeout(() => setSubmitSuccess(null), 5000);
+    } else {
+      alert('Failed to submit feedback: ' + result.error);
+    }
+    setSubmitting(false);
   };
 
   const addChild = () => {
@@ -679,6 +720,22 @@ export default function ProfilePage() {
           )}
         </div>
 
+        {/* Feedback buttons */}
+        <div className="flex gap-3 mb-4">
+          <button
+            onClick={() => setShowBugReportModal(true)}
+            className="flex-1 py-3 text-gray-700 font-medium bg-white hover:bg-gray-50 rounded-xl transition-colors border border-gray-200"
+          >
+            Report a bug
+          </button>
+          <button
+            onClick={() => setShowFeedbackModal(true)}
+            className="flex-1 py-3 text-gray-700 font-medium bg-white hover:bg-gray-50 rounded-xl transition-colors border border-gray-200"
+          >
+            Feedback & suggestions
+          </button>
+        </div>
+
         {/* Sign out button */}
         <button
           onClick={handleLogout}
@@ -717,6 +774,108 @@ export default function ProfilePage() {
                   Sign Out
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {submitSuccess && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50">
+          <div className="bg-green-600 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2">
+            <span className="text-lg">✓</span>
+            <span className="font-medium">{submitSuccess}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Bug Report Modal */}
+      {showBugReportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Report a Bug</h3>
+              <button
+                onClick={() => setShowBugReportModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Describe the bug you encountered
+              </label>
+              <textarea
+                value={bugReportMessage}
+                onChange={(e) => setBugReportMessage(e.target.value)}
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 resize-none"
+                rows={4}
+                placeholder="Please describe what happened, what you expected to happen, and any steps to reproduce the issue..."
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowBugReportModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBugReport}
+                disabled={!bugReportMessage.trim() || submitting}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 disabled:bg-gray-300"
+              >
+                {submitting ? 'Submitting...' : 'Submit Bug Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Feedback & Suggestions</h3>
+              <button
+                onClick={() => setShowFeedbackModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Share your thoughts and suggestions
+              </label>
+              <textarea
+                value={feedbackMessage}
+                onChange={(e) => setFeedbackMessage(e.target.value)}
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 resize-none"
+                rows={4}
+                placeholder="Tell us about features you'd like to see, improvements we could make, or anything else on your mind..."
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowFeedbackModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFeedback}
+                disabled={!feedbackMessage.trim() || submitting}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:bg-gray-300"
+              >
+                {submitting ? 'Submitting...' : 'Submit Feedback'}
+              </button>
             </div>
           </div>
         </div>

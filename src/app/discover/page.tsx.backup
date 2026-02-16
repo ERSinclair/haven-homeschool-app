@@ -9,11 +9,15 @@ import { getAvatarColor, statusColors, statusLabels, statusIcons } from '@/lib/c
 import { checkProfileCompletion, getResumeSignupUrl } from '@/lib/profileCompletion';
 import FamilyMap from '@/components/FamilyMap';
 import AvatarUpload from '@/components/AvatarUpload';
+import HavenHeader from '@/components/HavenHeader';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import AdminBadge from '@/components/AdminBadge';
 
 type Family = {
   id: string;
   family_name: string;
   display_name?: string;
+  username?: string;
   location_name: string;
   kids_ages: number[];
   status: string;
@@ -22,6 +26,10 @@ type Family = {
   interests?: string[];
   is_verified: boolean;
   created_at: string;
+  admin_level?: 'gold' | 'silver' | 'bronze' | null;
+  is_online?: boolean;
+  last_active?: string;
+  user_type?: 'family' | 'teacher' | 'event' | 'facility' | 'other';
 };
 
 type Profile = {
@@ -34,7 +42,30 @@ type Profile = {
 };
 
 type ViewMode = 'list' | 'map';
-type Section = 'families' | 'teachers' | 'spaces' | 'extracurricular';
+type Section = 'families' | 'learning';
+
+// Calculate and format last active time
+const formatLastActive = (lastActiveStr?: string): string => {
+  if (!lastActiveStr) return 'offline';
+  
+  const lastActive = new Date(lastActiveStr);
+  const now = new Date();
+  const diffMs = now.getTime() - lastActive.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffWeeks = Math.floor(diffDays / 7);
+  
+  if (diffDays === 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffWeeks === 1) return '1 week ago';
+  if (diffWeeks === 2) return '2 weeks ago';
+  if (diffWeeks === 3) return '3 weeks ago';
+  if (diffDays < 30) return `${diffWeeks} weeks ago`;
+  
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths === 1) return '1 month ago';
+  return `${diffMonths} months ago`;
+};
 
 // Calculate distance between two coordinates in km
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -92,6 +123,8 @@ export default function EnhancedDiscoverPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [successMessageText, setSuccessMessageText] = useState('Success!');
+  const [showHiddenModal, setShowHiddenModal] = useState(false);
   
   // Circles functionality
   const [showCircleModal, setShowCircleModal] = useState(false);
@@ -102,105 +135,311 @@ export default function EnhancedDiscoverPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [activeSection, setActiveSection] = useState<Section>('families');
   const [showFilters, setShowFilters] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [maxDistance, setMaxDistance] = useState(15);
   const [ageRange, setAgeRange] = useState({ min: 1, max: 10 });
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterTypes, setFilterTypes] = useState<string[]>(['all']);
   const [locationFilter, setLocationFilter] = useState('');
   
-  // Radius search - with localStorage persistence for testing
-  const [radiusSearch, setRadiusSearch] = useState(() => {
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      return localStorage.getItem('haven-radius-search') === 'true';
-    }
-    return false;
-  });
-  const [searchRadius, setSearchRadius] = useState(() => {
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      return parseInt(localStorage.getItem('haven-search-radius') || '10');
-    }
-    return 10;
-  });
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(() => {
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      const stored = localStorage.getItem('haven-user-location');
-      return stored ? JSON.parse(stored) : null;
-    }
-    return null;
-  });
+  // Radius search - always enabled
+  const [searchRadius, setSearchRadius] = useState(15);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  
+  // Mutual connections and smart matching
+  const [userConnections, setUserConnections] = useState<string[]>([]);
+  const [mutualConnections, setMutualConnections] = useState<{ [familyId: string]: { count: number, names: string[] } }>({});
+  const [smartMatches, setSmartMatches] = useState<Family[]>([]);
+  const [activityFeed, setActivityFeed] = useState<any[]>([]);
   
   const router = useRouter();
 
-  // Helper to persist radius search state
-  const updateRadiusSearch = (value: boolean) => {
-    setRadiusSearch(value);
-    if (process.env.NODE_ENV === 'development') {
-      localStorage.setItem('haven-radius-search', value.toString());
+  // Handle filter type selection (multiple selection)
+  const toggleFilterType = (type: string) => {
+    if (type === 'all') {
+      setFilterTypes(['all']);
+    } else {
+      setFilterTypes(prev => {
+        let newTypes = prev.filter(t => t !== 'all'); // Remove 'all' when selecting specific types
+        if (newTypes.includes(type)) {
+          // Remove the type
+          const filtered = newTypes.filter(t => t !== type);
+          return filtered.length === 0 ? ['all'] : filtered;
+        } else {
+          // Add the type
+          return [...newTypes, type];
+        }
+      });
     }
   };
 
-  const updateUserLocation = (location: { lat: number; lng: number } | null) => {
-    setUserLocation(location);
-    if (process.env.NODE_ENV === 'development') {
-      if (location) {
-        localStorage.setItem('haven-user-location', JSON.stringify(location));
-      } else {
-        localStorage.removeItem('haven-user-location');
+  // Load user location from profile automatically
+  const loadUserLocationFromProfile = async () => {
+    const session = getStoredSession();
+    if (!session?.user || !profile?.location_name) return;
+
+    // Simple coordinate mapping for common locations
+    const locationCoords: { [key: string]: [number, number] } = {
+      'Torquay': [-38.3305, 144.3256],
+      'Geelong': [-38.1499, 144.3580],
+      'Ocean Grove': [-38.2575, 144.5208],
+      'Surf Coast': [-38.3000, 144.2500],
+      'Anglesea': [-38.4089, 144.1856],
+      'Lorne': [-38.5433, 143.9781],
+    };
+    
+    const location = profile.location_name;
+    const coords = locationCoords[location] || locationCoords['Torquay']; // Default to Torquay
+    
+    // Add random offset within 3km for privacy
+    const randomOffset = () => {
+      const angle = Math.random() * 2 * Math.PI;
+      const radius = Math.random() * 3000; // 3km in meters
+      const latOffset = (radius * Math.cos(angle)) / 111320; // meters to degrees lat
+      const lngOffset = (radius * Math.sin(angle)) / (111320 * Math.cos(coords[0] * Math.PI / 180)); // meters to degrees lng
+      return { latOffset, lngOffset };
+    };
+    
+    const offset = randomOffset();
+    setUserLocation({ 
+      lat: coords[0] + offset.latOffset, 
+      lng: coords[1] + offset.lngOffset 
+    });
+  };
+
+  // Load user connections for mutual connections calculation
+  const loadUserConnections = async () => {
+    const session = getStoredSession();
+    if (!session?.user) return;
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&status=eq.accepted&select=requester_id,receiver_id`,
+        {
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (res.ok) {
+        const connections = await res.json();
+        const connectedUserIds = connections.map((conn: any) => 
+          conn.requester_id === session.user.id ? conn.receiver_id : conn.requester_id
+        );
+        setUserConnections(connectedUserIds);
       }
+    } catch (err) {
+      console.error('Error loading user connections:', err);
     }
   };
 
-  const updateSearchRadius = (radius: number) => {
-    setSearchRadius(radius);
-    if (process.env.NODE_ENV === 'development') {
-      localStorage.setItem('haven-search-radius', radius.toString());
+  // Calculate mutual connections for all families
+  const calculateMutualConnections = async () => {
+    if (userConnections.length === 0 || families.length === 0) return;
+
+    const session = getStoredSession();
+    if (!session?.user) return;
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    try {
+      const mutuals: { [familyId: string]: { count: number, names: string[] } } = {};
+
+      // For each family, find their connections and see if any match ours
+      for (const family of families) {
+        if (family.id === session.user.id) continue;
+
+        // Get this family's connections
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${family.id},receiver_id.eq.${family.id})&status=eq.accepted&select=requester_id,receiver_id`,
+          {
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          }
+        );
+
+        if (res.ok) {
+          const theirConnections = await res.json();
+          const theirConnectionIds = theirConnections.map((conn: any) => 
+            conn.requester_id === family.id ? conn.receiver_id : conn.requester_id
+          );
+
+          // Find mutual connections
+          const mutualIds = userConnections.filter(id => theirConnectionIds.includes(id));
+
+          if (mutualIds.length > 0) {
+            // Get names of mutual connections
+            const nameRes = await fetch(
+              `${supabaseUrl}/rest/v1/profiles?id=in.(${mutualIds.join(',')})&select=id,family_name,display_name`,
+              {
+                headers: {
+                  'apikey': supabaseKey!,
+                  'Authorization': `Bearer ${session.access_token}`,
+                },
+              }
+            );
+
+            if (nameRes.ok) {
+              const profiles = await nameRes.json();
+              const names = profiles.map((p: any) => p.display_name || p.family_name || 'Unknown');
+              
+              mutuals[family.id] = {
+                count: mutualIds.length,
+                names: names.slice(0, 3) // Show max 3 names
+              };
+            }
+          }
+        }
+      }
+
+      setMutualConnections(mutuals);
+    } catch (err) {
+      console.error('Error calculating mutual connections:', err);
     }
   };
 
-  // TEST FUNCTION: Activate radius search without GPS (for debugging)
-  const testRadiusSearch = () => {
-    console.log('🧪 TEST: Activating radius search with fake location');
-    updateUserLocation({ lat: -38.3305, lng: 144.3256 }); // Torquay coordinates
-    updateRadiusSearch(true);
-    console.log('🧪 TEST: Set fake location and radiusSearch=true');
+  // Smart family matching based on kids ages and location
+  const calculateSmartMatches = () => {
+    if (!profile?.kids_ages || families.length === 0) return;
+
+    const matches = families.filter(family => {
+      if (family.id === profile.id) return false;
+
+      // Match kids ages (±2 years overlap)
+      const hasAgeMatch = family.kids_ages?.some(age => 
+        profile.kids_ages.some(myAge => Math.abs(age - myAge) <= 2)
+      );
+
+      // Prefer families in same general location
+      const sameLocation = family.location_name.toLowerCase().includes(profile.location_name.toLowerCase()) ||
+                          profile.location_name.toLowerCase().includes(family.location_name.toLowerCase());
+
+      return hasAgeMatch && (sameLocation || !userLocation);
+    })
+    .sort((a, b) => {
+      // Prioritize by number of kid age matches
+      const aMatches = a.kids_ages?.filter(age => 
+        profile.kids_ages.some(myAge => Math.abs(age - myAge) <= 2)
+      ).length || 0;
+      const bMatches = b.kids_ages?.filter(age => 
+        profile.kids_ages.some(myAge => Math.abs(age - myAge) <= 2)
+      ).length || 0;
+      
+      return bMatches - aMatches;
+    })
+    .slice(0, 8); // Show top 8 matches
+
+    setSmartMatches(matches);
   };
+
+  // Load recent activity for activity feed
+  const loadActivityFeed = async () => {
+    const session = getStoredSession();
+    if (!session?.user) return;
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    try {
+      const activities = [];
+
+      // Recent new families (last 7 days)
+      const newFamiliesRes = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?created_at=gte.${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}&select=id,family_name,display_name,location_name,created_at&order=created_at.desc&limit=5`,
+        {
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (newFamiliesRes.ok) {
+        const newFamilies = await newFamiliesRes.json();
+        newFamilies.forEach((family: any) => {
+          if (family.id !== session.user.id) {
+            activities.push({
+              id: `new-family-${family.id}`,
+              type: 'new_family',
+              family: family,
+              timestamp: family.created_at,
+              text: `${family.display_name || family.family_name} joined Haven`
+            });
+          }
+        });
+      }
+
+      // Recent events (last 3 days)
+      const recentEventsRes = await fetch(
+        `${supabaseUrl}/rest/v1/events?created_at=gte.${new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()}&is_cancelled=eq.false&is_private=eq.false&select=id,title,host_id,location_name,created_at&order=created_at.desc&limit=3`,
+        {
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (recentEventsRes.ok) {
+        const recentEvents = await recentEventsRes.json();
+        for (const event of recentEvents) {
+          // Get host name
+          const hostRes = await fetch(
+            `${supabaseUrl}/rest/v1/profiles?id=eq.${event.host_id}&select=family_name,display_name`,
+            {
+              headers: {
+                'apikey': supabaseKey!,
+                'Authorization': `Bearer ${session.access_token}`,
+              },
+            }
+          );
+
+          if (hostRes.ok) {
+            const hosts = await hostRes.json();
+            const host = hosts[0];
+            activities.push({
+              id: `new-event-${event.id}`,
+              type: 'new_event',
+              event: event,
+              host: host,
+              timestamp: event.created_at,
+              text: `${host?.display_name || host?.family_name || 'Someone'} created "${event.title}"`
+            });
+          }
+        }
+      }
+
+      // Sort by timestamp (newest first)
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      
+      setActivityFeed(activities.slice(0, 10)); // Show latest 10 activities
+    } catch (err) {
+      console.error('Error loading activity feed:', err);
+    }
+  };
+
+  // Removed test functions - radius is now always enabled
 
   // Get user's location for radius search
   const getUserLocation = async () => {
-    console.log('🎯 getUserLocation clicked!');
     setLocationError(null);
     
-    if (!navigator.geolocation) {
-      console.log('❌ No geolocation support');
-      setLocationError('Geolocation is not supported by this browser');
+    if (!profile?.location_name) {
+      setLocationError('No location set in profile');
       return;
     }
 
-    console.log('📍 Requesting GPS location...');
-    try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 300000 // 5 minutes
-        });
-      });
-
-      const newLocation = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude
-      };
-      
-      console.log('✅ GPS SUCCESS:', newLocation);
-      updateUserLocation(newLocation);
-      updateRadiusSearch(true);
-      console.log('✅ Set radiusSearch to TRUE');
-      
-    } catch (error) {
-      console.error('❌ GPS ERROR:', error);
-      setLocationError('Unable to get your location. Please allow location access.');
-    }
+    // Use profile location with random offset within 3km
+    loadUserLocationFromProfile();
   };
 
   // Load families and data
@@ -250,13 +489,24 @@ export default function EnhancedDiscoverPage() {
         console.log('Enhanced Discover: Profile result:', profileData);
         
         if (profileData) {
-          // Check if profile is complete
-          const completionStep = checkProfileCompletion(profileData);
+          // Check if this is a newly completed signup (bypass profile check)
+          const signupComplete = typeof window !== 'undefined' ? localStorage.getItem('haven-signup-complete') : null;
+          const signupTime = signupComplete ? parseInt(signupComplete) : 0;
+          const fiveMinutesAgo = Date.now() - (5 * 60 * 1000); // 5 minutes
           
-          if (completionStep !== 'complete') {
-            console.log('Enhanced Discover: Profile incomplete, redirecting to resume signup');
-            router.push(getResumeSignupUrl(completionStep));
-            return;
+          if (signupComplete && signupTime > fiveMinutesAgo) {
+            // Clear the flag after using it
+            localStorage.removeItem('haven-signup-complete');
+            console.log('Enhanced Discover: Bypassing profile check for newly created profile');
+          } else {
+            // Check if profile is complete
+            const completionStep = checkProfileCompletion(profileData);
+            
+            if (completionStep !== 'complete') {
+              console.log('Enhanced Discover: Profile incomplete, redirecting to signup');
+              router.push(getResumeSignupUrl(completionStep, profileData.user_type));
+              return;
+            }
           }
           
           setProfile(profileData);
@@ -266,6 +516,21 @@ export default function EnhancedDiscoverPage() {
             const maxAge = Math.min(18, Math.max(...profileData.kids_ages) + 2);
             setAgeRange({ min: minAge, max: maxAge });
           }
+          // Load user location from profile
+          if (profileData.location_name) {
+            const locationCoords: { [key: string]: [number, number] } = {
+              'Torquay': [-38.3305, 144.3256],
+              'Geelong': [-38.1499, 144.3580],
+              'Ocean Grove': [-38.2575, 144.5208],
+              'Surf Coast': [-38.3000, 144.2500],
+              'Anglesea': [-38.4089, 144.1856],
+              'Lorne': [-38.5433, 143.9781],
+            };
+            
+            const location = profileData.location_name;
+            const coords = locationCoords[location] || locationCoords['Torquay']; // Default to Torquay
+            setUserLocation({ lat: coords[0], lng: coords[1] });
+          }
         } else {
           // No profile found, redirect to complete signup
           console.log('Enhanced Discover: No profile found, redirecting to resume signup');
@@ -273,13 +538,7 @@ export default function EnhancedDiscoverPage() {
           return;
         }
 
-        // Check if user has completed the welcome flow
-        const welcomeCompleted = localStorage.getItem('haven-welcome-completed');
-        if (!welcomeCompleted) {
-          console.log('Enhanced Discover: Welcome not completed, redirecting to welcome');
-          router.push('/welcome');
-          return;
-        }
+        // Skip welcome flow - go directly to discover page
         
         console.log('Enhanced Discover: Fetching families...');
         
@@ -304,12 +563,29 @@ export default function EnhancedDiscoverPage() {
         
         const familiesData = await familiesRes.json();
         console.log('Enhanced Discover: Families result:', familiesData);
-        setFamilies(familiesData);
+        
+        // Add mock online status and user types for demo
+        const familiesWithStatus = familiesData.map((family: Family) => ({
+          ...family,
+          is_online: Math.random() > 0.7, // 30% chance of being online
+          last_active: Math.random() > 0.3 ? new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString() : undefined, // Random last active within 30 days
+          user_type: Math.random() > 0.8 ? 
+            (Math.random() > 0.6 ? 'teacher' : Math.random() > 0.5 ? 'facility' : 'event') : 'family' // Most are families, some teachers/facilities/events
+        }));
+        
+        setFamilies(familiesWithStatus);
         
         console.log('Enhanced Discover: Done loading');
         
         // Load user's circles for invitations
         await loadUserCircles();
+        
+        // Load existing connection requests
+        await loadConnectionRequests();
+
+        // Load mutual connections and smart matching data
+        await loadUserConnections();
+        await loadActivityFeed();
       } catch (err) {
         console.error('Enhanced Discover: Error:', err);
       } finally {
@@ -340,8 +616,8 @@ export default function EnhancedDiscoverPage() {
       );
     }
 
-    // Radius search (takes priority over location filter)
-    if (radiusSearch && userLocation) {
+    // Radius search (always enabled when user location is available)
+    if (userLocation) {
       filtered = filtered.filter(family => {
         const familyCoords = getLocationCoords(family.location_name);
         const distance = calculateDistance(
@@ -353,7 +629,7 @@ export default function EnhancedDiscoverPage() {
         return distance <= searchRadius;
       });
     } else if (locationFilter) {
-      // Location filter (only if not using radius search)
+      // Location filter (only if no user location)
       filtered = filtered.filter(family =>
         family.location_name.toLowerCase().includes(locationFilter.toLowerCase())
       );
@@ -366,17 +642,43 @@ export default function EnhancedDiscoverPage() {
       );
     }
 
-    // Status filter
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(family =>
-        Array.isArray(family.status) 
-          ? family.status.includes(filterStatus)
-          : family.status === filterStatus
-      );
+    // User type filter
+    if (!filterTypes.includes('all')) {
+      filtered = filtered.filter(family => {
+        const userType = family.user_type || 'family';
+        return filterTypes.includes(userType);
+      });
     }
 
-    setFilteredFamilies(filtered);
-  }, [families, searchTerm, locationFilter, ageRange, filterStatus, hiddenFamilies, profile, radiusSearch, userLocation, searchRadius]);
+    // Sort families alphabetically by last name
+    const getLastName = (family: Family) => {
+      const fullName = family.family_name || family.display_name || '';
+      const nameParts = fullName.trim().split(' ');
+      return nameParts.length > 1 ? nameParts[nameParts.length - 1] : fullName;
+    };
+
+    const sortedFamilies = [...filtered].sort((a, b) => {
+      const lastNameA = getLastName(a).toLowerCase();
+      const lastNameB = getLastName(b).toLowerCase();
+      return lastNameA.localeCompare(lastNameB);
+    });
+
+    setFilteredFamilies(sortedFamilies);
+  }, [families, searchTerm, locationFilter, ageRange, filterTypes, hiddenFamilies, profile, userLocation, searchRadius]);
+
+  // Calculate mutual connections when user connections or families change
+  useEffect(() => {
+    if (userConnections.length > 0 && families.length > 0) {
+      calculateMutualConnections();
+    }
+  }, [userConnections, families]);
+
+  // Calculate smart matches when profile or families change
+  useEffect(() => {
+    if (profile && families.length > 0) {
+      calculateSmartMatches();
+    }
+  }, [profile, families, userLocation]);
 
   // Family selection handlers
   const toggleFamilySelection = (familyId: string) => {
@@ -389,7 +691,7 @@ export default function EnhancedDiscoverPage() {
 
   // Long hold handlers for selection
   const handleLongPressStart = (familyId: string, event: React.MouseEvent | React.TouchEvent) => {
-    event.preventDefault();
+    // Note: No preventDefault needed for long press functionality
     
     const timer = setTimeout(() => {
       // Haptic feedback on mobile
@@ -404,7 +706,7 @@ export default function EnhancedDiscoverPage() {
       
       // Select the family
       toggleFamilySelection(familyId);
-    }, 500); // 500ms for long press
+    }, 1000); // 1000ms for long press
     
     setLongPressTimer(timer);
   };
@@ -439,6 +741,132 @@ export default function EnhancedDiscoverPage() {
   const clearHiddenFamilies = () => {
     setHiddenFamilies([]);
     localStorage.removeItem('haven-hidden-families');
+  };
+
+  const unhideFamily = (familyId: string) => {
+    const newHidden = hiddenFamilies.filter(id => id !== familyId);
+    setHiddenFamilies(newHidden);
+    if (newHidden.length > 0) {
+      localStorage.setItem('haven-hidden-families', JSON.stringify(newHidden));
+    } else {
+      localStorage.removeItem('haven-hidden-families');
+    }
+  };
+
+  const getHiddenFamiliesDetails = () => {
+    return families.filter(family => hiddenFamilies.includes(family.id));
+  };
+
+  const [connectionRequests, setConnectionRequests] = useState<Set<string>>(new Set());
+  const [selectedFamilyDetails, setSelectedFamilyDetails] = useState<Family | null>(null);
+
+  const sendConnectionRequest = async (familyId: string) => {
+    try {
+      const session = getStoredSession();
+      if (!session?.user) {
+        alert('Please log in to send connection requests');
+        return;
+      }
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      // Check if request already exists - if so, remove it (unsend)
+      if (connectionRequests.has(familyId)) {
+        // Remove/unsend the connection request
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/connections?requester_id=eq.${session.user.id}&receiver_id=eq.${familyId}`,
+          {
+            method: 'DELETE',
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error('Failed to remove connection request');
+        }
+
+        // Update UI state - remove from set
+        setConnectionRequests(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(familyId);
+          return newSet;
+        });
+        
+        console.log('Connection request removed for family:', familyId);
+        return;
+      }
+
+      // Create new connection request
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/connections`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({
+            requester_id: session.user.id,
+            receiver_id: familyId,
+            status: 'pending'
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+
+      // Update UI state - add to set
+      setConnectionRequests(prev => new Set(prev).add(familyId));
+      
+      console.log('Connection request sent to family:', familyId);
+      
+    } catch (error) {
+      console.error('Error with connection request:', error);
+      if (error instanceof Error && error.message.includes('duplicate key value')) {
+        alert('Connection request already sent to this family.');
+      } else {
+        alert('Failed to process connection request. Please try again.');
+      }
+    }
+  };
+
+  // Load existing connection requests
+  const loadConnectionRequests = async () => {
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      // Get connection requests sent by current user
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/connections?requester_id=eq.${session.user.id}&select=receiver_id`,
+        {
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const requests = await response.json();
+        const requestedFamilyIds = new Set<string>(requests.map((req: any) => req.receiver_id as string));
+        setConnectionRequests(requestedFamilyIds);
+      }
+    } catch (error) {
+      console.error('Error loading connection requests:', error);
+    }
   };
 
   // Load hidden families from localStorage
@@ -490,6 +918,7 @@ export default function EnhancedDiscoverPage() {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+      // Send invitation that requires confirmation
       const response = await fetch(
         `${supabaseUrl}/rest/v1/circle_members`,
         {
@@ -502,8 +931,9 @@ export default function EnhancedDiscoverPage() {
           body: JSON.stringify({
             circle_id: circleId,
             member_id: memberId,
-            role: 'member',
-            invited_by: session.user.id
+            status: 'pending',
+            invited_by: session.user.id,
+            role: 'member'
           }),
         }
       );
@@ -600,257 +1030,233 @@ export default function EnhancedDiscoverPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="w-12"></div>
-            <div className="flex items-center gap-2 pointer-events-none mt-4 mb-8">
-              <span className="font-bold text-emerald-600 text-3xl" 
-                    style={{ fontFamily: 'var(--font-fredoka)' }}>
-                Haven
-              </span>
-            </div>
-            
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'list' 
-                    ? 'bg-teal-600 text-white' 
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                List
-              </button>
-              <button
-                onClick={() => setViewMode('map')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'map' 
-                    ? 'bg-teal-600 text-white' 
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                Map
-              </button>
-            </div>
-          </div>
-          
-          {/* Section Navigation */}
-          <div className="flex justify-center mt-4 border-t pt-4">
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              {[
-                { key: 'families', label: 'Families' },
-                { key: 'teachers', label: 'Teachers' },
-                { key: 'spaces', label: 'Spaces' },
-                { key: 'extracurricular', label: 'Extracurricular' },
-              ].map((section) => (
-                <button
-                  key={section.key}
-                  onClick={() => setActiveSection(section.key as Section)}
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                    activeSection === section.key
-                      ? 'bg-white text-teal-600 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  {section.label}
-                </button>
-              ))}
-            </div>
-          </div>
+    <ProtectedRoute>
+    <div className="bg-gradient-to-b from-emerald-50 to-white">
+      <div className="max-w-md mx-auto px-4 py-8">
+        <HavenHeader />
+        
+        {/* Section Navigation */}
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
+          {[
+            { key: 'families', label: 'Families' },
+            { key: 'learning', label: 'Facilities' },
+          ].map((section) => (
+            <button
+              key={section.key}
+              onClick={() => setActiveSection(section.key as Section)}
+              className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+                activeSection === section.key
+                  ? 'bg-teal-600 text-white shadow-md scale-105'
+                  : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+              }`}
+            >
+              {section.label}
+            </button>
+          ))}
+          <button
+            onClick={() => window.location.href = '/events?type=public'}
+            className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+          >
+            Events
+          </button>
+        </div>
 
-          {/* Search Bar */}
-          <div className="mt-4 flex gap-3">
-            <div className="flex-1">
+        {/* Search & Filter Controls */}
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+              showSearch || searchTerm
+                ? 'bg-teal-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+            }`}
+          >
+            Search
+          </button>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+              showFilters
+                ? 'bg-teal-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+            }`}
+          >
+            Filters
+          </button>
+          {viewMode !== 'list' && (
+            <button
+              onClick={() => setViewMode('list')}
+              className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            >
+              List
+            </button>
+          )}
+          {viewMode !== 'map' && (
+            <button
+              onClick={() => setViewMode('map')}
+              className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            >
+              Map
+            </button>
+          )}
+        </div>
+
+        {/* Expandable Search Bar */}
+        {showSearch && (
+          <div className="mb-6 px-6">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
               <input
                 type="text"
                 placeholder="Search families by name, location, or interests..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                autoFocus
               />
             </div>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                showFilters
-                  ? 'bg-teal-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              Filters
-            </button>
           </div>
-        </div>
+        )}
 
         {/* Filters Panel */}
         {showFilters && (
-          <div className="border-t border-gray-200 bg-gray-50">
-            <div className="max-w-7xl mx-auto px-4 py-4">
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-gray-50 rounded-xl p-4 mb-6">
+            <div className="space-y-4">
                 {/* Radius Filter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Radius: {searchRadius} km
-                  </label>
-                  <div className="space-y-2">
-                    <input
-                      type="range"
-                      min="1"
-                      max="50"
-                      value={searchRadius}
-                      onChange={(e) => updateSearchRadius(parseInt(e.target.value))}
-                      className="w-full"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={getUserLocation}
-                        className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                          radiusSearch
-                            ? 'bg-teal-600 text-white'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {userLocation ? `📍 ${searchRadius}km radius` : 'Use My Location'}
-                      </button>
-                      
-                      {/* TEST BUTTON (Development only) */}
-                      {process.env.NODE_ENV === 'development' && !radiusSearch && (
-                        <button
-                          onClick={testRadiusSearch}
-                          className="px-2 py-2 text-xs font-medium rounded-lg bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-                          title="Test radius with fake GPS"
-                        >
-                          🧪
-                        </button>
-                      )}
-                      
-                      {radiusSearch && (
-                        <button
-                          onClick={() => {
-                            updateRadiusSearch(false);
-                            updateUserLocation(null);
-                          }}
-                          className="px-3 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200"
-                          title="Disable radius search"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                    {locationError && (
-                      <p className="text-xs text-red-600">{locationError}</p>
-                    )}
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Search Radius (km)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={searchRadius}
+                    onChange={(e) => {
+                      const newRadius = parseInt(e.target.value) || 15;
+                      setSearchRadius(newRadius);
+                      // Auto-load user location if not set
+                      if (!userLocation) {
+                        getUserLocation();
+                      }
+                    }}
+                    className="w-20 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                  />
+                  {locationError && (
+                    <p className="text-xs text-red-600 mt-1">{locationError}</p>
+                  )}
                 </div>
 
                 {/* Age Range */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Kids Age Range: {ageRange.min}-{ageRange.max} years
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="range"
-                      min="0"
-                      max="18"
-                      value={ageRange.min}
-                      onChange={(e) => setAgeRange(prev => ({ ...prev, min: parseInt(e.target.value) }))}
-                      className="flex-1"
-                    />
-                    <input
-                      type="range"
-                      min="0"
-                      max="18"
-                      value={ageRange.max}
-                      onChange={(e) => setAgeRange(prev => ({ ...prev, max: parseInt(e.target.value) }))}
-                      className="flex-1"
-                    />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Kids Age Range</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Min Age</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="17"
+                        value={ageRange.min}
+                        onChange={(e) => {
+                          const min = parseInt(e.target.value) || 0;
+                          setAgeRange(prev => ({ 
+                            ...prev, 
+                            min: Math.max(0, Math.min(min, prev.max - 1))
+                          }));
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Max Age</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="18"
+                        value={ageRange.max}
+                        onChange={(e) => {
+                          const max = parseInt(e.target.value) || 18;
+                          setAgeRange(prev => ({ 
+                            ...prev, 
+                            max: Math.max(prev.min + 1, Math.min(max, 18))
+                          }));
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                        placeholder="18"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                {/* Status Filter */}
+                {/* User Type Filter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Family Type</label>
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500"
-                  >
-                    <option value="all">All families</option>
-                    <option value="considering">Family Community</option>
-                    <option value="new">Homeschool</option>
-                    <option value="experienced">Extracurricular</option>
-                    <option value="connecting">Just Checking It Out</option>
-                  </select>
-                </div>
-
-                {/* Quick Actions */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quick Actions</label>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setSearchTerm('');
-                        setLocationFilter('');
-                        setFilterStatus('all');
-                        setAgeRange({ min: 1, max: 10 });
-                        updateRadiusSearch(false);
-                        updateUserLocation(null);
-                        updateSearchRadius(10);
-                        setLocationError(null);
-                      }}
-                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm font-medium hover:bg-gray-200"
-                    >
-                      Clear
-                    </button>
-                    {hiddenFamilies.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: 'all', label: 'All' },
+                      { value: 'family', label: 'Families' },
+                      { value: 'teacher', label: 'Teachers' },
+                      { value: 'event', label: 'Events' },
+                      { value: 'facility', label: 'Facilities' },
+                      { value: 'other', label: 'Other' },
+                    ].map((type) => (
                       <button
-                        onClick={clearHiddenFamilies}
-                        className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded text-sm font-medium hover:bg-teal-200"
+                        key={type.value}
+                        onClick={() => toggleFilterType(type.value)}
+                        className={`px-3 py-2 text-sm font-medium rounded-xl border-2 transition-colors ${
+                          filterTypes.includes(type.value)
+                            ? 'border-teal-600 bg-teal-50 text-teal-700'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                        }`}
                       >
-                        Show Hidden ({hiddenFamilies.length})
+                        {type.label}
                       </button>
-                    )}
+                    ))}
                   </div>
                 </div>
-              </div>
+
+                {/* Hidden Families */}
+                {hiddenFamilies.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setShowHiddenModal(true)}
+                      className="px-3 py-2 bg-teal-50 text-teal-700 rounded-xl text-sm font-medium hover:bg-teal-100 border border-teal-200"
+                    >
+                      Show Hidden ({hiddenFamilies.length})
+                    </button>
+                  </div>
+                )}
             </div>
           </div>
         )}
-      </div>
 
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Results Summary */}
-        <div className="mb-6 flex items-center justify-between">
-          <p className="text-gray-600">
-            Showing {filteredFamilies.length} families
-            {hiddenFamilies.length > 0 && ` (${hiddenFamilies.length} hidden)`}
-          </p>
-          {selectionMode && (
+        {/* Content */}
+        <div>
+        {/* Selection Summary */}
+        {selectionMode && (
+          <div className="mb-6 flex items-center justify-end">
             <p className="text-teal-600 font-medium">
               {selectedFamilies.length} selected
             </p>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Families Section */}
         {activeSection === 'families' && (
           <>
             {/* Map View */}
             {viewMode === 'map' && (
-              <div className="space-y-4 pb-6">
+          <div className="space-y-4 pb-6">
             <div className="flex items-center justify-between">
               <p className="text-gray-600">
                 {filteredFamilies.length} families on map
@@ -869,33 +1275,17 @@ export default function EnhancedDiscoverPage() {
               className="w-full"
               userLocation={userLocation}
               searchRadius={searchRadius}
-              showRadius={radiusSearch}
+              showRadius={!!userLocation}
               userProfileLocation={profile?.location_name}
             />
-            {/* Debug info */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="mt-2 text-xs text-gray-500 bg-gray-100 p-2 rounded flex justify-between items-center">
-                <span>
-                  Debug: radiusSearch={radiusSearch ? 'true' : 'false'}, 
-                  userLocation={userLocation ? `${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}` : 'null'}, 
-                  searchRadius={searchRadius}km
-                </span>
-                {!radiusSearch && (
-                  <button
-                    onClick={testRadiusSearch}
-                    className="ml-2 px-2 py-1 bg-yellow-200 text-yellow-800 rounded text-xs hover:bg-yellow-300"
-                  >
-                    🧪 Quick Test
-                  </button>
-                )}
-              </div>
-            )}
-              </div>
-            )}
+          </div>
+        )}
 
-            {/* List View */}
-            {viewMode === 'list' && (
-          <div className="space-y-4">
+        {/* Removed complex features that were causing crashes */}
+
+        {/* List View */}
+        {viewMode === 'list' && (
+          <div className="space-y-2 px-6">
             {filteredFamilies.length === 0 ? (
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
@@ -911,12 +1301,12 @@ export default function EnhancedDiscoverPage() {
                 {filteredFamilies.map((family) => (
                 <div 
                   key={family.id} 
-                  className={`bg-white rounded-xl shadow-sm p-6 transition-all cursor-pointer select-none ${
+                  className={`w-full bg-white rounded-xl p-4 transition-all cursor-pointer select-none ${
                     selectionMode 
                       ? selectedFamilies.includes(family.id) 
                         ? 'ring-2 ring-teal-500 bg-teal-50' 
                         : 'hover:bg-gray-50' 
-                      : 'hover:shadow-md'
+                      : 'hover:bg-gray-50'
                   }`}
                   onClick={() => handleFamilyClick(family.id)}
                   onMouseDown={(e) => handleLongPressStart(family.id, e)}
@@ -945,46 +1335,68 @@ export default function EnhancedDiscoverPage() {
                     )}
 
                     {/* Family Info */}
-                    <div className="flex-1">
+                    <div 
+                      className="flex-1 cursor-pointer"
+                      onClick={() => setSelectedFamilyDetails(family)}
+                    >
                       <div className="flex items-start gap-4">
-                        <AvatarUpload
-                          userId={family.id}
-                          currentAvatarUrl={family.avatar_url}
-                          name={family.family_name || family.display_name || 'Family'}
-                          size="md"
-                          editable={false}
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold text-gray-900">{family.family_name || family.display_name}</h3>
-                            {family.is_verified && <span className="text-green-500">✓</span>}
-                          </div>
-                          <p className="text-xs text-gray-500 mb-2">
-                            Joined {new Date(family.created_at).toLocaleDateString('en-AU', { 
-                              year: 'numeric', 
-                              month: 'short', 
-                              day: 'numeric' 
-                            })}
-                          </p>
-                          <p className="text-sm text-gray-600 mb-2">📍 {family.location_name}</p>
-                          <p className="text-sm text-gray-600 mb-3">
-                            Kids: {family.kids_ages?.length ? family.kids_ages.join(', ') + ' years' : 'No info'}
-                          </p>
-                          {family.bio && (
-                            <p className="text-sm text-gray-700 mb-3 line-clamp-2">{family.bio}</p>
+                        <div className="relative">
+                          <AvatarUpload
+                            userId={family.id}
+                            currentAvatarUrl={family.avatar_url}
+                            name={family.family_name || family.display_name || 'Family'}
+                            size="md"
+                            editable={false}
+                          />
+                          {/* Online status indicator */}
+                          {family.is_online && (
+                            <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
                           )}
-                          {family.interests && family.interests.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-3">
-                              {family.interests.slice(0, 3).map(interest => (
-                                <span key={interest} className="px-2 py-1 bg-teal-50 text-teal-700 rounded-full text-xs font-medium">
-                                  {interest}
-                                </span>
-                              ))}
-                              {family.interests.length > 3 && (
-                                <span className="px-2 py-1 bg-gray-50 text-gray-600 rounded-full text-xs">
-                                  +{family.interests.length - 3} more
+                        </div>
+                        <div className="flex-1">
+                          {/* Name and Username */}
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-emerald-600">
+                              {family.display_name || family.family_name.split(' ')[0] || family.family_name}{family.username && ` (${family.username})`}
+                            </h3>
+                            <AdminBadge adminLevel={family.admin_level || null} />
+                            {family.is_verified && <span className="text-green-500">✓</span>}
+                            {/* Last active status */}
+                            {!family.is_online && family.last_active && (
+                              <span className="text-xs text-gray-500">• {formatLastActive(family.last_active)}</span>
+                            )}
+                          </div>
+                          
+                          {/* Location */}
+                          <p className="text-sm text-gray-600 mb-2">{family.location_name}</p>
+
+                          {/* Mutual Connections */}
+                          {mutualConnections[family.id] && (
+                            <p className="text-xs text-blue-600 mb-2">
+                              {mutualConnections[family.id].count === 1 
+                                ? `1 mutual connection: ${mutualConnections[family.id].names[0]}`
+                                : `${mutualConnections[family.id].count} mutual connections`
+                              }
+                              {mutualConnections[family.id].count > 1 && mutualConnections[family.id].names.length > 0 && (
+                                <span className="text-gray-500">
+                                  : {mutualConnections[family.id].names.join(', ')}
+                                  {mutualConnections[family.id].count > 3 && ` +${mutualConnections[family.id].count - 3} more`}
                                 </span>
                               )}
+                            </p>
+                          )}
+                          
+                          {/* Children dots with ages */}
+                          {family.kids_ages && family.kids_ages.length > 0 && (
+                            <div className="flex items-center gap-1">
+                              {family.kids_ages.map((age, index) => (
+                                <div key={index} className="flex items-center">
+                                  <div className="w-6 h-6 bg-teal-100 rounded-full flex items-center justify-center">
+                                    <span className="text-xs font-medium text-teal-700">{age}</span>
+                                  </div>
+                                  {index < family.kids_ages.length - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -993,10 +1405,20 @@ export default function EnhancedDiscoverPage() {
 
                     {/* Actions */}
                     {!selectionMode && (
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => sendConnectionRequest(family.id)}
+                          className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm min-w-[85px] ${
+                            connectionRequests.has(family.id)
+                              ? 'bg-gray-100 text-gray-600 border border-gray-300'
+                              : 'bg-teal-600 text-white hover:bg-teal-700'
+                          }`}
+                        >
+                          {connectionRequests.has(family.id) ? 'Requested' : 'Connect'}
+                        </button>
                         <button
                           onClick={() => setSelectedFamily(family)}
-                          className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors"
+                          className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors text-sm min-w-[85px]"
                         >
                           Message
                         </button>
@@ -1009,24 +1431,51 @@ export default function EnhancedDiscoverPage() {
             )}
           </div>
         )}
+          </>
+        )}
+
+        {/* Learning Section */}
+        {activeSection === 'learning' && (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+              <span className="text-2xl font-bold text-emerald-600">L</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Learning Resources Coming Soon</h3>
+            <p className="text-gray-600">
+              Connect with qualified teachers, tutors, and learning resources in your area. Feature in development!
+            </p>
+          </div>
+        )}
 
         {/* Grid View - REMOVED for mobile compatibility */}
-
+        </div>
+      
       {/* Message Modal */}
       {selectedFamily && !showCircleModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-4">
-              <AvatarUpload
-                userId={selectedFamily.id}
-                currentAvatarUrl={selectedFamily.avatar_url}
-                name={selectedFamily.family_name || selectedFamily.display_name || 'Family'}
-                size="md"
-                editable={false}
-              />
+              <div className="relative">
+                <AvatarUpload
+                  userId={selectedFamily.id}
+                  currentAvatarUrl={selectedFamily.avatar_url}
+                  name={selectedFamily.family_name || selectedFamily.display_name || 'Family'}
+                  size="md"
+                  editable={false}
+                />
+                {selectedFamily.is_online && (
+                  <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+                )}
+              </div>
               <div>
-                <h3 className="font-semibold text-gray-900">{selectedFamily.family_name || selectedFamily.display_name}</h3>
-                <p className="text-sm text-gray-600">📍 {selectedFamily.location_name}</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-emerald-600">{selectedFamily.display_name || selectedFamily.family_name.split(' ')[0] || selectedFamily.family_name}</h3>
+                  <AdminBadge adminLevel={selectedFamily.admin_level || null} />
+                  {!selectedFamily.is_online && selectedFamily.last_active && (
+                    <span className="text-xs text-gray-500">• {formatLastActive(selectedFamily.last_active)}</span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-600">{selectedFamily.location_name}</p>
               </div>
             </div>
             
@@ -1045,10 +1494,24 @@ export default function EnhancedDiscoverPage() {
                   onClick={() => setShowCircleModal(true)}
                   className="w-full px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl font-medium hover:bg-emerald-200"
                 >
-                  Add to Circle
+                  Invite to Circle
                 </button>
               </div>
             )}
+            
+            {/* Connect Button (below message area) */}
+            <div className="mb-3">
+              <button
+                onClick={() => sendConnectionRequest(selectedFamily.id)}
+                className={`w-full px-4 py-2 rounded-xl font-medium transition-colors h-10 ${
+                  connectionRequests.has(selectedFamily.id)
+                    ? 'bg-gray-100 text-gray-600 border border-gray-300'
+                    : 'bg-teal-600 text-white hover:bg-teal-700'
+                }`}
+              >
+                {connectionRequests.has(selectedFamily.id) ? 'Requested' : 'Send Connection Request'}
+              </button>
+            </div>
             
             <div className="flex gap-2">
               <button
@@ -1065,6 +1528,7 @@ export default function EnhancedDiscoverPage() {
                     const success = await sendMessage(selectedFamily.id, message);
                     if (success) {
                       setSelectedFamily(null);
+                      setSuccessMessageText('Message sent!');
                       setShowSuccessMessage(true);
                       // Hide success message after 3 seconds
                       setTimeout(() => setShowSuccessMessage(false), 3000);
@@ -1082,54 +1546,13 @@ export default function EnhancedDiscoverPage() {
           </div>
         </div>
       )}
-        </>
-        )}
-
-        {/* Teachers Section */}
-        {activeSection === 'teachers' && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <span className="text-2xl">🎓</span>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Teachers Coming Soon</h3>
-            <p className="text-gray-600">
-              Connect with qualified teachers and tutors in your area. Feature in development!
-            </p>
-          </div>
-        )}
-
-        {/* Spaces Section */}
-        {activeSection === 'spaces' && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <span className="text-2xl">🏢</span>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Spaces Coming Soon</h3>
-            <p className="text-gray-600">
-              Find venues, studios, and community spaces perfect for homeschool activities. Feature in development!
-            </p>
-          </div>
-        )}
-
-        {/* Extracurricular Section */}
-        {activeSection === 'extracurricular' && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <span className="text-2xl">⚽</span>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Extracurricular Coming Soon</h3>
-            <p className="text-gray-600">
-              Discover sports, arts, music, and other activities for your kids. Feature in development!
-            </p>
-          </div>
-        )}
 
       {/* Circle Invitation Modal */}
       {selectedFamily && showCircleModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Add to Circle</h3>
+              <h3 className="text-xl font-bold text-gray-900">Invite to Circle</h3>
               <button
                 onClick={() => setShowCircleModal(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -1139,16 +1562,21 @@ export default function EnhancedDiscoverPage() {
             </div>
 
             <div className="flex items-center gap-3 mb-6">
-              <AvatarUpload
-                userId={selectedFamily.id}
-                currentAvatarUrl={selectedFamily.avatar_url}
-                name={selectedFamily.family_name || selectedFamily.display_name || 'Family'}
-                size="md"
-                editable={false}
-              />
+              <div className="relative">
+                <AvatarUpload
+                  userId={selectedFamily.id}
+                  currentAvatarUrl={selectedFamily.avatar_url}
+                  name={selectedFamily.family_name || selectedFamily.display_name || 'Family'}
+                  size="md"
+                  editable={false}
+                />
+                {selectedFamily.is_online && (
+                  <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+                )}
+              </div>
               <div>
-                <h4 className="font-semibold text-gray-900">{selectedFamily.family_name || selectedFamily.display_name}</h4>
-                <p className="text-sm text-gray-600">Select a circle to invite them to</p>
+                <h4 className="font-semibold text-emerald-600">{selectedFamily.display_name || selectedFamily.family_name.split(' ')[0] || selectedFamily.family_name}</h4>
+                <p className="text-sm text-gray-600">Select a circle to send an invitation to</p>
               </div>
             </div>
 
@@ -1161,10 +1589,11 @@ export default function EnhancedDiscoverPage() {
                     if (success) {
                       setShowCircleModal(false);
                       setSelectedFamily(null);
+                      setSuccessMessageText('Invitation sent! They will receive a request to join your circle.');
                       setShowSuccessMessage(true);
                       setTimeout(() => setShowSuccessMessage(false), 3000);
                     } else {
-                      alert('Failed to add to circle. They may already be a member.');
+                      alert('Failed to send circle invitation. They may already be invited or be a member.');
                     }
                   }}
                   disabled={invitingToCircle}
@@ -1235,15 +1664,256 @@ export default function EnhancedDiscoverPage() {
         </div>
       )}
 
+      {/* User Details Modal */}
+      {selectedFamilyDetails && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+            {/* Header */}
+            <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-900">Profile Details</h2>
+                <button
+                  onClick={() => setSelectedFamilyDetails(null)}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6">
+              {/* User Info */}
+              <div className="flex items-start gap-4 mb-6">
+                <div className="relative">
+                  <AvatarUpload
+                    userId={selectedFamilyDetails.id}
+                    currentAvatarUrl={selectedFamilyDetails.avatar_url}
+                    name={selectedFamilyDetails.family_name || selectedFamilyDetails.display_name || 'Family'}
+                    size="lg"
+                    editable={false}
+                  />
+                  {selectedFamilyDetails.is_online && (
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-xl font-semibold text-emerald-600">
+                      {selectedFamilyDetails.display_name || selectedFamilyDetails.family_name.split(' ')[0] || selectedFamilyDetails.family_name}
+                    </h3>
+                    <AdminBadge adminLevel={selectedFamilyDetails.admin_level || null} size="md" />
+                    {selectedFamilyDetails.is_verified && <span className="text-green-500 text-lg">✓</span>}
+                    {!selectedFamilyDetails.is_online && selectedFamilyDetails.last_active && (
+                      <span className="text-sm text-gray-500">• {formatLastActive(selectedFamilyDetails.last_active)}</span>
+                    )}
+                  </div>
+                  {selectedFamilyDetails.username && (
+                    <p className="text-gray-600 mb-2">@{selectedFamilyDetails.username}</p>
+                  )}
+                  <p className="text-sm text-gray-500">
+                    Joined {new Date(selectedFamilyDetails.created_at).toLocaleDateString('en-AU', { 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div className="mb-6">
+                <h4 className="font-semibold text-gray-900 mb-2">Location</h4>
+                <p className="text-gray-700">{selectedFamilyDetails.location_name}</p>
+
+                {/* Mutual Connections */}
+                {mutualConnections[selectedFamilyDetails.id] && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm font-medium text-blue-900">
+                      {mutualConnections[selectedFamilyDetails.id].count === 1 
+                        ? `1 mutual connection`
+                        : `${mutualConnections[selectedFamilyDetails.id].count} mutual connections`
+                      }
+                    </p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      {mutualConnections[selectedFamilyDetails.id].names.join(', ')}
+                      {mutualConnections[selectedFamilyDetails.id].count > 3 && 
+                        ` and ${mutualConnections[selectedFamilyDetails.id].count - 3} more`
+                      }
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Children */}
+              {selectedFamilyDetails.kids_ages && selectedFamilyDetails.kids_ages.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="font-semibold text-gray-900 mb-3">👨‍👩‍👧‍👦 Children</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedFamilyDetails.kids_ages.map((age, index) => (
+                      <div key={index} className="bg-teal-50 border border-teal-200 rounded-full px-3 py-2">
+                        <span className="text-teal-700 font-medium">{age} years old</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* About Us */}
+              {selectedFamilyDetails.bio && (
+                <div className="mb-6">
+                  <h4 className="font-semibold text-gray-900 mb-2">💬 About Us</h4>
+                  <p className="text-gray-700 leading-relaxed">{selectedFamilyDetails.bio}</p>
+                </div>
+              )}
+
+              {/* Interests */}
+              {selectedFamilyDetails.interests && selectedFamilyDetails.interests.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="font-semibold text-gray-900 mb-3">Interests</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedFamilyDetails.interests.map((interest, index) => (
+                      <span key={index} className="px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-sm font-medium border border-purple-200">
+                        {interest}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => sendConnectionRequest(selectedFamilyDetails.id)}
+                  className={`flex-1 px-4 py-3 rounded-xl font-medium transition-colors min-w-0 ${
+                    connectionRequests.has(selectedFamilyDetails.id)
+                      ? 'bg-gray-100 text-gray-600 border border-gray-300'
+                      : 'bg-teal-600 text-white hover:bg-teal-700'
+                  }`}
+                >
+                  {connectionRequests.has(selectedFamilyDetails.id) ? 'Requested' : 'Connect'}
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedFamily(selectedFamilyDetails);
+                    setSelectedFamilyDetails(null);
+                  }}
+                  className="flex-1 px-4 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors min-w-0"
+                >
+                  Message
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Success Message Notification */}
       {showSuccessMessage && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50">
           <div className="bg-green-600 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2">
             <span className="text-lg">✓</span>
-            <span className="font-medium">Success!</span>
+            <span className="font-medium">{successMessageText}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden Families Modal */}
+      {showHiddenModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">Hidden Families</h3>
+                <button
+                  onClick={() => setShowHiddenModal(false)}
+                  className="text-gray-400 hover:text-gray-600 text-xl"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mt-2">
+                {hiddenFamilies.length} families are currently hidden from your discover page
+              </p>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4">
+              {getHiddenFamiliesDetails().length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-2">👻</div>
+                  <h4 className="font-semibold text-gray-900 mb-2">No Hidden Families</h4>
+                  <p className="text-gray-600 text-sm">All families are currently visible on your discover page.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {getHiddenFamiliesDetails().map((family) => (
+                    <div key={family.id} className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <AvatarUpload
+                              userId={family.id}
+                              currentAvatarUrl={family.avatar_url}
+                              name={family.family_name || family.display_name || '?'}
+                              size="sm"
+                              editable={false}
+                            />
+                            {family.is_online && (
+                              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-emerald-600">
+                                {family.display_name || family.family_name.split(' ')[0] || family.family_name}
+                                {family.is_verified && <span className="ml-1 text-teal-600 text-sm">✓</span>}
+                              </h4>
+                              <AdminBadge adminLevel={family.admin_level || null} />
+                              {!family.is_online && family.last_active && (
+                                <span className="text-xs text-gray-500">• {formatLastActive(family.last_active)}</span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-500">{family.location_name}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => unhideFamily(family.id)}
+                          className="px-3 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 text-sm"
+                        >
+                          Unhide
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-200">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowHiddenModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200"
+                >
+                  Close
+                </button>
+                {hiddenFamilies.length > 0 && (
+                  <button
+                    onClick={() => {
+                      clearHiddenFamilies();
+                      setShowHiddenModal(false);
+                    }}
+                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700"
+                  >
+                    Unhide All
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
     </div>
+    </ProtectedRoute>
   );
 }

@@ -389,10 +389,10 @@ export default function CirclesPage() {
               {/* Privacy Setting */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">Circle Privacy</label>
-                <div className="space-y-3">
-                  <label className={`flex items-start p-4 border rounded-xl cursor-pointer transition-colors ${
+                <div className="space-y-2">
+                  <label className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                     !newCircleData.is_public 
-                      ? 'border-emerald-500 bg-emerald-50' 
+                      ? 'border-teal-600 bg-teal-50'
                       : 'border-gray-200 bg-white hover:bg-gray-50'
                   }`}>
                     <input
@@ -400,18 +400,29 @@ export default function CirclesPage() {
                       name="privacy"
                       checked={!newCircleData.is_public}
                       onChange={() => setNewCircleData(prev => ({ ...prev, is_public: false }))}
-                      className="mr-3 mt-1 text-emerald-600"
+                      className="sr-only"
                     />
+                    <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
+                      !newCircleData.is_public 
+                        ? 'border-teal-600 bg-teal-600' 
+                        : 'border-gray-300'
+                    }`}>
+                      {!newCircleData.is_public && (
+                        <div className="w-full h-full rounded-full bg-white transform scale-50"></div>
+                      )}
+                    </div>
                     <div>
-                      <p className="font-semibold text-gray-900 flex items-center">
-                        🔒 Private Circle
-                      </p>
-                      <p className="text-sm text-gray-600 mt-1">Only members you invite can see and join this circle</p>
+                      <span className={`font-medium ${
+                        !newCircleData.is_public ? 'text-teal-900' : 'text-gray-700'
+                      }`}>
+                        Private Circle
+                      </span>
+                      <p className="text-sm text-gray-500 mt-1">Only members you invite can see and join this circle</p>
                     </div>
                   </label>
-                  <label className={`flex items-start p-4 border rounded-xl cursor-pointer transition-colors ${
+                  <label className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                     newCircleData.is_public 
-                      ? 'border-emerald-500 bg-emerald-50' 
+                      ? 'border-teal-600 bg-teal-50'
                       : 'border-gray-200 bg-white hover:bg-gray-50'
                   }`}>
                     <input
@@ -419,13 +430,24 @@ export default function CirclesPage() {
                       name="privacy"
                       checked={newCircleData.is_public}
                       onChange={() => setNewCircleData(prev => ({ ...prev, is_public: true }))}
-                      className="mr-3 mt-1 text-emerald-600"
+                      className="sr-only"
                     />
+                    <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
+                      newCircleData.is_public 
+                        ? 'border-teal-600 bg-teal-600' 
+                        : 'border-gray-300'
+                    }`}>
+                      {newCircleData.is_public && (
+                        <div className="w-full h-full rounded-full bg-white transform scale-50"></div>
+                      )}
+                    </div>
                     <div>
-                      <p className="font-semibold text-gray-900 flex items-center">
-                        🌍 Public Circle
-                      </p>
-                      <p className="text-sm text-gray-600 mt-1">Anyone can discover and join this circle</p>
+                      <span className={`font-medium ${
+                        newCircleData.is_public ? 'text-teal-900' : 'text-gray-700'
+                      }`}>
+                        Public Circle
+                      </span>
+                      <p className="text-sm text-gray-500 mt-1">Anyone can discover and join this circle</p>
                     </div>
                   </label>
                 </div>

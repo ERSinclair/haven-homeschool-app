@@ -27,6 +27,9 @@ type Family = {
   is_verified: boolean;
   created_at: string;
   admin_level?: 'gold' | 'silver' | 'bronze' | null;
+  is_online?: boolean;
+  last_active?: string;
+  user_type?: 'family' | 'teacher' | 'event' | 'facility' | 'other';
 };
 
 type Profile = {
@@ -39,7 +42,30 @@ type Profile = {
 };
 
 type ViewMode = 'list' | 'map';
-type Section = 'families' | 'learning';
+type Section = 'families';
+
+// Calculate and format last active time
+const formatLastActive = (lastActiveStr?: string): string => {
+  if (!lastActiveStr) return 'offline';
+  
+  const lastActive = new Date(lastActiveStr);
+  const now = new Date();
+  const diffMs = now.getTime() - lastActive.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffWeeks = Math.floor(diffDays / 7);
+  
+  if (diffDays === 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffWeeks === 1) return '1 week ago';
+  if (diffWeeks === 2) return '2 weeks ago';
+  if (diffWeeks === 3) return '3 weeks ago';
+  if (diffDays < 30) return `${diffWeeks} weeks ago`;
+  
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths === 1) return '1 month ago';
+  return `${diffMonths} months ago`;
+};
 
 // Calculate distance between two coordinates in km
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -113,7 +139,7 @@ export default function EnhancedDiscoverPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [maxDistance, setMaxDistance] = useState(15);
   const [ageRange, setAgeRange] = useState({ min: 1, max: 10 });
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterTypes, setFilterTypes] = useState<string[]>(['all']);
   const [locationFilter, setLocationFilter] = useState('');
   
   // Radius search - with localStorage persistence for testing
@@ -140,75 +166,63 @@ export default function EnhancedDiscoverPage() {
   
   const router = useRouter();
 
-  // Helper to persist radius search state
-  const updateRadiusSearch = (value: boolean) => {
-    setRadiusSearch(value);
-    if (process.env.NODE_ENV === 'development') {
-      localStorage.setItem('haven-radius-search', value.toString());
+  // Handle filter type selection (multiple selection)
+  const toggleFilterType = (type: string) => {
+    if (type === 'all') {
+      setFilterTypes(['all']);
+    } else {
+      setFilterTypes(prev => {
+        let newTypes = prev.filter(t => t !== 'all'); // Remove 'all' when selecting specific types
+        if (newTypes.includes(type)) {
+          // Remove the type
+          const filtered = newTypes.filter(t => t !== type);
+          return filtered.length === 0 ? ['all'] : filtered;
+        } else {
+          // Add the type
+          return [...newTypes, type];
+        }
+      });
     }
   };
 
-  const updateUserLocation = (location: { lat: number; lng: number } | null) => {
-    setUserLocation(location);
-    if (process.env.NODE_ENV === 'development') {
-      if (location) {
-        localStorage.setItem('haven-user-location', JSON.stringify(location));
-      } else {
-        localStorage.removeItem('haven-user-location');
-      }
-    }
-  };
+  // Simplified location and radius management - no more complex localStorage persistence
 
-  const updateSearchRadius = (radius: number) => {
-    setSearchRadius(radius);
-    if (process.env.NODE_ENV === 'development') {
-      localStorage.setItem('haven-search-radius', radius.toString());
-    }
-  };
-
-  // TEST FUNCTION: Activate radius search without GPS (for debugging)
-  const testRadiusSearch = () => {
-    console.log('🧪 TEST: Activating radius search with fake location');
-    updateUserLocation({ lat: -38.3305, lng: 144.3256 }); // Torquay coordinates
-    updateRadiusSearch(true);
-    console.log('🧪 TEST: Set fake location and radiusSearch=true');
-  };
-
-  // Get user's location for radius search
+  // Use profile location with random offset within 3km
   const getUserLocation = async () => {
-    console.log('🎯 getUserLocation clicked!');
     setLocationError(null);
     
-    if (!navigator.geolocation) {
-      console.log('❌ No geolocation support');
-      setLocationError('Geolocation is not supported by this browser');
+    if (!profile?.location_name) {
+      setLocationError('No location set in profile');
       return;
     }
 
-    console.log('📍 Requesting GPS location...');
-    try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 300000 // 5 minutes
-        });
-      });
-
-      const newLocation = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude
-      };
-      
-      console.log('✅ GPS SUCCESS:', newLocation);
-      updateUserLocation(newLocation);
-      updateRadiusSearch(true);
-      console.log('✅ Set radiusSearch to TRUE');
-      
-    } catch (error) {
-      console.error('❌ GPS ERROR:', error);
-      setLocationError('Unable to get your location. Please allow location access.');
-    }
+    // Simple coordinate mapping for common locations
+    const locationCoords: { [key: string]: [number, number] } = {
+      'Torquay': [-38.3305, 144.3256],
+      'Geelong': [-38.1499, 144.3580],
+      'Ocean Grove': [-38.2575, 144.5208],
+      'Surf Coast': [-38.3000, 144.2500],
+      'Anglesea': [-38.4089, 144.1856],
+      'Lorne': [-38.5433, 143.9781],
+    };
+    
+    const location = profile.location_name;
+    const coords = locationCoords[location] || locationCoords['Torquay']; // Default to Torquay
+    
+    // Add random offset within 3km for privacy
+    const randomOffset = () => {
+      const angle = Math.random() * 2 * Math.PI;
+      const radius = Math.random() * 3000; // 3km in meters
+      const latOffset = (radius * Math.cos(angle)) / 111320; // meters to degrees lat
+      const lngOffset = (radius * Math.sin(angle)) / (111320 * Math.cos(coords[0] * Math.PI / 180)); // meters to degrees lng
+      return { latOffset, lngOffset };
+    };
+    
+    const offset = randomOffset();
+    setUserLocation({ 
+      lat: coords[0] + offset.latOffset, 
+      lng: coords[1] + offset.lngOffset 
+    });
   };
 
   // Load families and data
@@ -285,6 +299,33 @@ export default function EnhancedDiscoverPage() {
             const maxAge = Math.min(18, Math.max(...profileData.kids_ages) + 2);
             setAgeRange({ min: minAge, max: maxAge });
           }
+          
+          // Auto-load user location from profile for radius search
+          if (profileData.location_name && !userLocation) {
+            const locationCoords: { [key: string]: [number, number] } = {
+              'Torquay': [-38.3305, 144.3256],
+              'Geelong': [-38.1499, 144.3580],
+              'Ocean Grove': [-38.2575, 144.5208],
+              'Surf Coast': [-38.3000, 144.2500],
+              'Anglesea': [-38.4089, 144.1856],
+              'Lorne': [-38.5433, 143.9781],
+            };
+            
+            const coords = locationCoords[profileData.location_name] || locationCoords['Torquay'];
+            const randomOffset = () => {
+              const angle = Math.random() * 2 * Math.PI;
+              const radius = Math.random() * 3000; // 3km in meters
+              const latOffset = (radius * Math.cos(angle)) / 111320;
+              const lngOffset = (radius * Math.sin(angle)) / (111320 * Math.cos(coords[0] * Math.PI / 180));
+              return { latOffset, lngOffset };
+            };
+            
+            const offset = randomOffset();
+            setUserLocation({ 
+              lat: coords[0] + offset.latOffset, 
+              lng: coords[1] + offset.lngOffset 
+            });
+          }
         } else {
           // No profile found, redirect to complete signup
           console.log('Enhanced Discover: No profile found, redirecting to resume signup');
@@ -317,7 +358,17 @@ export default function EnhancedDiscoverPage() {
         
         const familiesData = await familiesRes.json();
         console.log('Enhanced Discover: Families result:', familiesData);
-        setFamilies(familiesData);
+        
+        // Add mock online status and user types for demo
+        const familiesWithStatus = familiesData.map((family: Family) => ({
+          ...family,
+          is_online: Math.random() > 0.7, // 30% chance of being online
+          last_active: Math.random() > 0.3 ? new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString() : undefined, // Random last active within 30 days
+          user_type: Math.random() > 0.8 ? 
+            (Math.random() > 0.6 ? 'teacher' : Math.random() > 0.5 ? 'facility' : 'event') : 'family' // Most are families, some teachers/facilities/events
+        }));
+        
+        setFamilies(familiesWithStatus);
         
         console.log('Enhanced Discover: Done loading');
         
@@ -356,8 +407,8 @@ export default function EnhancedDiscoverPage() {
       );
     }
 
-    // Radius search (takes priority over location filter)
-    if (radiusSearch && userLocation) {
+    // Radius search (always enabled when user location is available)
+    if (userLocation) {
       filtered = filtered.filter(family => {
         const familyCoords = getLocationCoords(family.location_name);
         const distance = calculateDistance(
@@ -382,13 +433,12 @@ export default function EnhancedDiscoverPage() {
       );
     }
 
-    // Status filter
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(family =>
-        Array.isArray(family.status) 
-          ? family.status.includes(filterStatus)
-          : family.status === filterStatus
-      );
+    // User type filter
+    if (!filterTypes.includes('all')) {
+      filtered = filtered.filter(family => {
+        const userType = family.user_type || 'family';
+        return filterTypes.includes(userType);
+      });
     }
 
     // Sort families alphabetically by last name
@@ -405,7 +455,7 @@ export default function EnhancedDiscoverPage() {
     });
 
     setFilteredFamilies(sortedFamilies);
-  }, [families, searchTerm, locationFilter, ageRange, filterStatus, hiddenFamilies, profile, radiusSearch, userLocation, searchRadius]);
+  }, [families, searchTerm, locationFilter, ageRange, filterTypes, hiddenFamilies, profile, userLocation, searchRadius]);
 
   // Family selection handlers
   const toggleFamilySelection = (familyId: string) => {
@@ -771,22 +821,6 @@ export default function EnhancedDiscoverPage() {
         
         {/* Section Navigation */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-          {[
-            { key: 'families', label: 'Families' },
-            { key: 'learning', label: 'Facilities' },
-          ].map((section) => (
-            <button
-              key={section.key}
-              onClick={() => setActiveSection(section.key as Section)}
-              className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
-                activeSection === section.key
-                  ? 'bg-teal-600 text-white shadow-md scale-105'
-                  : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
-              }`}
-            >
-              {section.label}
-            </button>
-          ))}
           <button
             onClick={() => window.location.href = '/events?type=public'}
             className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
@@ -863,131 +897,115 @@ export default function EnhancedDiscoverPage() {
             <div className="space-y-4">
                 {/* Radius Filter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Radius: {searchRadius} km
-                  </label>
-                  <div className="space-y-2">
-                    <input
-                      type="range"
-                      min="1"
-                      max="50"
-                      value={searchRadius}
-                      onChange={(e) => updateSearchRadius(parseInt(e.target.value))}
-                      className="w-full"
-                    />
-                    <div className="flex gap-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Search Radius (km)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={searchRadius}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === '') {
+                        setSearchRadius(15); // Set to default when empty
+                        return;
+                      }
+                      const newRadius = parseInt(value);
+                      if (!isNaN(newRadius)) {
+                        setSearchRadius(Math.max(1, Math.min(100, newRadius)));
+                        // Auto-load user location if not set
+                        if (!userLocation) {
+                          getUserLocation();
+                        }
+                      }
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className="w-20 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                  />
+                  {locationError && (
+                    <p className="text-xs text-red-600 mt-1">{locationError}</p>
+                  )}
+                </div>
+
+                {/* Kids Age Range */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Kids Age Range</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Min Age</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="17"
+                        value={ageRange.min}
+                        onChange={(e) => {
+                          const min = parseInt(e.target.value) || 0;
+                          setAgeRange(prev => ({ 
+                            ...prev, 
+                            min: Math.max(0, Math.min(min, prev.max - 1))
+                          }));
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Max Age</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="18"
+                        value={ageRange.max}
+                        onChange={(e) => {
+                          const max = parseInt(e.target.value) || 18;
+                          setAgeRange(prev => ({ 
+                            ...prev, 
+                            max: Math.max(prev.min + 1, Math.min(max, 18))
+                          }));
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                        placeholder="18"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* User Type Filter */}
+                <div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: 'all', label: 'All' },
+                      { value: 'family', label: 'Families' },
+                      { value: 'teacher', label: 'Teachers' },
+                      { value: 'event', label: 'Events' },
+                      { value: 'facility', label: 'Facilities' },
+                      { value: 'other', label: 'Other' },
+                    ].map((type) => (
                       <button
-                        onClick={getUserLocation}
-                        className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                          radiusSearch
-                            ? 'bg-teal-600 text-white'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        key={type.value}
+                        onClick={() => toggleFilterType(type.value)}
+                        className={`px-3 py-2 text-sm font-medium rounded-xl border-2 transition-colors ${
+                          filterTypes.includes(type.value)
+                            ? 'border-teal-600 bg-teal-50 text-teal-700'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
                         }`}
                       >
-                        {userLocation ? `${searchRadius}km radius` : 'Use My Location'}
+                        {type.label}
                       </button>
-                      
-                      {/* TEST BUTTON (Development only) */}
-                      {process.env.NODE_ENV === 'development' && !radiusSearch && (
-                        <button
-                          onClick={testRadiusSearch}
-                          className="px-2 py-2 text-xs font-medium rounded-lg bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-                          title="Test radius with fake GPS"
-                        >
-                          TEST
-                        </button>
-                      )}
-                      
-                      {radiusSearch && (
-                        <button
-                          onClick={() => {
-                            updateRadiusSearch(false);
-                            updateUserLocation(null);
-                          }}
-                          className="px-3 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-600 hover:bg-red-200"
-                          title="Disable radius search"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                    {locationError && (
-                      <p className="text-xs text-red-600">{locationError}</p>
-                    )}
+                    ))}
                   </div>
                 </div>
 
-                {/* Age Range */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Kids Age Range: {ageRange.min}-{ageRange.max} years
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="range"
-                      min="0"
-                      max="18"
-                      value={ageRange.min}
-                      onChange={(e) => setAgeRange(prev => ({ ...prev, min: parseInt(e.target.value) }))}
-                      className="flex-1"
-                    />
-                    <input
-                      type="range"
-                      min="0"
-                      max="18"
-                      value={ageRange.max}
-                      onChange={(e) => setAgeRange(prev => ({ ...prev, max: parseInt(e.target.value) }))}
-                      className="flex-1"
-                    />
-                  </div>
-                </div>
-
-                {/* Status Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Family Type</label>
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500"
-                  >
-                    <option value="all">All families</option>
-                    <option value="considering">Family Community</option>
-                    <option value="new">Homeschool</option>
-                    <option value="experienced">Extracurricular</option>
-                    <option value="connecting">Just Checking It Out</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-
-                {/* Quick Actions */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quick Actions</label>
-                  <div className="flex gap-2">
+                {/* Hidden Families */}
+                {hiddenFamilies.length > 0 && (
+                  <div>
                     <button
-                      onClick={() => {
-                        setSearchTerm('');
-                        setLocationFilter('');
-                        setFilterStatus('all');
-                        setAgeRange({ min: 1, max: 10 });
-                        updateRadiusSearch(false);
-                        updateUserLocation(null);
-                        updateSearchRadius(10);
-                        setLocationError(null);
-                      }}
-                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm font-medium hover:bg-gray-200"
+                      onClick={() => setShowHiddenModal(true)}
+                      className="px-3 py-2 bg-teal-50 text-teal-700 rounded-xl text-sm font-medium hover:bg-teal-100 border border-teal-200"
                     >
-                      Clear
+                      Show Hidden ({hiddenFamilies.length})
                     </button>
-                    {hiddenFamilies.length > 0 && (
-                      <button
-                        onClick={() => setShowHiddenModal(true)}
-                        className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded text-sm font-medium hover:bg-teal-200"
-                      >
-                        Show Hidden ({hiddenFamilies.length})
-                      </button>
-                    )}
                   </div>
-                </div>
+                )}
             </div>
           </div>
         )}
@@ -1003,51 +1021,18 @@ export default function EnhancedDiscoverPage() {
           </div>
         )}
 
-        {/* Families Section */}
-        {activeSection === 'families' && (
-          <>
-            {/* Map View */}
-            {viewMode === 'map' && (
+        {/* Map View */}
+        {viewMode === 'map' && (
           <div className="space-y-4 pb-6">
-            <div className="flex items-center justify-between">
-              <p className="text-gray-600">
-                {filteredFamilies.length} families on map
-                {hiddenFamilies.length > 0 && ` (${hiddenFamilies.length} hidden)`}
-              </p>
-              <button
-                onClick={() => setViewMode('list')}
-                className="text-teal-600 hover:text-teal-700 font-medium"
-              >
-                ← Back to List
-              </button>
-            </div>
             <FamilyMap 
               families={filteredFamilies}
               onFamilyClick={(family) => setSelectedFamily(family)}
               className="w-full"
               userLocation={userLocation}
               searchRadius={searchRadius}
-              showRadius={radiusSearch}
+              showRadius={!!userLocation}
               userProfileLocation={profile?.location_name}
             />
-            {/* Debug info */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="mt-2 text-xs text-gray-500 bg-gray-100 p-2 rounded flex justify-between items-center">
-                <span>
-                  Debug: radiusSearch={radiusSearch ? 'true' : 'false'}, 
-                  userLocation={userLocation ? `${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}` : 'null'}, 
-                  searchRadius={searchRadius}km
-                </span>
-                {!radiusSearch && (
-                  <button
-                    onClick={testRadiusSearch}
-                    className="ml-2 px-2 py-1 bg-yellow-200 text-yellow-800 rounded text-xs hover:bg-yellow-300"
-                  >
-                    Quick Test
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -1125,8 +1110,18 @@ export default function EnhancedDiscoverPage() {
                             {family.is_verified && <span className="text-green-500">✓</span>}
                           </div>
                           
-                          {/* Location */}
-                          <p className="text-sm text-gray-600 mb-2">{family.location_name}</p>
+                          {/* Location with Online Status */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <p className="text-sm text-gray-600">{family.location_name}</p>
+                            {/* Online status indicator */}
+                            {family.is_online && (
+                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                            )}
+                            {/* Last active status */}
+                            {!family.is_online && family.last_active && (
+                              <span className="text-xs text-gray-500">• {formatLastActive(family.last_active)}</span>
+                            )}
+                          </div>
                           
                           {/* Children dots with ages */}
                           {family.kids_ages && family.kids_ages.length > 0 && (
@@ -1171,21 +1166,6 @@ export default function EnhancedDiscoverPage() {
               ))}
               </>
             )}
-          </div>
-        )}
-          </>
-        )}
-
-        {/* Learning Section */}
-        {activeSection === 'learning' && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <span className="text-2xl font-bold text-emerald-600">L</span>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Learning Resources Coming Soon</h3>
-            <p className="text-gray-600">
-              Connect with qualified teachers, tutors, and learning resources in your area. Feature in development!
-            </p>
           </div>
         )}
 
@@ -1445,7 +1425,17 @@ export default function EnhancedDiscoverPage() {
               {/* Location */}
               <div className="mb-6">
                 <h4 className="font-semibold text-gray-900 mb-2">Location</h4>
-                <p className="text-gray-700">{selectedFamilyDetails.location_name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-gray-700">{selectedFamilyDetails.location_name}</p>
+                  {/* Online status indicator */}
+                  {selectedFamilyDetails.is_online && (
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  )}
+                  {/* Last active status */}
+                  {!selectedFamilyDetails.is_online && selectedFamilyDetails.last_active && (
+                    <span className="text-xs text-gray-500">• {formatLastActive(selectedFamilyDetails.last_active)}</span>
+                  )}
+                </div>
               </div>
 
               {/* Children */}

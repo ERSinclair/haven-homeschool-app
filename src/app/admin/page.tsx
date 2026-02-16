@@ -244,7 +244,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           <Link 
             href="/admin/users"
             className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
@@ -323,6 +323,38 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="text-green-600 font-medium">View Analytics →</div>
+          </Link>
+
+          <Link 
+            href="/admin/bug-reports"
+            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
+          >
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center group-hover:bg-red-200 transition-colors">
+                <span className="text-2xl">🐛</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Bug Reports</h3>
+                <p className="text-sm text-gray-600">Review reported bugs</p>
+              </div>
+            </div>
+            <div className="text-red-600 font-medium">View Reports →</div>
+          </Link>
+
+          <Link 
+            href="/admin/feedback"
+            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
+          >
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                <span className="text-2xl">💡</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Feedback</h3>
+                <p className="text-sm text-gray-600">User suggestions & feedback</p>
+              </div>
+            </div>
+            <div className="text-blue-600 font-medium">View Feedback →</div>
           </Link>
         </div>
 

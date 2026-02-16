@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import HavenHeader from '@/components/HavenHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
-type EducationSection = 'resources' | 'teachers' | 'circles';
+type EducationSection = 'resources' | 'circles';
 
 export default function EducationPage() {
   const [activeSection, setActiveSection] = useState<EducationSection>('resources');
@@ -15,7 +15,6 @@ export default function EducationPage() {
 
   const sections = [
     { key: 'resources', label: 'Resources' },
-    { key: 'teachers', label: 'Teachers' },
     { key: 'circles', label: 'Circles' },
   ] as const;
 
@@ -85,22 +84,6 @@ export default function EducationPage() {
                 </p>
                 <div className="text-sm text-gray-500">
                   Coming soon - Connect with educational resources in your area
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Teachers Section */}
-          {activeSection === 'teachers' && (
-            <div className="space-y-4">
-              <div className="text-center py-12">
-                <div className="w-20 h-20 bg-emerald-600 rounded-full mx-auto mb-4"></div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Find Teachers</h3>
-                <p className="text-gray-600 mb-6">
-                  Connect with qualified tutors, subject specialists, and educational mentors in your community.
-                </p>
-                <div className="text-sm text-gray-500">
-                  Coming soon - Browse local educators and their specialties
                 </div>
               </div>
             </div>

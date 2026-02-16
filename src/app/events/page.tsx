@@ -54,11 +54,11 @@ export default function EventsPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  const [filter, setFilter] = useState('all');
-  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [radiusFilter, setRadiusFilter] = useState(false);
+  // Removed radiusFilter - now always active when location available
   const [searchRadius, setSearchRadius] = useState(15);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const router = useRouter();
@@ -229,18 +229,7 @@ export default function EventsPage() {
     loadEvents();
   }, [router]);
 
-  // Close filter dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element;
-      if (showFilterDropdown && !target.closest('.relative')) {
-        setShowFilterDropdown(false);
-      }
-    };
-
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [showFilterDropdown]);
+  // No longer needed with individual buttons
 
   const handleRsvp = async (eventId: string, going: boolean) => {
     console.log('RSVP clicked:', { eventId, going, userId, hasSession: !!getStoredSession() });
@@ -329,7 +318,7 @@ export default function EventsPage() {
 
   const filteredEvents = events.filter(e => {
     // Category filtering
-    if (filter !== 'all') {
+    if (categoryFilter !== 'all') {
       // Map old categories to new categories for filtering
       const categoryMap: Record<string, string> = {
         'playdate': 'Play',
@@ -341,11 +330,11 @@ export default function EventsPage() {
       };
       
       const mappedCategory = categoryMap[e.category] || 'Other';
-      if (mappedCategory !== filter) return false;
+      if (mappedCategory !== categoryFilter) return false;
     }
 
     // Radius filtering
-    if (radiusFilter && userLocation && e.latitude && e.longitude) {
+    if (userLocation && e.latitude && e.longitude) {
       const distance = calculateDistance(
         userLocation.lat, userLocation.lng,
         e.latitude, e.longitude
@@ -478,91 +467,13 @@ export default function EventsPage() {
 
         {/* Filter and Create Section */}
         <div className="flex justify-between items-center mb-4">
-          {/* Filter Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-              className={`flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors ${radiusFilter ? 'ring-2 ring-teal-500' : ''}`}
-            >
-              <span>{radiusFilter ? `${searchRadius}km` : 'Filter'}</span>
-              <svg 
-                className={`w-4 h-4 transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            
-            {showFilterDropdown && (
-              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 min-w-[160px]">
-                {/* Category Filters */}
-                <div className="px-2 py-1 text-xs font-semibold text-gray-500 border-b border-gray-100">
-                  Categories
-                </div>
-                {[
-                  { value: 'all', label: 'All Events' },
-                  { value: 'Play', label: 'Play' },
-                  { value: 'Educational', label: 'Educational' },
-                  { value: 'Other', label: 'Other' },
-                ].map(cat => (
-                  <button
-                    key={cat.value}
-                    onClick={() => {
-                      setFilter(cat.value);
-                      setShowFilterDropdown(false);
-                    }}
-                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition-colors ${
-                      filter === cat.value 
-                        ? 'bg-teal-50 text-teal-700 font-medium' 
-                        : 'text-gray-700'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-                
-                {/* Radius Filter */}
-                <div className="px-2 py-1 text-xs font-semibold text-gray-500 border-t border-b border-gray-100 mt-1">
-                  Distance
-                </div>
-                <button
-                  onClick={() => {
-                    setRadiusFilter(!radiusFilter);
-                    setShowFilterDropdown(false);
-                  }}
-                  className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition-colors ${
-                    radiusFilter 
-                      ? 'bg-teal-50 text-teal-700 font-medium' 
-                      : 'text-gray-700'
-                  }`}
-                >
-                  {radiusFilter ? `✓ Within ${searchRadius}km` : 'All distances'}
-                </button>
-                
-                {radiusFilter && (
-                  <div className="px-4 py-2 border-t border-gray-100">
-                    <input
-                      type="range"
-                      min="5"
-                      max="50"
-                      value={searchRadius}
-                      onChange={(e) => setSearchRadius(parseInt(e.target.value))}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                    />
-                    <div className="flex justify-between text-xs text-gray-500 mt-1">
-                      <span>5km</span>
-                      <span>{searchRadius}km</span>
-                      <span>50km</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+          >
+            Filters
+          </button>
           
-          {/* Create Button */}
           <button
             onClick={() => setShowCreateModal(true)}
             className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 transition-colors"
@@ -570,6 +481,63 @@ export default function EventsPage() {
             + Create
           </button>
         </div>
+
+        {/* Filters Panel */}
+        {showFilters && (
+          <div className="bg-gray-50 rounded-xl p-4 mb-6">
+            <div className="space-y-4">
+              {/* Category Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Categories</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'all', label: 'All Events' },
+                    { value: 'Play', label: 'Play' },
+                    { value: 'Educational', label: 'Educational' },
+                    { value: 'Other', label: 'Other' },
+                  ].map(cat => (
+                    <button
+                      key={cat.value}
+                      onClick={() => setCategoryFilter(cat.value)}
+                      className={`px-3 py-2 text-sm font-medium rounded-xl border-2 transition-colors ${
+                        categoryFilter === cat.value
+                          ? 'border-teal-600 bg-teal-50 text-teal-700'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Distance Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Max Distance (km)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={searchRadius}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '') {
+                      setSearchRadius(15); // Set to default when empty
+                      return;
+                    }
+                    const newRadius = parseInt(value);
+                    if (!isNaN(newRadius)) {
+                      setSearchRadius(Math.max(1, Math.min(100, newRadius)));
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  className="w-20 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                  placeholder="15"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* My Events */}
         {myEvents.length > 0 && (
@@ -624,7 +592,15 @@ export default function EventsPage() {
                   📅 {formatDate(event.event_date)} at {formatTime(event.event_time)}
                 </p>
                 {event.location_name ? (
-                  <p className="text-sm text-gray-600 mb-2">{event.location_name}</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-sm text-gray-600">{event.location_name}</p>
+                    {/* Distance display when location is available */}
+                    {userLocation && event.latitude && event.longitude && (
+                      <span className="text-xs text-teal-600 font-medium">
+                        {calculateDistance(userLocation.lat, userLocation.lng, event.latitude, event.longitude).toFixed(1)}km
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <p className="text-sm text-gray-500 italic mb-2">Location TBA</p>
                 )}

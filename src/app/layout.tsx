@@ -69,7 +69,7 @@ export default function RootLayout({
             /* Ensure all main containers can scroll */
             main {
               overflow-y: auto;
-              height: calc(100vh - 5rem);
+              min-height: calc(100vh - 5rem);
             }
           `
         }} />
