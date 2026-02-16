@@ -9,6 +9,7 @@ export default function BottomNav() {
   const pathname = usePathname();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   useEffect(() => {
     // Check login status when pathname changes or on mount
@@ -51,6 +52,22 @@ export default function BottomNav() {
         
         setUnreadCount(unreadConversations.length);
 
+        // Check pending connection requests
+        const requestsRes = await fetch(
+          `${supabaseUrl}/rest/v1/connections?status=eq.pending&receiver_id=eq.${session.user.id}&select=id`,
+          {
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          }
+        );
+        
+        if (requestsRes.ok) {
+          const pendingRequests = await requestsRes.json();
+          setPendingRequestsCount(pendingRequests.length);
+        }
+
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
           console.error('Error checking notifications:', err);
@@ -67,11 +84,13 @@ export default function BottomNav() {
     return () => clearInterval(interval);
   }, [isLoggedIn]);
 
+  const totalNotifications = unreadCount + pendingRequestsCount;
+  
   const navItems = [
     { href: '/discover', label: 'Discover', badge: 0 },
     { href: '/education', label: 'Education', badge: 0 },
     { href: '/circles', label: 'Circles', badge: 0 },
-    { href: '/messages', label: 'Message', badge: unreadCount },
+    { href: '/messages', label: 'Message', badge: totalNotifications },
     { href: '/profile', label: 'Profile', badge: 0 },
   ];
 

@@ -56,6 +56,7 @@ function MessagesContent() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -135,6 +136,7 @@ function MessagesContent() {
       try {
         await reloadConversations(abortController.signal);
         await loadConnectionRequests(abortController.signal);
+        await loadPendingRequestsCount(abortController.signal);
         
         const openId = searchParams.get('open');
         if (openId) {
@@ -255,6 +257,18 @@ function MessagesContent() {
       }
     };
   }, [longPressTimer]);
+
+  // Periodic check for new connection requests
+  useEffect(() => {
+    if (!userId) return;
+
+    // Check every 30 seconds for new requests
+    const interval = setInterval(() => {
+      loadPendingRequestsCount();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [userId]);
 
   const sendMessageHandler = async () => {
     if ((!newMessage.trim() && !selectedFile) || !selectedId || !userId) return;
@@ -758,6 +772,35 @@ function MessagesContent() {
     }
   };
 
+  // Load pending connection requests count
+  const loadPendingRequestsCount = async (signal?: AbortSignal) => {
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+
+      // Get pending connection requests received by current user
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/connections?status=eq.pending&receiver_id=eq.${session.user.id}&select=id`,
+        {
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          signal,
+        }
+      );
+
+      if (response.ok && !signal?.aborted) {
+        const requests = await response.json();
+        setPendingRequestsCount(requests.length);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Error loading pending requests count:', error);
+      }
+    }
+  };
+
   const selected = conversations.find(c => c.id === selectedId);
 
   const formatTime = (dateStr: string | null) => {
@@ -1040,8 +1083,13 @@ function MessagesContent() {
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
             onClick={() => router.push('/connections')}
-            className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+            className="relative px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
+            {pendingRequestsCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center border-2 border-white shadow-sm">
+                {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
+              </span>
+            )}
             Connections
           </button>
           <button
