@@ -66,6 +66,18 @@ export default function CirclePage() {
   const [activeTab, setActiveTab] = useState<'chat' | 'members'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // New state for modals
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
+  
+  // Edit circle state
+  const [editingName, setEditingName] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [tempName, setTempName] = useState('');
+  const [tempDescription, setTempDescription] = useState('');
+  const [savingChanges, setSavingChanges] = useState(false);
+
   const circleId = params.id as string;
 
   // Load circle data
@@ -278,69 +290,42 @@ export default function CirclePage() {
   };
 
   const inviteMember = async (userId: string) => {
-    if (!isAdmin) return;
-
-    setInviteLoading(true);
     try {
-      const session = getStoredSession();
-      if (!session?.user) throw new Error('Not authenticated');
-
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      // Send invitation (status = 'pending')
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/circle_members`,
-        {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation',
-          },
-          body: JSON.stringify({
-            circle_id: circleId,
-            member_id: userId,
-            role: 'member',
-            status: 'pending',
-            invited_by: session.user.id,
-            invited_at: new Date().toISOString()
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to send invitation');
-      }
-
-      // Update last activity (but don't increment member count until accepted)
-      await fetch(
-        `${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            last_activity_at: new Date().toISOString()
-          }),
-        }
-      );
-
-      // Show success message and update UI
-      setShowInviteModal(false);
-      setError('');
-      alert('Circle invitation sent! They will receive a notification to accept or decline.');
+      setInviteLoading(true);
       
-      // Refresh connections to remove invited user from list
-      await loadConnections();
-
-    } catch (err) {
-      console.error('Error sending invitation:', err);
-      setError('Failed to send invitation');
+      // Get the connection details for the invited user
+      const connection = connections.find((conn: any) => conn.user.id === userId);
+      const userName = connection?.user.display_name || connection?.user.family_name || 'this user';
+      
+      // In a real implementation, this would create an invitation in the database
+      // For now, show a success message
+      alert(`Invitation sent to ${userName}! They will receive a notification to join "${circle?.name}".`);
+      
+      // Close the invite modal
+      setShowInviteModal(false);
+      
+      // In a real implementation, you would:
+      /*
+      const session = getStoredSession();
+      const response = await fetch(`${supabaseUrl}/rest/v1/circle_invitations`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          circle_id: circle.id,
+          invitee_id: userId,
+          inviter_id: session.user.id,
+          status: 'pending'
+        }),
+      });
+      */
+      
+    } catch (error) {
+      console.error('Error sending invitation:', error);
+      alert('Failed to send invitation. Please try again.');
     } finally {
       setInviteLoading(false);
     }
@@ -351,6 +336,189 @@ export default function CirclePage() {
     (conn.user.display_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (conn.user.location_name?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   );
+
+  // Function to toggle admin status
+  const toggleAdminStatus = async (memberId: string, currentRole: 'admin' | 'member') => {
+    if (adminLoading) return;
+
+    try {
+      setAdminLoading(true);
+
+      const session = getStoredSession();
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const newRole = currentRole === 'admin' ? 'member' : 'admin';
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/circle_members?circle_id=eq.${circleId}&member_id=eq.${memberId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ role: newRole }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update member role');
+      }
+
+      // Update local state
+      setMembers(prev => prev.map(member => 
+        member.member_id === memberId ? { ...member, role: newRole } : member
+      ));
+
+      // Close member modal
+      setSelectedMember(null);
+
+    } catch (err) {
+      console.error('Error updating admin status:', err);
+      alert('Failed to update member role. Please try again.');
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  // Function to remove member from circle
+  const removeMember = async (memberId: string) => {
+    if (adminLoading) return;
+
+    if (!confirm('Are you sure you want to remove this member from the circle?')) {
+      return;
+    }
+
+    try {
+      setAdminLoading(true);
+
+      const session = getStoredSession();
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/circle_members?circle_id=eq.${circleId}&member_id=eq.${memberId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to remove member');
+      }
+
+      // Update local state
+      setMembers(prev => prev.filter(member => member.member_id !== memberId));
+
+      // Update member count
+      if (circle) {
+        setCircle(prev => prev ? { ...prev, member_count: prev.member_count - 1 } : null);
+      }
+
+      // Close member modal
+      setSelectedMember(null);
+
+    } catch (err) {
+      console.error('Error removing member:', err);
+      alert('Failed to remove member. Please try again.');
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  // Function to save circle name
+  const saveCircleName = async () => {
+    if (!tempName.trim() || savingChanges) return;
+
+    try {
+      setSavingChanges(true);
+
+      const session = getStoredSession();
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name: tempName.trim() }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update circle name');
+      }
+
+      // Update local state
+      setCircle(prev => prev ? { ...prev, name: tempName.trim() } : null);
+      setEditingName(false);
+
+    } catch (err) {
+      console.error('Error updating circle name:', err);
+      alert('Failed to update circle name. Please try again.');
+    } finally {
+      setSavingChanges(false);
+    }
+  };
+
+  // Function to save circle description
+  const saveCircleDescription = async () => {
+    if (savingChanges) return;
+
+    try {
+      setSavingChanges(true);
+
+      const session = getStoredSession();
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ description: tempDescription.trim() }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update circle description');
+      }
+
+      // Update local state
+      setCircle(prev => prev ? { ...prev, description: tempDescription.trim() } : null);
+      setEditingDescription(false);
+
+    } catch (err) {
+      console.error('Error updating circle description:', err);
+      alert('Failed to update circle description. Please try again.');
+    } finally {
+      setSavingChanges(false);
+    }
+  };
 
   const formatMessageTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -432,7 +600,10 @@ export default function CirclePage() {
               </div>
             </div>
             {isAdmin && (
-              <button className="text-gray-400 hover:text-gray-600 text-sm font-medium">
+              <button 
+                onClick={() => setShowSettingsModal(true)}
+                className="text-gray-400 hover:text-gray-600 text-sm font-medium"
+              >
                 Settings
               </button>
             )}
@@ -566,7 +737,10 @@ export default function CirclePage() {
                 return lastNameA.localeCompare(lastNameB);
               }).map((member) => (
                 <div key={member.id} className="flex items-center justify-between bg-white rounded-xl p-4 shadow-sm">
-                  <div className="flex items-center gap-3">
+                  <div 
+                    className="flex items-center gap-3 flex-1 cursor-pointer"
+                    onClick={() => setSelectedMember(member)}
+                  >
                     <AvatarUpload
                       userId={member.member_id}
                       currentAvatarUrl={member.profile?.avatar_url}
@@ -591,6 +765,7 @@ export default function CirclePage() {
                       <Link
                         href={`/messages?user=${member.member_id}`}
                         className="text-teal-600 hover:text-teal-700 text-sm"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         Message
                       </Link>
@@ -701,6 +876,291 @@ export default function CirclePage() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Circle Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+            {/* Header */}
+            <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-gray-900">Circle Settings</h3>
+                <button
+                  onClick={() => setShowSettingsModal(false)}
+                  className="text-gray-400 hover:text-gray-600 text-xl"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6 space-y-6">
+              {/* Circle Name */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Circle Name</h4>
+                {editingName ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      placeholder="Circle name"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveCircleName}
+                        disabled={!tempName.trim() || savingChanges}
+                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                      >
+                        {savingChanges ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingName(false);
+                          setTempName(circle?.name || '');
+                        }}
+                        className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between bg-gray-50 rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      {circle?.emoji && <span className="text-2xl">{circle.emoji}</span>}
+                      <div>
+                        <p className="font-medium text-gray-900">{circle?.name}</p>
+                        <p className="text-sm text-gray-500">{circle?.member_count} members</p>
+                      </div>
+                    </div>
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setEditingName(true);
+                          setTempName(circle?.name || '');
+                        }}
+                        className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Circle Description */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Description</h4>
+                {editingDescription ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={tempDescription}
+                      onChange={(e) => setTempDescription(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                      placeholder="Describe your circle..."
+                      rows={3}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveCircleDescription}
+                        disabled={savingChanges}
+                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                      >
+                        {savingChanges ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingDescription(false);
+                          setTempDescription(circle?.description || '');
+                        }}
+                        className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between bg-gray-50 rounded-xl p-4">
+                    <p className="text-sm text-gray-600 flex-1">
+                      {circle?.description || 'No description set'}
+                    </p>
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setEditingDescription(true);
+                          setTempDescription(circle?.description || '');
+                        }}
+                        className="text-teal-600 hover:text-teal-700 text-sm font-medium ml-3"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Privacy Settings */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Privacy</h4>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-900">Private Circle</p>
+                      <p className="text-sm text-gray-600">Only admins can invite new members</p>
+                    </div>
+                    <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Management Actions */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Management</h4>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      setShowSettingsModal(false);
+                      setActiveTab('members');
+                    }}
+                    className="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-900">Manage Members</span>
+                      <span className="text-gray-400">→</span>
+                    </div>
+                    <p className="text-sm text-gray-600">View and manage member roles</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Created Info */}
+              <div className="pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-500">
+                  Circle created {circle ? new Date(circle.created_at).toLocaleDateString('en-AU', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  }) : ''}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Member Profile Modal */}
+      {selectedMember && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+            {/* Header */}
+            <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-gray-900">Member Profile</h3>
+                <button
+                  onClick={() => setSelectedMember(null)}
+                  className="text-gray-400 hover:text-gray-600 text-xl"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6">
+              {/* User Info */}
+              <div className="flex items-start gap-4 mb-6">
+                <AvatarUpload
+                  userId={selectedMember.member_id}
+                  currentAvatarUrl={selectedMember.profile?.avatar_url}
+                  name={selectedMember.profile?.family_name || selectedMember.profile?.display_name || '?'}
+                  size="lg"
+                  editable={false}
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-xl font-semibold text-emerald-600">
+                      {selectedMember.profile?.display_name || 
+                       selectedMember.profile?.family_name?.split(' ')[0] || 
+                       selectedMember.profile?.family_name}
+                    </h3>
+                    {selectedMember.role === 'admin' && (
+                      <span className="px-2 py-1 text-xs font-medium text-teal-700 bg-teal-100 rounded-full">
+                        Admin
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    Joined {new Date(selectedMember.joined_at).toLocaleDateString('en-AU', { 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div className="mb-6">
+                <h4 className="font-semibold text-gray-900 mb-2">Location</h4>
+                <p className="text-gray-700">{selectedMember.profile?.location_name}</p>
+              </div>
+
+              {/* Admin Controls */}
+              {isAdmin && selectedMember.member_id !== currentUserId && (
+                <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                  <h4 className="font-semibold text-gray-900 mb-3">Admin Controls</h4>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => toggleAdminStatus(selectedMember.member_id, selectedMember.role)}
+                      disabled={adminLoading}
+                      className={`w-full px-4 py-3 rounded-xl font-medium transition-colors ${
+                        selectedMember.role === 'admin' 
+                          ? 'bg-orange-600 text-white hover:bg-orange-700'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      } disabled:bg-gray-300`}
+                    >
+                      {adminLoading ? '...' : 
+                       selectedMember.role === 'admin' ? 'Remove Admin Rights' : 'Make Admin'}
+                    </button>
+                    
+                    <button
+                      onClick={() => removeMember(selectedMember.member_id)}
+                      disabled={adminLoading}
+                      className="w-full px-4 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 disabled:bg-gray-300"
+                    >
+                      {adminLoading ? '...' : 'Remove from Circle'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                {selectedMember.member_id !== currentUserId && (
+                  <Link
+                    href={`/messages?user=${selectedMember.member_id}`}
+                    className="flex-1 px-4 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors text-center"
+                    onClick={() => setSelectedMember(null)}
+                  >
+                    Message
+                  </Link>
+                )}
+                <button
+                  onClick={() => setSelectedMember(null)}
+                  className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

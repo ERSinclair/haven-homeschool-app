@@ -28,6 +28,7 @@ type Event = {
   rsvp_count?: number;
   user_rsvp?: boolean;
   is_private?: boolean;
+  is_cancelled?: boolean;
 };
 
 const categoryColors: Record<string, string> = {
@@ -58,6 +59,32 @@ export default function EventsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  
+  // Event settings modal state
+  const [showEventSettingsModal, setShowEventSettingsModal] = useState(false);
+  
+  // Event editing state
+  const [editingEventTitle, setEditingEventTitle] = useState(false);
+  const [editingEventDescription, setEditingEventDescription] = useState(false);
+  const [editingEventDate, setEditingEventDate] = useState(false);
+  const [editingEventTime, setEditingEventTime] = useState(false);
+  const [editingEventLocation, setEditingEventLocation] = useState(false);
+  const [editingEventAgeRange, setEditingEventAgeRange] = useState(false);
+  const [editingEventCategory, setEditingEventCategory] = useState(false);
+  const [tempEventTitle, setTempEventTitle] = useState('');
+  const [tempEventDescription, setTempEventDescription] = useState('');
+  const [tempEventDate, setTempEventDate] = useState('');
+  const [tempEventTime, setTempEventTime] = useState('');
+  const [tempEventLocation, setTempEventLocation] = useState<{
+    name: string;
+    address: string;
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [tempEventAgeRange, setTempEventAgeRange] = useState('');
+  const [tempEventCategory, setTempEventCategory] = useState('');
+  const [tempCustomCategory, setTempCustomCategory] = useState('');
+  const [savingEventChanges, setSavingEventChanges] = useState(false);
   // Removed radiusFilter - now always active when location available
   const [searchRadius, setSearchRadius] = useState(15);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -176,7 +203,7 @@ export default function EventsPage() {
         const enriched = await Promise.all(eventsData.map(async (event: Event) => {
           // Get host profile
           const hostRes = await fetch(
-            `${supabaseUrl}/rest/v1/profiles?id=eq.${event.host_id}&select=name`,
+            `${supabaseUrl}/rest/v1/profiles?id=eq.${event.host_id}&select=family_name,display_name`,
             {
               headers: {
                 'apikey': supabaseKey!,
@@ -212,7 +239,9 @@ export default function EventsPage() {
 
           return {
             ...event,
-            host: hosts[0] || { name: 'Unknown' },
+            host: hosts[0] ? { 
+              name: hosts[0].display_name || hosts[0].family_name || 'Unknown' 
+            } : { name: 'Unknown' },
             rsvp_count: rsvps.length,
             user_rsvp: userRsvp.length > 0,
           };
@@ -316,6 +345,322 @@ export default function EventsPage() {
     }
   };
 
+  // Function to save event title
+  const saveEventTitle = async () => {
+    if (!tempEventTitle.trim() || savingEventChanges || !selectedEvent) return;
+
+    try {
+      setSavingEventChanges(true);
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/events?id=eq.${(selectedEvent as Event).id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${localStorage.getItem('sb-access-token')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ title: tempEventTitle.trim() }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update event title');
+      }
+
+      // Update local state
+      setEvents(prev => prev.map(e => 
+        e.id === (selectedEvent as Event).id ? { ...e, title: tempEventTitle.trim() } : e
+      ));
+      setSelectedEvent(prev => prev ? { ...prev, title: tempEventTitle.trim() } : null);
+      setEditingEventTitle(false);
+
+    } catch (err) {
+      console.error('Error updating event title:', err);
+      alert('Failed to update event title. Please try again.');
+    } finally {
+      setSavingEventChanges(false);
+    }
+  };
+
+  // Function to save event description
+  const saveEventDescription = async () => {
+    if (savingEventChanges || !selectedEvent) return;
+
+    try {
+      setSavingEventChanges(true);
+
+      const session = getStoredSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/events?id=eq.${(selectedEvent as Event).id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ description: tempEventDescription.trim() }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update event description');
+      }
+
+      // Update local state
+      setEvents(prev => prev.map(e => 
+        e.id === (selectedEvent as Event).id ? { ...e, description: tempEventDescription.trim() } : e
+      ));
+      setSelectedEvent(prev => prev ? { ...prev, description: tempEventDescription.trim() } : null);
+      setEditingEventDescription(false);
+
+    } catch (err) {
+      console.error('Error updating event description:', err);
+      alert('Failed to update event description. Please try again.');
+    } finally {
+      setSavingEventChanges(false);
+    }
+  };
+
+  // Function to save event date
+  const saveEventDate = async () => {
+    if (!tempEventDate || savingEventChanges || !selectedEvent) return;
+
+    try {
+      setSavingEventChanges(true);
+
+      const session = getStoredSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/events?id=eq.${(selectedEvent as Event).id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ event_date: tempEventDate }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update event date');
+      }
+
+      // Update local state
+      setEvents(prev => prev.map(e => 
+        e.id === (selectedEvent as Event).id ? { ...e, event_date: tempEventDate } : e
+      ));
+      setSelectedEvent(prev => prev ? { ...prev, event_date: tempEventDate } : null);
+      setEditingEventDate(false);
+
+    } catch (err) {
+      console.error('Error updating event date:', err);
+      alert('Failed to update event date. Please try again.');
+    } finally {
+      setSavingEventChanges(false);
+    }
+  };
+
+  // Function to save event time
+  const saveEventTime = async () => {
+    if (!tempEventTime || savingEventChanges || !selectedEvent) return;
+
+    try {
+      setSavingEventChanges(true);
+
+      const session = getStoredSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/events?id=eq.${(selectedEvent as Event).id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ event_time: tempEventTime }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update event time');
+      }
+
+      // Update local state
+      setEvents(prev => prev.map(e => 
+        e.id === (selectedEvent as Event).id ? { ...e, event_time: tempEventTime } : e
+      ));
+      setSelectedEvent(prev => prev ? { ...prev, event_time: tempEventTime } : null);
+      setEditingEventTime(false);
+
+    } catch (err) {
+      console.error('Error updating event time:', err);
+      alert('Failed to update event time. Please try again.');
+    } finally {
+      setSavingEventChanges(false);
+    }
+  };
+
+  // Function to save event location
+  const saveEventLocation = async () => {
+    if (savingEventChanges || !selectedEvent) return;
+
+    try {
+      setSavingEventChanges(true);
+
+      const session = getStoredSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const locationData = tempEventLocation ? {
+        location_name: tempEventLocation.name,
+        exact_address: tempEventLocation.address,
+        latitude: tempEventLocation.lat,
+        longitude: tempEventLocation.lng,
+        show_exact_location: true,
+      } : {
+        location_name: '',
+        exact_address: '',
+        latitude: undefined,
+        longitude: undefined,
+        show_exact_location: false,
+      };
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/events?id=eq.${(selectedEvent as Event).id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(locationData),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update event location');
+      }
+
+      // Update local state
+      const updatedEvent = { 
+        ...selectedEvent, 
+        ...locationData
+      };
+      
+      setEvents(prev => prev.map(e => 
+        e.id === (selectedEvent as Event).id ? updatedEvent : e
+      ));
+      setSelectedEvent(updatedEvent);
+      setEditingEventLocation(false);
+
+    } catch (err) {
+      console.error('Error updating event location:', err);
+      alert('Failed to update event location. Please try again.');
+    } finally {
+      setSavingEventChanges(false);
+    }
+  };
+
+  // Function to save event age range
+  const saveEventAgeRange = async () => {
+    if (savingEventChanges || !selectedEvent) return;
+
+    try {
+      setSavingEventChanges(true);
+
+      const session = getStoredSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/events?id=eq.${(selectedEvent as Event).id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ age_range: tempEventAgeRange.trim() || null }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update age range');
+      }
+
+      // Update local state
+      setEvents(prev => prev.map(e => 
+        e.id === (selectedEvent as Event).id ? { ...e, age_range: tempEventAgeRange.trim() || undefined } : e
+      ));
+      setSelectedEvent(prev => prev ? { ...prev, age_range: tempEventAgeRange.trim() || undefined } : null);
+      setEditingEventAgeRange(false);
+
+    } catch (err) {
+      console.error('Error updating age range:', err);
+      alert('Failed to update age range. Please try again.');
+    } finally {
+      setSavingEventChanges(false);
+    }
+  };
+
+  // Function to save event category
+  const saveEventCategory = async () => {
+    if (savingEventChanges || !selectedEvent) return;
+    
+    const finalCategory = tempEventCategory === 'Other' ? (tempCustomCategory || 'Other') : tempEventCategory;
+    if (!finalCategory) return;
+
+    try {
+      setSavingEventChanges(true);
+
+      const session = getStoredSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/events?id=eq.${(selectedEvent as Event).id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ category: finalCategory }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update event category');
+      }
+
+      // Update local state
+      setEvents(prev => prev.map(e => 
+        e.id === (selectedEvent as Event).id ? { ...e, category: finalCategory } : e
+      ));
+      setSelectedEvent(prev => prev ? { ...prev, category: finalCategory } : null);
+      setEditingEventCategory(false);
+
+    } catch (err) {
+      console.error('Error updating event category:', err);
+      alert('Failed to update event category. Please try again.');
+    } finally {
+      setSavingEventChanges(false);
+    }
+  };
+
   const filteredEvents = events.filter(e => {
     // Category filtering
     if (categoryFilter !== 'all') {
@@ -373,36 +718,47 @@ export default function EventsPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
         <div className="max-w-md mx-auto px-4 py-6">
-          <button 
-            onClick={() => setSelectedEvent(null)}
-            className="text-gray-400 hover:text-gray-600:text-gray-300 mb-4"
-          >
-            ← Back to events
-          </button>
+          <div className="flex items-center justify-between mb-4">
+            <button 
+              onClick={() => setSelectedEvent(null)}
+              className="text-gray-400 hover:text-gray-600 text-gray-300"
+            >
+              ← Back to events
+            </button>
+            {(selectedEvent as Event).host_id === userId && (
+              <button 
+                onClick={() => setShowEventSettingsModal(true)}
+                className="text-gray-400 hover:text-gray-600 text-sm font-medium"
+              >
+                Settings
+              </button>
+            )}
+          </div>
 
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
             <div className="p-6">
-              <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium mb-3 ${categoryColors[selectedEvent.category]}`}>
-                {categoryLabels[selectedEvent.category]}
+              <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium mb-3 ${categoryColors[(selectedEvent as Event).category]}`}>
+                {categoryLabels[(selectedEvent as Event).category]}
               </span>
               
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">{selectedEvent.title}</h1>
+              {/* Event Title */}
+              <h1 className="text-2xl font-bold text-gray-900 mb-4">{(selectedEvent as Event).title}</h1>
               
               <div className="space-y-2 mb-4">
-                <p className="text-gray-600">📅 {formatDate(selectedEvent.event_date)} at {formatTime(selectedEvent.event_time)}</p>
-                {selectedEvent.location_name ? (
+                <p className="text-gray-600">📅 {formatDate((selectedEvent as Event).event_date)} at {formatTime((selectedEvent as Event).event_time)}</p>
+                {(selectedEvent as Event).location_name ? (
                   <>
-                    <p className="text-gray-600">{selectedEvent.location_name}</p>
-                    {selectedEvent.exact_address && selectedEvent.show_exact_location && (
-                      <p className="text-gray-500 text-sm">{selectedEvent.exact_address}</p>
+                    <p className="text-gray-600">📍 {(selectedEvent as Event).location_name}</p>
+                    {(selectedEvent as Event).exact_address && (selectedEvent as Event).show_exact_location && (
+                      <p className="text-gray-500 text-sm">{(selectedEvent as Event).exact_address}</p>
                     )}
-                    {selectedEvent.location_details && (
-                      <p className="text-gray-500 text-sm">{selectedEvent.location_details}</p>
+                    {(selectedEvent as Event).location_details && (
+                      <p className="text-gray-500 text-sm">{(selectedEvent as Event).location_details}</p>
                     )}
-                    {selectedEvent.latitude && selectedEvent.longitude && selectedEvent.show_exact_location && (
+                    {(selectedEvent as Event).latitude && (selectedEvent as Event).longitude && (selectedEvent as Event).show_exact_location && (
                       <div className="mt-2">
                         <a
-                          href={`https://www.google.com/maps?q=${selectedEvent.latitude},${selectedEvent.longitude}`}
+                          href={`https://www.google.com/maps?q=${(selectedEvent as Event).latitude},${(selectedEvent as Event).longitude}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-700 text-sm font-medium"
@@ -413,37 +769,45 @@ export default function EventsPage() {
                     )}
                   </>
                 ) : (
-                  <p className="text-gray-500 italic">Location to be announced</p>
+                  <p className="text-gray-500 italic">📍 Location to be announced</p>
                 )}
-                <p className="text-gray-600">👤 Hosted by {selectedEvent.host?.name}</p>
-                {selectedEvent.age_range && (
-                  <p className="text-gray-600">👶 {selectedEvent.age_range}</p>
+                <p className="text-gray-600">👤 Hosted by {(selectedEvent as Event).host?.name}</p>
+                {(selectedEvent as Event).age_range && (
+                  <p className="text-gray-600">👶 Ages: {(selectedEvent as Event).age_range}</p>
                 )}
-                {selectedEvent.is_private && (
+                {(selectedEvent as Event).is_private && (
                   <p className="text-amber-600 text-sm">🔒 Private event</p>
                 )}
               </div>
 
-              <p className="text-gray-700 mb-6">{selectedEvent.description}</p>
+              {/* Event Description */}
+              <div className="mb-6">
+                <p className="text-gray-700">{(selectedEvent as Event).description}</p>
+              </div>
 
               <div className="flex items-center justify-between mb-4">
                 <span className="text-gray-600">
-                  {selectedEvent.rsvp_count} going
-                  {selectedEvent.max_attendees && ` / ${selectedEvent.max_attendees} max`}
+                  {(selectedEvent as Event).rsvp_count} going
+                  {(selectedEvent as Event).max_attendees && ` / ${(selectedEvent as Event).max_attendees} max`}
                 </span>
               </div>
 
-              {selectedEvent.host_id !== userId && (
+              {(selectedEvent as Event).host_id !== userId ? (
                 <button
-                  onClick={() => handleRsvp(selectedEvent.id, !selectedEvent.user_rsvp)}
+                  onClick={() => handleRsvp((selectedEvent as Event).id, !(selectedEvent as Event).user_rsvp)}
                   className={`w-full py-3 rounded-xl font-semibold transition-colors ${
-                    selectedEvent.user_rsvp
-                      ? 'bg-gray-200 text-gray-700 hover:bg-gray-300:bg-slate-600'
+                    (selectedEvent as Event).user_rsvp
+                      ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       : 'bg-teal-600 text-white hover:bg-teal-700'
                   }`}
                 >
-                  {selectedEvent.user_rsvp ? "Can't make it" : "I'm going!"}
+                  {(selectedEvent as Event).user_rsvp ? "Can't make it" : "I'm going!"}
                 </button>
+              ) : (
+                <div className="text-center">
+                  <p className="text-sm text-gray-500">You are hosting this event</p>
+                  <p className="text-xs text-gray-400 mt-1">Use Settings to edit event details</p>
+                </div>
               )}
             </div>
           </div>
@@ -465,18 +829,27 @@ export default function EventsPage() {
         
         <HavenHeader />
 
-        {/* Filter and Create Section */}
-        <div className="flex justify-between items-center mb-4">
+        {/* Controls Section */}
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
+              showFilters
+                ? 'bg-teal-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+            }`}
           >
             Filters
           </button>
-          
+          <button
+            onClick={() => router.push('/events/invitations')}
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+          >
+            Invitations
+          </button>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
           >
             + Create
           </button>
@@ -499,7 +872,7 @@ export default function EventsPage() {
                     <button
                       key={cat.value}
                       onClick={() => setCategoryFilter(cat.value)}
-                      className={`px-3 py-2 text-sm font-medium rounded-xl border-2 transition-colors ${
+                      className={`px-2 py-1.5 text-sm font-medium rounded-xl border-2 transition-colors ${
                         categoryFilter === cat.value
                           ? 'border-teal-600 bg-teal-50 text-teal-700'
                           : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
@@ -568,6 +941,65 @@ export default function EventsPage() {
         {/* Events List */}
         {filteredEvents.length === 0 ? (
           <div className="text-center py-12">
+            <div className="w-16 h-16 bg-teal-50 rounded-full mx-auto mb-4 flex items-center justify-center">
+              <svg 
+                viewBox="0 0 64 64" 
+                className="w-12 h-12"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Adult head (centered) */}
+                <circle 
+                  cx="32" 
+                  cy="29" 
+                  r="11" 
+                  fill="rgba(75, 85, 99, 0.8)"
+                  stroke="rgba(75, 85, 99, 0.9)" 
+                  strokeWidth="1"
+                />
+                {/* Adult shoulders */}
+                <path 
+                  d="M18 52 C18 44, 24 40, 32 40 C40 40, 46 44, 46 52" 
+                  fill="rgba(75, 85, 99, 0.8)"
+                  stroke="rgba(75, 85, 99, 0.9)" 
+                  strokeWidth="1"
+                />
+                
+                {/* Left child head */}
+                <circle 
+                  cx="13" 
+                  cy="40" 
+                  r="7" 
+                  fill="rgba(75, 85, 99, 0.75)"
+                  stroke="rgba(75, 85, 99, 0.85)" 
+                  strokeWidth="0.8"
+                />
+                {/* Left child shoulders */}
+                <path 
+                  d="M4 54 C4 50, 7 47, 13 47 C19 47, 22 50, 22 54" 
+                  fill="rgba(75, 85, 99, 0.75)"
+                  stroke="rgba(75, 85, 99, 0.85)" 
+                  strokeWidth="0.8"
+                />
+                
+                {/* Right child head */}
+                <circle 
+                  cx="51" 
+                  cy="40" 
+                  r="7" 
+                  fill="rgba(75, 85, 99, 0.75)"
+                  stroke="rgba(75, 85, 99, 0.85)" 
+                  strokeWidth="0.8"
+                />
+                {/* Right child shoulders */}
+                <path 
+                  d="M42 54 C42 50, 45 47, 51 47 C57 47, 60 50, 60 54" 
+                  fill="rgba(75, 85, 99, 0.75)"
+                  stroke="rgba(75, 85, 99, 0.85)" 
+                  strokeWidth="0.8"
+                />
+              </svg>
+            </div>
             <h3 className="font-semibold text-gray-900 mb-2">No events yet</h3>
             <p className="text-gray-600">Be the first to create one!</p>
           </div>
@@ -630,6 +1062,489 @@ export default function EventsPage() {
           userId={userId!}
         />
       )}
+
+      {/* Event Settings Modal */}
+      {showEventSettingsModal && selectedEvent && (selectedEvent as Event).host_id === userId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+            {/* Header */}
+            <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-gray-900">Event Settings</h3>
+                <button
+                  onClick={() => setShowEventSettingsModal(false)}
+                  className="text-gray-400 hover:text-gray-600 text-xl"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6 space-y-6">
+              {/* Event Title */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Event Title</h4>
+                {editingEventTitle ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={tempEventTitle}
+                      onChange={(e) => setTempEventTitle(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      placeholder="Event title"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveEventTitle}
+                        disabled={!tempEventTitle.trim() || savingEventChanges}
+                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                      >
+                        {savingEventChanges ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingEventTitle(false);
+                          setTempEventTitle((selectedEvent as Event).title);
+                        }}
+                        className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between bg-gray-50 rounded-xl p-4">
+                    <div>
+                      <p className="font-medium text-gray-900">{(selectedEvent as Event).title}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditingEventTitle(true);
+                        setTempEventTitle((selectedEvent as Event).title);
+                      }}
+                      className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Event Description */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Description</h4>
+                {editingEventDescription ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={tempEventDescription}
+                      onChange={(e) => setTempEventDescription(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                      placeholder="Event description..."
+                      rows={3}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveEventDescription}
+                        disabled={savingEventChanges}
+                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                      >
+                        {savingEventChanges ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingEventDescription(false);
+                          setTempEventDescription((selectedEvent as Event).description || '');
+                        }}
+                        className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between bg-gray-50 rounded-xl p-4">
+                    <p className="text-sm text-gray-600 flex-1">
+                      {(selectedEvent as Event).description || 'No description'}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setEditingEventDescription(true);
+                        setTempEventDescription((selectedEvent as Event).description || '');
+                      }}
+                      className="text-teal-600 hover:text-teal-700 text-sm font-medium ml-3"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Event Category */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Category</h4>
+                {editingEventCategory ? (
+                  <div className="space-y-2">
+                    <div className="flex gap-2 flex-wrap">
+                      {[
+                        { value: 'Educational', label: 'Educational' },
+                        { value: 'Play', label: 'Play' },
+                        { value: 'Other', label: 'Other' }
+                      ].map((cat) => (
+                        <button
+                          key={cat.value}
+                          type="button"
+                          onClick={() => setTempEventCategory(cat.value)}
+                          className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
+                            tempEventCategory === cat.value
+                              ? 'bg-teal-600 text-white'
+                              : 'bg-white text-gray-700 border border-gray-200 hover:bg-teal-50'
+                          }`}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                    {tempEventCategory === 'Other' && (
+                      <input
+                        type="text"
+                        value={tempCustomCategory}
+                        onChange={(e) => setTempCustomCategory(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        placeholder="Custom category name..."
+                      />
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveEventCategory}
+                        disabled={savingEventChanges || (tempEventCategory === 'Other' && !tempCustomCategory)}
+                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                      >
+                        {savingEventChanges ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingEventCategory(false);
+                          setTempEventCategory((selectedEvent as Event).category);
+                          setTempCustomCategory('');
+                        }}
+                        className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between bg-gray-50 rounded-xl p-4">
+                    <div>
+                      <span className={`inline-flex px-3 py-1 rounded-lg text-sm font-medium ${categoryColors[(selectedEvent as Event).category]}`}>
+                        {categoryLabels[(selectedEvent as Event).category]}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditingEventCategory(true);
+                        setTempEventCategory((selectedEvent as Event).category);
+                        setTempCustomCategory('');
+                      }}
+                      className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Date and Time */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Date & Time</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Date */}
+                  <div>
+                    {editingEventDate ? (
+                      <div className="space-y-2">
+                        <input
+                          type="date"
+                          value={tempEventDate}
+                          onChange={(e) => setTempEventDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          autoFocus
+                        />
+                        <div className="flex gap-1">
+                          <button
+                            onClick={saveEventDate}
+                            disabled={!tempEventDate || savingEventChanges}
+                            className="flex-1 px-2 py-1 bg-teal-600 text-white rounded text-xs hover:bg-teal-700 disabled:bg-gray-300"
+                          >
+                            {savingEventChanges ? '...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingEventDate(false);
+                              setTempEventDate((selectedEvent as Event).event_date);
+                            }}
+                            className="flex-1 px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 rounded-xl p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Date</p>
+                            <p className="text-sm font-medium text-gray-900">{formatDate((selectedEvent as Event).event_date)}</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setEditingEventDate(true);
+                              setTempEventDate((selectedEvent as Event).event_date);
+                            }}
+                            className="text-teal-600 hover:text-teal-700 text-xs font-medium"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Time */}
+                  <div>
+                    {editingEventTime ? (
+                      <div className="space-y-2">
+                        <input
+                          type="time"
+                          value={tempEventTime}
+                          onChange={(e) => setTempEventTime(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          autoFocus
+                        />
+                        <div className="flex gap-1">
+                          <button
+                            onClick={saveEventTime}
+                            disabled={!tempEventTime || savingEventChanges}
+                            className="flex-1 px-2 py-1 bg-teal-600 text-white rounded text-xs hover:bg-teal-700 disabled:bg-gray-300"
+                          >
+                            {savingEventChanges ? '...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingEventTime(false);
+                              setTempEventTime((selectedEvent as Event).event_time);
+                            }}
+                            className="flex-1 px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 rounded-xl p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Time</p>
+                            <p className="text-sm font-medium text-gray-900">{formatTime((selectedEvent as Event).event_time)}</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setEditingEventTime(true);
+                              setTempEventTime((selectedEvent as Event).event_time);
+                            }}
+                            className="text-teal-600 hover:text-teal-700 text-xs font-medium"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Location</h4>
+                {editingEventLocation ? (
+                  <div className="space-y-2">
+                    <SimpleLocationPicker
+                      onLocationSelect={setTempEventLocation}
+                      placeholder="Search for address or venue..."
+                    />
+                    {tempEventLocation && (
+                      <div className="p-2 bg-teal-50 border border-teal-200 rounded-lg">
+                        <div className="text-sm font-medium text-teal-900">{tempEventLocation.name}</div>
+                        <div className="text-xs text-teal-700">{tempEventLocation.address}</div>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveEventLocation}
+                        disabled={savingEventChanges}
+                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                      >
+                        {savingEventChanges ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingEventLocation(false);
+                          setTempEventLocation(null);
+                        }}
+                        className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between bg-gray-50 rounded-xl p-4">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900 mb-1">
+                        {(selectedEvent as Event).location_name || 'No location set'}
+                      </p>
+                      {(selectedEvent as Event).exact_address && (
+                        <p className="text-xs text-gray-600">{(selectedEvent as Event).exact_address}</p>
+                      )}
+                      {(selectedEvent as Event).show_exact_location && (
+                        <p className="text-xs text-teal-600 mt-1">📍 Full address visible to attendees</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditingEventLocation(true);
+                        if ((selectedEvent as Event).location_name && (selectedEvent as Event).exact_address) {
+                          setTempEventLocation({
+                            name: (selectedEvent as Event).location_name,
+                            address: (selectedEvent as Event).exact_address || '',
+                            lat: (selectedEvent as Event).latitude || 0,
+                            lng: (selectedEvent as Event).longitude || 0,
+                          });
+                        } else {
+                          setTempEventLocation(null);
+                        }
+                      }}
+                      className="text-teal-600 hover:text-teal-700 text-sm font-medium ml-3"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Age Range */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Age Range</h4>
+                {editingEventAgeRange ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={tempEventAgeRange}
+                      onChange={(e) => setTempEventAgeRange(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      placeholder="e.g. 5-8 years, Toddlers, All ages"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveEventAgeRange}
+                        disabled={savingEventChanges}
+                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                      >
+                        {savingEventChanges ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingEventAgeRange(false);
+                          setTempEventAgeRange((selectedEvent as Event).age_range || '');
+                        }}
+                        className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between bg-gray-50 rounded-xl p-4">
+                    <p className="text-sm text-gray-600">
+                      {(selectedEvent as Event).age_range || 'No age range specified'}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setEditingEventAgeRange(true);
+                        setTempEventAgeRange((selectedEvent as Event).age_range || '');
+                      }}
+                      className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Privacy Settings */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Privacy</h4>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {(selectedEvent as Event).is_private ? 'Private Event' : 'Public Event'}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {(selectedEvent as Event).is_private 
+                          ? 'Only your connections can see and join'
+                          : 'Anyone can see and join this event'
+                        }
+                      </p>
+                    </div>
+                    <div className={`w-3 h-3 rounded-full ${(selectedEvent as Event).is_private ? 'bg-amber-500' : 'bg-green-500'}`}></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Attendee Count */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Attendance</h4>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {(selectedEvent as Event).rsvp_count} going
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {(selectedEvent as Event).max_attendees 
+                          ? `${((selectedEvent as Event).max_attendees || 0) - ((selectedEvent as Event).rsvp_count || 0)} spots remaining`
+                          : 'No attendance limit'
+                        }
+                      </p>
+                    </div>
+                    <span className="text-teal-600 text-sm font-medium">
+                      {(selectedEvent as Event).rsvp_count}/{(selectedEvent as Event).max_attendees || '∞'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Created Info */}
+              <div className="pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-500">
+                  Event created {selectedEvent ? new Date((selectedEvent as Event).event_date).toLocaleDateString('en-AU', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  }) : ''}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Bottom spacing for mobile nav */}
+      <div className="h-20"></div>
     </div>
     </ProtectedRoute>
   );
@@ -688,6 +1603,8 @@ function CreateEventModal({
         longitude: exactLocation ? exactLocation.lng : null,
       };
 
+      console.log('Creating event with data:', eventData);
+      
       const res = await fetch(
         `${supabaseUrl}/rest/v1/events`,
         {
@@ -707,7 +1624,7 @@ function CreateEventModal({
         
         // Get host name
         const hostRes = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=name`,
+          `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=family_name,display_name`,
           {
             headers: {
               'apikey': supabaseKey!,
@@ -719,10 +1636,16 @@ function CreateEventModal({
         
         onCreated({
           ...newEvent,
-          host: hosts[0] || { name: 'You' },
+          host: hosts[0] ? { 
+            name: hosts[0].display_name || hosts[0].family_name || 'You' 
+          } : { name: 'You' },
           rsvp_count: 0,
           user_rsvp: false,
         });
+      } else {
+        const errorText = await res.text();
+        console.error('Event creation failed:', res.status, errorText);
+        console.error('Request data was:', eventData);
       }
     } catch (err) {
       console.error('Error creating event:', err);
@@ -751,43 +1674,24 @@ function CreateEventModal({
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="flex gap-2 flex-wrap justify-center">
               {[
                 { value: 'Educational', label: 'Educational' },
                 { value: 'Play', label: 'Play' },
                 { value: 'Other', label: 'Other' }
               ].map((cat) => (
-                <label 
+                <button
                   key={cat.value}
-                  className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
-                    category === cat.value 
-                      ? 'border-teal-600 bg-teal-50'
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
+                  type="button"
+                  onClick={() => setCategory(cat.value)}
+                  className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+                    category === cat.value
+                      ? 'bg-teal-600 text-white shadow-md scale-105'
+                      : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name="category"
-                    value={cat.value}
-                    checked={category === cat.value}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="sr-only"
-                  />
-                  <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
-                    category === cat.value 
-                      ? 'border-teal-600 bg-teal-600' 
-                      : 'border-gray-300'
-                  }`}>
-                    {category === cat.value && (
-                      <div className="w-full h-full rounded-full bg-white transform scale-50"></div>
-                    )}
-                  </div>
-                  <span className={`font-medium ${
-                    category === cat.value ? 'text-teal-900' : 'text-gray-700'
-                  }`}>
-                    {cat.label}
-                  </span>
-                </label>
+                  {cat.label}
+                </button>
               ))}
               
               {/* Custom category description for "Other" */}

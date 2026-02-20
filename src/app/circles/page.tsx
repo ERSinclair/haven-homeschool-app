@@ -221,7 +221,7 @@ export default function CirclesPage() {
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+            className="px-2 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
           >
             Try Again
           </button>
@@ -239,26 +239,34 @@ export default function CirclesPage() {
         {/* Controls */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
+            onClick={() => setShowPrivate(!showPrivate)}
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+          >
+            {showPrivate ? 'Private' : 'Public'}
+          </button>
+          <button
+            onClick={() => router.push('/circles/invitations')}
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+          >
+            Invitations
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+          >
+            + Create
+          </button>
+        </div>
+        <div className="flex gap-2 mb-4 justify-center">
+          <button
             onClick={() => setShowSearch(!showSearch)}
-            className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+            className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showSearch || searchTerm
                 ? 'bg-teal-600 text-white shadow-md scale-105'
                 : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
             }`}
           >
             Search
-          </button>
-          <button
-            onClick={() => setShowPrivate(!showPrivate)}
-            className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
-          >
-            {showPrivate ? 'Private' : 'Public'}
-          </button>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
-          >
-            + Create
           </button>
         </div>
 
@@ -309,7 +317,7 @@ export default function CirclesPage() {
               const colors = getColorClasses(circle.color);
               return (
                 <Link key={circle.id} href={`/circles/${circle.id}`}>
-                  <div className={`bg-white rounded-xl shadow-sm border ${colors.border} p-4 hover:shadow-md transition-all`}>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-all">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
@@ -462,14 +470,14 @@ export default function CirclesPage() {
                   setNewCircleData({ name: '', description: '', is_public: false, color: 'teal' });
                 }}
                 disabled={creating}
-                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50"
+                className="flex-1 px-2 py-1.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={createCircle}
                 disabled={creating || !newCircleData.name.trim()}
-                className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="flex-1 px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
               >
                 {creating ? 'Creating...' : 'Create Circle'}
               </button>
@@ -477,6 +485,9 @@ export default function CirclesPage() {
           </div>
         </div>
       )}
+      
+      {/* Bottom spacing for mobile nav */}
+      <div className="h-20"></div>
     </div>
     </ProtectedRoute>
   );

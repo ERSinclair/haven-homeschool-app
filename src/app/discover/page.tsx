@@ -29,7 +29,7 @@ type Family = {
   admin_level?: 'gold' | 'silver' | 'bronze' | null;
   is_online?: boolean;
   last_active?: string;
-  user_type?: 'family' | 'teacher' | 'event' | 'facility' | 'other';
+  user_type?: 'family' | 'teacher' | 'business' | 'event' | 'facility' | 'other';
 };
 
 type Profile = {
@@ -39,10 +39,18 @@ type Profile = {
   kids_ages: number[];
   status: string;
   bio?: string;
+  user_type?: 'family' | 'teacher' | 'business' | 'event' | 'facility' | 'other';
 };
 
 type ViewMode = 'list' | 'map';
 type Section = 'families';
+
+type FilterOption = {
+  value: string;
+  label: string;
+  isOther?: boolean;
+  disabled?: boolean;
+};
 
 // Calculate and format last active time
 const formatLastActive = (lastActiveStr?: string): string => {
@@ -131,6 +139,9 @@ export default function EnhancedDiscoverPage() {
   const [userCircles, setUserCircles] = useState<any[]>([]);
   const [invitingToCircle, setInvitingToCircle] = useState(false);
   
+  // Connection requests state
+  const [connectionRequests, setConnectionRequests] = useState<Map<string, {status: string, isRequester: boolean}>>(new Map());
+  
   // View and filtering
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [activeSection, setActiveSection] = useState<Section>('families');
@@ -140,7 +151,16 @@ export default function EnhancedDiscoverPage() {
   const [maxDistance, setMaxDistance] = useState(15);
   const [ageRange, setAgeRange] = useState({ min: 1, max: 10 });
   const [filterTypes, setFilterTypes] = useState<string[]>(['all']);
+  const [familySubFilters, setFamilySubFilters] = useState<string[]>(['all']);
   const [locationFilter, setLocationFilter] = useState('');
+  
+  // Other filter text input
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const [otherSearchTerm, setOtherSearchTerm] = useState('');
+  
+  // Family other filter text input
+  const [showFamilyOtherInput, setShowFamilyOtherInput] = useState(false);
+  const [familyOtherSearchTerm, setFamilyOtherSearchTerm] = useState('');
   
   // Radius search - with localStorage persistence for testing
   const [radiusSearch, setRadiusSearch] = useState(() => {
@@ -286,9 +306,19 @@ export default function EnhancedDiscoverPage() {
             const completionStep = checkProfileCompletion(profileData);
             
             if (completionStep !== 'complete') {
-              console.log('Enhanced Discover: Profile incomplete, redirecting to signup');
-              router.push(getResumeSignupUrl(completionStep, profileData.user_type));
-              return;
+              console.log('Enhanced Discover: Profile incomplete, but allowing access');
+              console.log('Profile data:', {
+                name: profileData.family_name || profileData.display_name,
+                username: profileData.username,
+                location_name: profileData.location_name,
+                status: profileData.status,
+                bio: profileData.bio,
+                kids_ages: profileData.kids_ages,
+                user_type: profileData.user_type,
+                completionStep: completionStep
+              });
+              // Allow access to discover regardless of completion status
+              // This prevents redirect loops and lets users use the app
             }
           }
           
@@ -359,13 +389,13 @@ export default function EnhancedDiscoverPage() {
         const familiesData = await familiesRes.json();
         console.log('Enhanced Discover: Families result:', familiesData);
         
-        // Add mock online status and user types for demo
+        // Add mock online status (keep real user_type from database)
         const familiesWithStatus = familiesData.map((family: Family) => ({
           ...family,
           is_online: Math.random() > 0.7, // 30% chance of being online
           last_active: Math.random() > 0.3 ? new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString() : undefined, // Random last active within 30 days
-          user_type: Math.random() > 0.8 ? 
-            (Math.random() > 0.6 ? 'teacher' : Math.random() > 0.5 ? 'facility' : 'event') : 'family' // Most are families, some teachers/facilities/events
+          // Keep real user_type from database (family/teacher/business)
+          user_type: family.user_type || 'family' // Default to family if not set
         }));
         
         setFamilies(familiesWithStatus);
@@ -396,7 +426,16 @@ export default function EnhancedDiscoverPage() {
 
   // Filter families based on current filters
   useEffect(() => {
-    let filtered = families.filter(family => !hiddenFamilies.includes(family.id));
+    let filtered = families.filter(family => {
+      // Filter out hidden families
+      if (hiddenFamilies.includes(family.id)) return false;
+      
+      // Filter out already connected families (accepted connections)
+      const connection = connectionRequests.get(family.id);
+      if (connection && connection.status === 'accepted') return false;
+      
+      return true;
+    });
 
     // Search term
     if (searchTerm) {
@@ -405,6 +444,22 @@ export default function EnhancedDiscoverPage() {
         family.location_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         family.bio?.toLowerCase().includes(searchTerm.toLowerCase())
       );
+    }
+
+    // Other search filter
+    if (showOtherInput && otherSearchTerm) {
+      const otherSearchLower = otherSearchTerm.toLowerCase();
+      filtered = filtered.filter(family => {
+        const bio = (family.bio || '').toLowerCase();
+        const interests = (family.interests || []).map(i => i.toLowerCase()).join(' ');
+        const userType = (family.user_type || '').toLowerCase();
+        
+        return (
+          bio.includes(otherSearchLower) ||
+          interests.includes(otherSearchLower) ||
+          userType.includes(otherSearchLower)
+        );
+      });
     }
 
     // Radius search (always enabled when user location is available)
@@ -437,7 +492,29 @@ export default function EnhancedDiscoverPage() {
     if (!filterTypes.includes('all')) {
       filtered = filtered.filter(family => {
         const userType = family.user_type || 'family';
-        return filterTypes.includes(userType);
+        
+        // If family is selected and we have sub-filters, apply them
+        if (filterTypes.includes('family') && userType === 'family' && !familySubFilters.includes('all')) {
+          // Map family profiles to family sub-types based on their bio/interests
+          const familySubType = getFamilySubType(family);
+          return familySubFilters.includes(familySubType);
+        }
+        
+        // If family other search is active, apply that filter
+        if (filterTypes.includes('family') && userType === 'family' && showFamilyOtherInput && familyOtherSearchTerm) {
+          const familyOtherSearchLower = familyOtherSearchTerm.toLowerCase();
+          const bio = (family.bio || '').toLowerCase();
+          const interests = (family.interests || []).map(i => i.toLowerCase()).join(' ');
+          
+          return (
+            bio.includes(familyOtherSearchLower) ||
+            interests.includes(familyOtherSearchLower)
+          );
+        }
+        
+        // Treat facilities as businesses for filtering
+        const effectiveType = userType === 'facility' ? 'business' : userType;
+        return filterTypes.includes(effectiveType);
       });
     }
 
@@ -455,7 +532,7 @@ export default function EnhancedDiscoverPage() {
     });
 
     setFilteredFamilies(sortedFamilies);
-  }, [families, searchTerm, locationFilter, ageRange, filterTypes, hiddenFamilies, profile, userLocation, searchRadius]);
+  }, [families, searchTerm, locationFilter, ageRange, filterTypes, familySubFilters, hiddenFamilies, profile, userLocation, searchRadius, connectionRequests, showOtherInput, otherSearchTerm, showFamilyOtherInput, familyOtherSearchTerm]);
 
   // Family selection handlers
   const toggleFamilySelection = (familyId: string) => {
@@ -534,8 +611,84 @@ export default function EnhancedDiscoverPage() {
     return families.filter(family => hiddenFamilies.includes(family.id));
   };
 
-  const [connectionRequests, setConnectionRequests] = useState<Map<string, {status: string, isRequester: boolean}>>(new Map());
   const [selectedFamilyDetails, setSelectedFamilyDetails] = useState<Family | null>(null);
+
+  // Get filter options based on current user's account type
+  const getContextualFilterOptions = (): FilterOption[] => {
+    const userType = profile?.user_type || 'family';
+    
+    switch (userType) {
+      case 'business':
+      case 'facility':
+        return [
+          { value: 'all', label: 'All' },
+          { value: 'teacher', label: 'Teachers' },
+          { value: 'empty1', label: '', disabled: true }, // Placeholder for grid spacing
+          { value: 'family', label: 'Families' },
+          { value: 'other', label: 'Other', isOther: true },
+          { value: 'business', label: 'Businesses' },
+        ];
+      
+      case 'teacher':
+        return [
+          { value: 'all', label: 'All' },
+          { value: 'teacher', label: 'Teachers' },
+          { value: 'business', label: 'Businesses' },
+          { value: 'family', label: 'Families' },
+          { value: 'other', label: 'Other', isOther: true },
+          { value: 'empty2', label: '', disabled: true }, // Placeholder for grid spacing
+        ];
+        
+      case 'family':
+      default:
+        return [
+          { value: 'all', label: 'All' },
+          { value: 'teacher', label: 'Teachers' },
+          { value: 'business', label: 'Businesses' },
+          { value: 'family', label: 'Families' },
+          { value: 'other', label: 'Other', isOther: true },
+          { value: 'empty3', label: '', disabled: true }, // Placeholder for grid spacing
+        ];
+    }
+  };
+
+  // Get family sub-filter options based on current user type
+  const getFamilySubFilterOptions = (): FilterOption[] => {
+    const userType = profile?.user_type || 'family';
+    
+    if (userType === 'family') {
+      return [
+        { value: 'all', label: 'All Families' },
+        { value: 'homeschool', label: 'Homeschool' },
+        { value: 'community', label: 'Family Community' },
+        { value: 'other', label: 'Other', isOther: true },
+      ];
+    }
+    
+    // For non-family accounts, don't show family sub-filters
+    return [];
+  };
+
+  // Determine family sub-type based on profile data
+  const getFamilySubType = (family: Family): string => {
+    const bio = (family.bio || '').toLowerCase();
+    const interests = (family.interests || []).map(i => i.toLowerCase());
+    
+    // Check for homeschool indicators
+    if (bio.includes('homeschool') || bio.includes('home school') || 
+        interests.some(i => i.includes('homeschool') || i.includes('home school'))) {
+      return 'homeschool';
+    }
+    
+    // Check for community indicators
+    if (bio.includes('community') || bio.includes('playgroup') || bio.includes('meetup') ||
+        interests.some(i => i.includes('community') || i.includes('playgroup'))) {
+      return 'community';
+    }
+    
+    // Default to other for families that don't match specific categories
+    return 'other';
+  };
 
   // Helper function to get connection button state
   const getConnectionButtonState = (familyId: string) => {
@@ -738,6 +891,10 @@ export default function EnhancedDiscoverPage() {
       if (response.ok) {
         const circles = await response.json();
         setUserCircles(circles);
+      } else if (response.status === 400) {
+        // Table might not exist - circles feature not set up
+        console.log('Circles table not found - feature disabled');
+        setUserCircles([]);
       }
     } catch (error) {
       console.error('Error loading user circles:', error);
@@ -745,45 +902,9 @@ export default function EnhancedDiscoverPage() {
   };
 
   const inviteToCircle = async (circleId: string, memberId: string) => {
-    try {
-      setInvitingToCircle(true);
-      const session = getStoredSession();
-      if (!session?.user) throw new Error('Not authenticated');
-
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      // Send invitation that requires confirmation
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/circle_members`,
-        {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            circle_id: circleId,
-            member_id: memberId,
-            status: 'pending',
-            invited_by: session.user.id,
-            role: 'member'
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to invite to circle');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error inviting to circle:', error);
-      return false;
-    } finally {
-      setInvitingToCircle(false);
-    }
+    // Circles feature not implemented yet
+    console.log('Circle invitations disabled - feature not ready');
+    return false;
   };
 
   const sendMessage = async (recipientId: string, message: string) => {
@@ -881,9 +1002,15 @@ export default function EnhancedDiscoverPage() {
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
             onClick={() => window.location.href = '/events?type=public'}
-            className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
           >
             Events
+          </button>
+          <button
+            onClick={() => window.location.href = '/education'}
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+          >
+            Education
           </button>
         </div>
         </div>
@@ -892,7 +1019,7 @@ export default function EnhancedDiscoverPage() {
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+            className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showSearch || searchTerm
                 ? 'bg-teal-600 text-white shadow-md scale-105'
                 : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
@@ -902,7 +1029,7 @@ export default function EnhancedDiscoverPage() {
           </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+            className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showFilters
                 ? 'bg-teal-600 text-white shadow-md scale-105'
                 : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
@@ -913,7 +1040,7 @@ export default function EnhancedDiscoverPage() {
           {viewMode !== 'list' && (
             <button
               onClick={() => setViewMode('list')}
-              className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
             >
               List
             </button>
@@ -921,7 +1048,7 @@ export default function EnhancedDiscoverPage() {
           {viewMode !== 'map' && (
             <button
               onClick={() => setViewMode('map')}
-              className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
             >
               Map
             </button>
@@ -955,30 +1082,58 @@ export default function EnhancedDiscoverPage() {
             <div className="space-y-4">
                 {/* Radius Filter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Search Radius (km)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={searchRadius}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '') {
-                        setSearchRadius(15); // Set to default when empty
-                        return;
-                      }
-                      const newRadius = parseInt(value);
-                      if (!isNaN(newRadius)) {
-                        setSearchRadius(Math.max(1, Math.min(100, newRadius)));
-                        // Auto-load user location if not set
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Search Radius</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const newRadius = Math.max(1, searchRadius - 1);
+                        setSearchRadius(newRadius);
                         if (!userLocation) {
                           getUserLocation();
                         }
-                      }
-                    }}
-                    onFocus={(e) => e.target.select()}
-                    className="w-20 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
-                  />
+                      }}
+                      className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold"
+                    >
+                      -
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={searchRadius}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value === '') {
+                            setSearchRadius(15);
+                            return;
+                          }
+                          const newRadius = parseInt(value);
+                          if (!isNaN(newRadius)) {
+                            setSearchRadius(Math.max(1, Math.min(100, newRadius)));
+                            if (!userLocation) {
+                              getUserLocation();
+                            }
+                          }
+                        }}
+                        onFocus={(e) => e.target.select()}
+                        className="w-16 px-2 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                      />
+                      <span className="text-sm text-gray-600 font-medium">km</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const newRadius = Math.min(100, searchRadius + 1);
+                        setSearchRadius(newRadius);
+                        if (!userLocation) {
+                          getUserLocation();
+                        }
+                      }}
+                      className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
                   {locationError && (
                     <p className="text-xs text-red-600 mt-1">{locationError}</p>
                   )}
@@ -1030,21 +1185,24 @@ export default function EnhancedDiscoverPage() {
                 {/* User Type Filter */}
                 <div>
                   <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { value: 'all', label: 'All' },
-                      { value: 'family', label: 'Families' },
-                      { value: 'teacher', label: 'Teachers' },
-                      { value: 'event', label: 'Events' },
-                      { value: 'facility', label: 'Facilities' },
-                      { value: 'other', label: 'Other' },
-                    ].map((type) => (
+                    {getContextualFilterOptions().map((type) => (
                       <button
                         key={type.value}
-                        onClick={() => toggleFilterType(type.value)}
+                        onClick={() => {
+                          if (type.disabled) return; // Don't do anything for placeholders
+                          if (type.isOther) {
+                            setShowOtherInput(!showOtherInput);
+                          } else {
+                            toggleFilterType(type.value);
+                          }
+                        }}
+                        disabled={type.disabled}
                         className={`px-3 py-2 text-sm font-medium rounded-xl border-2 transition-colors ${
-                          filterTypes.includes(type.value)
-                            ? 'border-teal-600 bg-teal-50 text-teal-700'
-                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                          type.disabled
+                            ? 'invisible' // Hide placeholder buttons
+                            : (filterTypes.includes(type.value) || (type.isOther && showOtherInput))
+                              ? 'border-teal-600 bg-teal-50 text-teal-700'
+                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
                         }`}
                       >
                         {type.label}
@@ -1052,6 +1210,97 @@ export default function EnhancedDiscoverPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Other Filter Text Input */}
+                {showOtherInput && (
+                  <div className="mt-4">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="e.g., tutor, support group, co-op, consultant..."
+                        value={otherSearchTerm}
+                        onChange={(e) => setOtherSearchTerm(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                        autoFocus
+                      />
+                      {otherSearchTerm && (
+                        <button
+                          onClick={() => {
+                            setOtherSearchTerm('');
+                          }}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Family Sub-Filters */}
+                {filterTypes.includes('family') && getFamilySubFilterOptions().length > 0 && (
+                  <div className="mt-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      {getFamilySubFilterOptions().map((subType) => (
+                        <button
+                          key={subType.value}
+                          onClick={() => {
+                            if (subType.isOther) {
+                              setShowFamilyOtherInput(!showFamilyOtherInput);
+                            } else if (subType.value === 'all') {
+                              setFamilySubFilters(['all']);
+                              setShowFamilyOtherInput(false);
+                            } else {
+                              setFamilySubFilters(prev => {
+                                const newFilters = prev.filter(f => f !== 'all');
+                                if (newFilters.includes(subType.value)) {
+                                  const filtered = newFilters.filter(f => f !== subType.value);
+                                  return filtered.length === 0 ? ['all'] : filtered;
+                                } else {
+                                  return [...newFilters, subType.value];
+                                }
+                              });
+                              setShowFamilyOtherInput(false);
+                            }
+                          }}
+                          className={`px-3 py-2 text-sm font-medium rounded-xl border-2 transition-colors ${
+                            (familySubFilters.includes(subType.value) || (subType.isOther && showFamilyOtherInput))
+                              ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          {subType.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Family Other Filter Text Input */}
+                {filterTypes.includes('family') && showFamilyOtherInput && (
+                  <div className="mt-4">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="e.g., Charlotte Mason, Montessori, unschooling, special needs..."
+                        value={familyOtherSearchTerm}
+                        onChange={(e) => setFamilyOtherSearchTerm(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                        autoFocus
+                      />
+                      {familyOtherSearchTerm && (
+                        <button
+                          onClick={() => {
+                            setFamilyOtherSearchTerm('');
+                          }}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Hidden Families */}
                 {hiddenFamilies.length > 0 && (
@@ -1099,8 +1348,64 @@ export default function EnhancedDiscoverPage() {
           <div className="space-y-2 px-6">
             {filteredFamilies.length === 0 ? (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <span className="text-2xl">👥</span>
+                <div className="w-16 h-16 bg-teal-50 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <svg 
+                    viewBox="0 0 64 64" 
+                    className="w-12 h-12"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    {/* Adult head (centered) */}
+                    <circle 
+                      cx="32" 
+                      cy="29" 
+                      r="11" 
+                      fill="rgba(75, 85, 99, 0.8)"
+                      stroke="rgba(75, 85, 99, 0.9)" 
+                      strokeWidth="1"
+                    />
+                    {/* Adult shoulders */}
+                    <path 
+                      d="M18 52 C18 44, 24 40, 32 40 C40 40, 46 44, 46 52" 
+                      fill="rgba(75, 85, 99, 0.8)"
+                      stroke="rgba(75, 85, 99, 0.9)" 
+                      strokeWidth="1"
+                    />
+                    
+                    {/* Left child head */}
+                    <circle 
+                      cx="13" 
+                      cy="40" 
+                      r="7" 
+                      fill="rgba(75, 85, 99, 0.75)"
+                      stroke="rgba(75, 85, 99, 0.85)" 
+                      strokeWidth="0.8"
+                    />
+                    {/* Left child shoulders */}
+                    <path 
+                      d="M4 54 C4 50, 7 47, 13 47 C19 47, 22 50, 22 54" 
+                      fill="rgba(75, 85, 99, 0.75)"
+                      stroke="rgba(75, 85, 99, 0.85)" 
+                      strokeWidth="0.8"
+                    />
+                    
+                    {/* Right child head */}
+                    <circle 
+                      cx="51" 
+                      cy="40" 
+                      r="7" 
+                      fill="rgba(75, 85, 99, 0.75)"
+                      stroke="rgba(75, 85, 99, 0.85)" 
+                      strokeWidth="0.8"
+                    />
+                    {/* Right child shoulders */}
+                    <path 
+                      d="M42 54 C42 50, 45 47, 51 47 C57 47, 60 50, 60 54" 
+                      fill="rgba(75, 85, 99, 0.75)"
+                      stroke="rgba(75, 85, 99, 0.85)" 
+                      strokeWidth="0.8"
+                    />
+                  </svg>
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No families found</h3>
                 <p className="text-gray-600">
@@ -1464,6 +1769,11 @@ export default function EnhancedDiscoverPage() {
                   {selectedFamilyDetails.username && (
                     <p className="text-gray-600 mb-2">@{selectedFamilyDetails.username}</p>
                   )}
+                  {selectedFamilyDetails.user_type && (
+                    <span className="inline-block px-3 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full capitalize mb-2">
+                      {selectedFamilyDetails.user_type === 'family' ? 'Family' : selectedFamilyDetails.user_type === 'teacher' ? 'Teacher' : selectedFamilyDetails.user_type === 'business' ? 'Business' : selectedFamilyDetails.user_type}
+                    </span>
+                  )}
                   <p className="text-sm text-gray-500">
                     Joined {new Date(selectedFamilyDetails.created_at).toLocaleDateString('en-AU', { 
                       year: 'numeric', 
@@ -1493,7 +1803,7 @@ export default function EnhancedDiscoverPage() {
               {/* Children */}
               {selectedFamilyDetails.kids_ages && selectedFamilyDetails.kids_ages.length > 0 && (
                 <div className="mb-6">
-                  <h4 className="font-semibold text-gray-900 mb-3">👨‍👩‍👧‍👦 Children</h4>
+                  <h4 className="font-semibold text-gray-900 mb-3">Children</h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedFamilyDetails.kids_ages.map((age, index) => (
                       <div key={index} className="bg-teal-50 border border-teal-200 rounded-full px-3 py-2">
@@ -1507,7 +1817,7 @@ export default function EnhancedDiscoverPage() {
               {/* About Us */}
               {selectedFamilyDetails.bio && (
                 <div className="mb-6">
-                  <h4 className="font-semibold text-gray-900 mb-2">💬 About Us</h4>
+                  <h4 className="font-semibold text-gray-900 mb-2">About Us</h4>
                   <p className="text-gray-700 leading-relaxed">{selectedFamilyDetails.bio}</p>
                 </div>
               )}
@@ -1527,11 +1837,11 @@ export default function EnhancedDiscoverPage() {
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <button
                   onClick={() => sendConnectionRequest(selectedFamilyDetails.id)}
                   disabled={getConnectionButtonState(selectedFamilyDetails.id).disabled}
-                  className={`flex-1 px-4 py-3 rounded-xl font-medium transition-colors min-w-0 ${getConnectionButtonState(selectedFamilyDetails.id).style}`}
+                  className={`flex-1 px-2 py-2 rounded-xl font-semibold transition-colors text-sm ${getConnectionButtonState(selectedFamilyDetails.id).style}`}
                 >
                   {getConnectionButtonState(selectedFamilyDetails.id).text}
                 </button>
@@ -1540,9 +1850,17 @@ export default function EnhancedDiscoverPage() {
                     setSelectedFamily(selectedFamilyDetails);
                     setSelectedFamilyDetails(null);
                   }}
-                  className="flex-1 px-4 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors min-w-0"
+                  className="flex-1 px-2 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 active:scale-[0.98] transition-all text-sm"
                 >
                   Message
+                </button>
+                <button
+                  onClick={() => {
+                    window.location.href = `/profile?user=${selectedFamilyDetails.id}`;
+                  }}
+                  className="flex-1 px-2 py-2 bg-white text-emerald-600 border-2 border-emerald-200 rounded-xl font-semibold hover:border-emerald-400 hover:bg-emerald-50 active:scale-[0.98] transition-all text-sm"
+                >
+                  Profile
                 </button>
               </div>
             </div>
@@ -1647,6 +1965,11 @@ export default function EnhancedDiscoverPage() {
           </div>
         </div>
       )}
+
+      {/* Modal removed - now using inline text input */}
+      
+      {/* Bottom spacing for mobile nav */}
+      <div className="h-20"></div>
     </div>
     </ProtectedRoute>
   );

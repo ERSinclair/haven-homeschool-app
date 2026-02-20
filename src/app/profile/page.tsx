@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { getStoredSession, clearStoredSession } from '@/lib/session';
 import { getAvatarColor, statusColors } from '@/lib/colors';
 import AvatarUpload from '@/components/AvatarUpload';
+import PhotoGallery from '@/components/PhotoGallery';
 import HavenHeader from '@/components/HavenHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AdminBadge from '@/components/AdminBadge';
@@ -23,6 +24,7 @@ type Profile = {
   avatar_url?: string;
   is_verified: boolean;
   admin_level?: 'gold' | 'silver' | 'bronze' | null;
+  user_type?: 'family' | 'teacher' | 'business' | string;
 };
 
 export default function ProfilePage() {
@@ -47,6 +49,7 @@ export default function ProfilePage() {
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [isViewingOtherUser, setIsViewingOtherUser] = useState(false);
   const router = useRouter();
 
   // Load user and profile
@@ -66,9 +69,17 @@ export default function ProfilePage() {
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
         
+        // Check if we're viewing another user's profile
+        const urlParams = new URLSearchParams(window.location.search);
+        const viewingUserId = urlParams.get('user');
+        const targetUserId = viewingUserId || session.user.id;
+        const viewingOtherUser = viewingUserId && viewingUserId !== session.user.id;
+        
+        setIsViewingOtherUser(!!viewingOtherUser);
+        
         // Get profile via direct fetch
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=*`,
+          `${supabaseUrl}/rest/v1/profiles?id=eq.${targetUserId}&select=*`,
           {
             headers: {
               'apikey': supabaseKey!,
@@ -124,9 +135,8 @@ export default function ProfilePage() {
           }
         }
 
-        // Check URL parameters for auto-edit mode
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('edit') === 'true') {
+        // Check URL parameters for auto-edit mode (only for own profile)
+        if (!viewingOtherUser && urlParams.get('edit') === 'true') {
           setIsEditing(true);
           
           // Focus on bio field if requested
@@ -183,7 +193,7 @@ export default function ProfilePage() {
             kids_ages: children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18),
             status: editData.status.includes('other') && customDescriptions.some(desc => desc.trim()) 
               ? customDescriptions.filter(desc => desc.trim()).join(', ')
-              : (editData.status.filter(s => s !== 'other').length > 0 ? editData.status.filter(s => s !== 'other')[0] : 'considering'),
+              : (editData.status.filter(s => s !== 'other').length > 0 ? editData.status.filter(s => s !== 'other') : ['considering']),
             updated_at: new Date().toISOString(),
           }),
         }
@@ -203,7 +213,7 @@ export default function ProfilePage() {
           kids_ages: children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18),
           status: editData.status.includes('other') && customDescriptions.some(desc => desc.trim()) 
             ? customDescriptions.filter(desc => desc.trim()).join(', ')
-            : (editData.status.filter(s => s !== 'other').length > 0 ? editData.status.filter(s => s !== 'other')[0] : 'considering'),
+            : (editData.status.filter(s => s !== 'other').length > 0 ? editData.status.filter(s => s !== 'other') : ['considering']),
         } : null);
         setIsEditing(false);
       }
@@ -387,41 +397,56 @@ export default function ProfilePage() {
       <div className="max-w-md mx-auto px-4 py-8">
         {/* Header with conditional back button */}
         {isEditing ? (
-          <div className="mb-8">
+          <div>
             <HavenHeader />
-            <div className="flex items-center justify-between mb-6 mt-4">
-              <button 
-                onClick={() => setIsEditing(false)} 
-                className="text-teal-600 hover:text-teal-700 font-medium"
+            <div className="mb-6 mt-4">
+              <button
+                onClick={() => setIsEditing(false)}
+                className="text-emerald-600 hover:text-emerald-700 font-medium"
               >
                 ← Back
               </button>
-              <div></div>
             </div>
           </div>
         ) : (
-          <HavenHeader />
+          <div>
+            <HavenHeader />
+            {isViewingOtherUser && (
+              <div className="mb-6 mt-4">
+                <button
+                  onClick={() => router.back()}
+                  className="text-emerald-600 hover:text-emerald-700 font-medium"
+                >
+                  ← Back
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Profile Controls */}
-        {!isEditing && (
-          <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-          <Link href="/manage" className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105">
-            Manage
-          </Link>
-          <Link href="/settings" className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105">
-            Settings
-          </Link>
-          <Link href="/notifications" className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105">
-            Notifications
-          </Link>
-          <button
-            onClick={() => setIsEditing(true)}
-            className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
-          >
-            Edit
-          </button>
-          </div>
+        {!isEditing && !isViewingOtherUser && (
+          <>
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
+              <Link href="/manage" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105">
+                Manage
+              </Link>
+              <Link href="/settings" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105">
+                Settings
+              </Link>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+              >
+                Edit
+              </button>
+            </div>
+            <div className="flex gap-2 mb-4 justify-center">
+              <Link href="/notifications" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105">
+                Notifications
+              </Link>
+            </div>
+          </>
         )}
 
         {/* Profile Card */}
@@ -431,12 +456,13 @@ export default function ProfilePage() {
             <div className="mb-4 flex justify-center relative">
               <AvatarUpload
                 userId={profile?.id || ''}
-                currentAvatarUrl={profile?.avatar_url || null}
+                currentAvatarUrl={profile?.avatar_url ? profile.avatar_url : null}
                 name={profile?.family_name || profile?.display_name || 'Family'}
                 size="xl"
-                editable={true}
+                editable={!isViewingOtherUser}
                 showFamilySilhouette={true}
                 onAvatarChange={(newUrl) => {
+                  console.log('Profile page: Avatar changed to:', newUrl);
                   setProfile(prev => prev ? { ...prev, avatar_url: newUrl || undefined } : prev);
                 }}
               />
@@ -453,6 +479,13 @@ export default function ProfilePage() {
             ) : (
               <div>
                 <h2 className="text-xl font-bold text-emerald-600">{profile.family_name || profile.display_name || 'No name set'}</h2>
+                {profile.user_type && (
+                  <div className="flex justify-center mt-1">
+                    <span className="px-3 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full capitalize">
+                      {profile.user_type === 'family' ? 'Family' : profile.user_type === 'teacher' ? 'Teacher' : profile.user_type === 'business' ? 'Business' : profile.user_type}
+                    </span>
+                  </div>
+                )}
                 {/* Admin Badge */}
                 {profile.admin_level && (
                   <div className="flex justify-center mt-2">
@@ -469,22 +502,7 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* Location */}
-          <div className="mb-4 text-center">
-            {isEditing ? (
-              <input
-                type="text"
-                value={editData.location_name}
-                onChange={(e) => setEditData({ ...editData, location_name: e.target.value })}
-                className="w-full p-2 focus:ring-2 focus:ring-emerald-500 text-center focus:outline-none bg-transparent text-gray-700"
-                placeholder="Your suburb"
-              />
-            ) : (
-              <p className="text-gray-600">{profile.location_name || 'Not set'}</p>
-            )}
-          </div>
-
-          {/* Status */}
+          {/* Status - Show above location for all users */}
           <div className="mb-4 text-center">
             {isEditing ? (
               <div className="space-y-2">
@@ -580,6 +598,21 @@ export default function ProfilePage() {
                   <span className="text-gray-500 text-sm">No status selected</span>
                 )}
               </div>
+            )}
+          </div>
+
+          {/* Location */}
+          <div className="mb-4 text-center">
+            {isEditing ? (
+              <input
+                type="text"
+                value={editData.location_name}
+                onChange={(e) => setEditData({ ...editData, location_name: e.target.value })}
+                className="w-full p-2 focus:ring-2 focus:ring-emerald-500 text-center focus:outline-none bg-transparent text-gray-700"
+                placeholder="Your suburb"
+              />
+            ) : (
+              <p className="text-gray-600">{profile.location_name || 'Not set'}</p>
             )}
           </div>
 
@@ -720,6 +753,16 @@ export default function ProfilePage() {
           )}
         </div>
 
+        {/* Photo Gallery */}
+        <div className="mb-6" data-gallery>
+          <PhotoGallery 
+            userId={profile?.id || ''} 
+            editable={!isViewingOtherUser}
+            maxPhotos={12}
+            viewingUserId={user?.id}
+          />
+        </div>
+
         {/* Feedback buttons */}
         <div className="flex gap-3 mb-4">
           <button
@@ -743,6 +786,9 @@ export default function ProfilePage() {
         >
           Sign out
         </button>
+
+        {/* Bottom spacing for mobile nav */}
+        <div className="h-20"></div>
 
       </div>
 

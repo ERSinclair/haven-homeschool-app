@@ -198,11 +198,10 @@ export default function DashboardPage() {
         </div>
 
         <div className="text-center mb-8">
-          
           <h1 className="text-2xl font-bold text-emerald-600 mb-2">
-            Welcome back, {firstName}!
+            Dashboard
           </h1>
-          <p className="text-emerald-700">Here is what is happening in your community</p>
+          <p className="text-emerald-700">Community activity</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4 mb-6">
@@ -279,17 +278,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl p-6 shadow-sm mb-20">
-          <h3 className="font-semibold text-emerald-600 mb-4">Today Weather</h3>
-          <div className="flex items-center gap-4">
-            <span className="text-4xl">☀️</span>
-            <div>
-              <p className="text-xl font-semibold text-emerald-600">22°C</p>
-              <p className="text-sm text-emerald-700">Perfect for playground visits!</p>
-              <p className="text-xs text-emerald-600 mt-1">{profile.location_name || 'Your area'}</p>
-            </div>
-          </div>
-        </div>
+        {/* Weather section removed - was causing double welcome screen appearance */}
+        <div className="mb-20"></div>
       </div>
     </div>
     </ProtectedRoute>

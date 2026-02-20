@@ -12,10 +12,13 @@
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
     "@types/mapbox-gl": "^3.4.1",
+    "canvas-confetti": "^1.9.4",
+    "compressorjs": "^1.2.1",
     "mapbox-gl": "^3.18.1",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-image-crop": "^11.0.10",
     "react-map-gl": "^8.1.0"
   },
   "devDependencies": {

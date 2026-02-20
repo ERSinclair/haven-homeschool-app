@@ -28,6 +28,8 @@ type Message = {
   content: string;
   sender_id: string;
   created_at: string;
+  file_url?: string;
+  file_type?: string;
 };
 
 function MessagesContent() {
@@ -53,10 +55,19 @@ function MessagesContent() {
   const [savedMessages, setSavedMessages] = useState<Message[]>([]);
   const [showMessageContextMenu, setShowMessageContextMenu] = useState(false);
   const [contextMenuMessage, setContextMenuMessage] = useState<Message | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  
+  // New message modal state
+  const [showNewMessageModal, setShowNewMessageModal] = useState(false);
+  const [availableConnections, setAvailableConnections] = useState<any[]>([]);
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [contactSearchTerm, setContactSearchTerm] = useState('');
+  const [newMessageText, setNewMessageText] = useState('');
+  const [loadingConnections, setLoadingConnections] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -304,6 +315,7 @@ function MessagesContent() {
             {
               method: 'POST',
               headers: {
+                'apikey': supabaseKey!,
                 'Authorization': `Bearer ${session.access_token}`,
               },
               body: formData,
@@ -367,7 +379,12 @@ function MessagesContent() {
       
       if (res.ok) {
         const [newMsg] = await res.json();
-        setMessages(prev => [...prev, newMsg]);
+        // Always carry file_url/file_type in local state even if DB column doesn't exist
+        const msgWithFile = {
+          ...newMsg,
+          ...(messageData.file_url ? { file_url: messageData.file_url, file_type: messageData.file_type } : {}),
+        };
+        setMessages(prev => [...prev, msgWithFile]);
         setNewMessage('');
         setSelectedFile(null);
         
@@ -508,24 +525,63 @@ function MessagesContent() {
   };
 
   const handleMessageLongPress = (messageId: string) => {
-    if (!selectionMode) {
-      const message = messages.find(m => m.id === messageId);
-      if (message) {
-        setContextMenuMessage(message);
-        setShowMessageContextMenu(true);
+    setSelectionMode(true);
+    setSelectedMessages(prev => prev.includes(messageId) ? prev : [...prev, messageId]);
+  };
+
+  const getMessageFileUrl = (msg: Message): { fileUrl: string; isImage: boolean } | null => {
+    const storagePattern = /(https?:\/\/[^\s]+\/storage\/v1\/object\/public\/message-files\/[^\s]+)/;
+    // Only use file_url if it looks like a real URL
+    const directUrl = msg.file_url?.startsWith('http') ? msg.file_url : null;
+    const fileUrl = directUrl || (storagePattern.exec(msg.content)?.[0]);
+    if (!fileUrl) return null;
+    const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+    return { fileUrl, isImage };
+  };
+
+  const downloadSelectedFiles = () => {
+    selectedMessages.forEach(id => {
+      const msg = messages.find(m => m.id === id);
+      if (!msg) return;
+      const file = getMessageFileUrl(msg);
+      if (file?.fileUrl) {
+        const a = document.createElement('a');
+        a.href = file.fileUrl;
+        a.download = file.fileUrl.split('/').pop() || 'file';
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
       }
-    }
+    });
+  };
+
+  const saveSelectedMessages = async () => {
+    const existing = JSON.parse(localStorage.getItem('haven-saved-messages') || '[]');
+    const toSave = selectedMessages
+      .map(id => messages.find(m => m.id === id))
+      .filter(Boolean)
+      .map(msg => ({ ...msg, id: `saved-${Date.now()}-${msg!.id}`, savedAt: new Date().toISOString() }));
+    const updated = [...existing, ...toSave];
+    localStorage.setItem('haven-saved-messages', JSON.stringify(updated));
+    setSavedMessages(updated);
+    setSelectedMessages([]);
+    setSelectionMode(false);
+    setSuccessMessage(`${toSave.length} item${toSave.length !== 1 ? 's' : ''} saved!`);
+    setShowSuccessNotification(true);
+    setTimeout(() => setShowSuccessNotification(false), 3000);
   };
 
   const saveMessageToSaved = async (message: Message) => {
     try {
-      // In a real implementation, this would save to a database
-      setSavedMessages(prev => [...prev, { ...message, id: `saved-${Date.now()}` }]);
+      const existing = JSON.parse(localStorage.getItem('haven-saved-messages') || '[]');
+      const newSaved = { ...message, id: `saved-${Date.now()}`, savedAt: new Date().toISOString() };
+      const updated = [...existing, newSaved];
+      localStorage.setItem('haven-saved-messages', JSON.stringify(updated));
+      setSavedMessages(updated);
       setShowMessageContextMenu(false);
       setContextMenuMessage(null);
-      
-      // Show success feedback
-      setSuccessMessage('Message saved to Saved Messages!');
+      setSuccessMessage('Message saved!');
       setShowSuccessNotification(true);
       setTimeout(() => setShowSuccessNotification(false), 3000);
     } catch (err) {
@@ -545,7 +601,7 @@ function MessagesContent() {
   };
 
   const handleConversationLongPress = (conversationId: string) => {
-    if (!conversationSelectionMode) {
+    if (!conversationSelectionMode && convo.id !== 'saved-messages') {
       setConversationSelectionMode(true);
       setSelectedConversations([conversationId]);
     }
@@ -569,22 +625,9 @@ function MessagesContent() {
 
   const loadSavedMessages = async () => {
     try {
-      const session = getStoredSession();
-      if (!session?.user) return;
-
-      // For now, create some placeholder saved messages
-      // In a real implementation, this would load from a saved_messages table
-      const mockSavedMessages = [
-        {
-          id: 'saved-1',
-          content: 'This is a saved message example',
-          sender_id: session.user.id,
-          created_at: new Date().toISOString(),
-        }
-      ];
-      
-      setMessages(mockSavedMessages);
-      setSavedMessages(mockSavedMessages);
+      const saved = JSON.parse(localStorage.getItem('haven-saved-messages') || '[]');
+      setMessages(saved);
+      setSavedMessages(saved);
     } catch (err) {
       console.error('Error loading saved messages:', err);
     }
@@ -859,6 +902,167 @@ function MessagesContent() {
     }
   };
 
+  // Load connections for new message modal
+  const loadAvailableConnections = async () => {
+    const session = getStoredSession();
+    if (!session?.user) return;
+
+    setLoadingConnections(true);
+    try {
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/connections?status=eq.accepted&or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&select=*,requester:profiles!connections_requester_id_fkey(id,family_name,display_name,location_name,avatar_url),receiver:profiles!connections_receiver_id_fkey(id,family_name,display_name,location_name,avatar_url)`,
+        {
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const connections = await response.json();
+        const processedConnections = connections.map((conn: any) => {
+          // Get the other person in the connection
+          const otherUser = conn.requester_id === session.user.id ? conn.receiver : conn.requester;
+          return {
+            id: otherUser.id,
+            family_name: otherUser.family_name,
+            display_name: otherUser.display_name,
+            location_name: otherUser.location_name,
+            avatar_url: otherUser.avatar_url,
+          };
+        });
+        setAvailableConnections(processedConnections);
+      }
+    } catch (err) {
+      console.error('Error loading connections:', err);
+    } finally {
+      setLoadingConnections(false);
+    }
+  };
+
+  // Start new conversation
+  const startNewConversation = async () => {
+    if (selectedContacts.size === 0 || !newMessageText.trim()) return;
+
+    const session = getStoredSession();
+    if (!session?.user) return;
+
+    try {
+      // For now, handle only single contact (multi-person chats can be added later)
+      const contactId = Array.from(selectedContacts)[0];
+
+      // Check if conversation already exists
+      const existingConvo = conversations.find(convo => 
+        convo.other_user.id === contactId
+      );
+
+      if (existingConvo) {
+        // Use existing conversation
+        setSelectedId(existingConvo.id);
+        setShowNewMessageModal(false);
+        setSelectedContacts(new Set());
+        setContactSearchTerm('');
+        setNewMessageText('');
+        return;
+      }
+
+      // Create new conversation
+      const createConvoResponse = await fetch(
+        `${supabaseUrl}/rest/v1/conversations`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+          },
+          body: JSON.stringify({
+            participant_1: session.user.id,
+            participant_2: contactId,
+          }),
+        }
+      );
+
+      if (createConvoResponse.ok) {
+        const [newConvo] = await createConvoResponse.json();
+        
+        // Send first message
+        const messageResponse = await fetch(
+          `${supabaseUrl}/rest/v1/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal',
+            },
+            body: JSON.stringify({
+              conversation_id: newConvo.id,
+              sender_id: session.user.id,
+              content: newMessageText.trim(),
+            }),
+          }
+        );
+
+        if (messageResponse.ok) {
+          // Update conversation with last message info
+          await fetch(
+            `${supabaseUrl}/rest/v1/conversations?id=eq.${newConvo.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': supabaseKey!,
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                last_message_text: newMessageText.trim(),
+                last_message_at: new Date().toISOString(),
+                last_message_by: session.user.id,
+              }),
+            }
+          );
+
+          // Reload conversations and open the new one
+          await reloadConversations();
+          setSelectedId(newConvo.id);
+          
+          // Close modal and reset state
+          setShowNewMessageModal(false);
+          setSelectedContacts(new Set());
+          setContactSearchTerm('');
+          setNewMessageText('');
+        }
+      }
+    } catch (err) {
+      console.error('Error starting new conversation:', err);
+      alert('Failed to start conversation. Please try again.');
+    }
+  };
+
+  // Toggle contact selection
+  const toggleContactSelection = (contactId: string) => {
+    const newSelected = new Set(selectedContacts);
+    if (newSelected.has(contactId)) {
+      newSelected.delete(contactId);
+    } else {
+      // For now, only allow single selection (can be updated for group chats later)
+      newSelected.clear();
+      newSelected.add(contactId);
+    }
+    setSelectedContacts(newSelected);
+  };
+
+  // Filter connections by search term
+  const filteredConnections = availableConnections.filter(connection =>
+    (connection.family_name?.toLowerCase() || '').includes(contactSearchTerm.toLowerCase()) ||
+    (connection.display_name?.toLowerCase() || '').includes(contactSearchTerm.toLowerCase()) ||
+    (connection.location_name?.toLowerCase() || '').includes(contactSearchTerm.toLowerCase())
+  );
+
   const selected = conversations.find(c => c.id === selectedId);
 
   const formatTime = (dateStr: string | null) => {
@@ -908,18 +1112,37 @@ function MessagesContent() {
             <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
               {selectionMode ? (
                 <>
-                  <button 
+                  <button
                     onClick={cancelSelection}
-                    className="px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+                    className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
                   >
                     Cancel
                   </button>
+                  {selectedMessages.length > 0 && (
+                    <button
+                      onClick={saveSelectedMessages}
+                      className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      Save
+                    </button>
+                  )}
+                  {selectedMessages.length > 0 && selectedMessages.some(id => {
+                    const msg = messages.find(m => m.id === id);
+                    return msg && getMessageFileUrl(msg) !== null;
+                  }) && (
+                    <button
+                      onClick={downloadSelectedFiles}
+                      className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-teal-600 text-white hover:bg-teal-700"
+                    >
+                      Download
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowDeleteMessageModal(true)}
-                    className="px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-red-600 text-white shadow-md scale-105 hover:bg-red-700 disabled:bg-gray-300"
+                    className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-300"
                     disabled={selectedMessages.length === 0}
                   >
-                    Delete ({selectedMessages.length})
+                    Delete
                   </button>
                 </>
               ) : (
@@ -947,7 +1170,7 @@ function MessagesContent() {
                   <button
                     onClick={() => sendConnectionRequest(selected.other_user.id)}
                     disabled={getConnectionButtonState(selected.other_user.id).disabled}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm mr-2 ${getConnectionButtonState(selected.other_user.id).style}`}
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors text-sm mr-2 ${getConnectionButtonState(selected.other_user.id).style}`}
                   >
                     {getConnectionButtonState(selected.other_user.id).text}
                   </button>
@@ -990,60 +1213,96 @@ function MessagesContent() {
                 key={msg.id}
                 className={`flex ${msg.sender_id === userId ? 'justify-end' : 'justify-start'}`}
               >
-                <div className="relative">
-                  {selectionMode && (
-                    <div 
-                      className="absolute -left-8 top-1/2 transform -translate-y-1/2 z-10 cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMessageTap(msg.id);
-                      }}
-                    >
-                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                        selectedMessages.includes(msg.id) 
-                          ? 'bg-teal-600 border-teal-600' 
-                          : 'bg-white border-gray-300 hover:border-gray-400'
-                      }`}>
-                        {selectedMessages.includes(msg.id) && (
-                          <span className="text-white text-xs font-bold">V</span>
+                {(() => {
+                    const file = getMessageFileUrl(msg);
+                    const textContent = file ? msg.content.replace(file.fileUrl, '').trim() : msg.content;
+                    const isImageOnly = file?.isImage && !textContent;
+                    const isSelected = selectedMessages.includes(msg.id);
+                    const selectionClass = isSelected ? 'ring-2 ring-teal-300 scale-95' : selectionMode ? 'opacity-60' : '';
+                    const touchHandlers = {
+                      onTouchStart: () => {
+                        if (longPressTimer) clearTimeout(longPressTimer);
+                        const timer = setTimeout(() => handleMessageLongPress(msg.id), 1000);
+                        setLongPressTimer(timer);
+                      },
+                      onTouchEnd: () => {
+                        if (longPressTimer) { clearTimeout(longPressTimer); setLongPressTimer(null); }
+                        if (selectionMode) handleMessageTap(msg.id);
+                      },
+                      onClick: () => { if (selectionMode) handleMessageTap(msg.id); },
+                    };
+
+                    return (
+                      <div className="relative">
+                        {/* Selection checkbox */}
+                        {selectionMode && (
+                          <div
+                            className="absolute -left-8 top-1/2 transform -translate-y-1/2 z-10 cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); handleMessageTap(msg.id); }}
+                          >
+                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-teal-600 border-teal-600' : 'bg-white border-gray-300'}`}>
+                              {isSelected && <span className="text-white text-xs font-bold">✓</span>}
+                            </div>
+                          </div>
+                        )}
+
+                        {isImageOnly ? (
+                          /* Image-only: no bubble */
+                          <div
+                            className={`cursor-pointer transition-all ${selectionClass}`}
+                            {...touchHandlers}
+                          >
+                            <img
+                              src={file.fileUrl}
+                              alt="Attachment"
+                              className="max-w-[220px] max-h-[220px] rounded-2xl object-cover"
+                              onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); } }}
+                            />
+                            <p className="text-xs text-gray-400 mt-1">{formatTime(msg.created_at)}</p>
+                          </div>
+                        ) : (
+                          /* Regular bubble */
+                          <div
+                            className={`max-w-[75%] px-4 py-3 rounded-2xl transition-all cursor-pointer ${
+                              msg.sender_id === userId
+                                ? 'bg-teal-600 text-white rounded-br-md ml-auto'
+                                : 'bg-white text-gray-900 rounded-bl-md shadow-sm mr-auto'
+                            } ${selectionClass}`}
+                            {...touchHandlers}
+                          >
+                            {file?.isImage && (
+                              <div className="mb-2">
+                                <img
+                                  src={file.fileUrl}
+                                  alt="Attachment"
+                                  className="max-w-[200px] max-h-[200px] rounded-xl object-cover cursor-pointer"
+                                  onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); } }}
+                                />
+                              </div>
+                            )}
+                            {file && !file.isImage && (
+                              <a
+                                href={file.fileUrl}
+                                download
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 px-3 py-2 bg-white/20 rounded-xl text-sm font-medium mb-2"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Download file
+                              </a>
+                            )}
+                            {textContent && (
+                              <p className="text-sm break-words overflow-wrap-anywhere" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>{textContent}</p>
+                            )}
+                            <p className={`text-xs mt-1 ${msg.sender_id === userId ? 'text-teal-200' : 'text-gray-400'}`}>
+                              {formatTime(msg.created_at)}
+                            </p>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  )}
-                  <div
-                    className={`max-w-[75%] px-4 py-3 rounded-2xl transition-all cursor-pointer ${
-                      msg.sender_id === userId
-                        ? 'bg-teal-600 text-white rounded-br-md ml-auto'
-                        : 'bg-white text-gray-900 rounded-bl-md shadow-sm mr-auto'
-                    } ${
-                      selectedMessages.includes(msg.id) 
-                        ? 'ring-2 ring-teal-300 scale-95' 
-                        : selectionMode 
-                          ? 'opacity-60' 
-                          : ''
-                    }`}
-                    onTouchStart={(e) => {
-                      if (longPressTimer) clearTimeout(longPressTimer);
-                      const timer = setTimeout(() => handleMessageLongPress(msg.id), 1000);
-                      setLongPressTimer(timer);
-                    }}
-                    onTouchEnd={() => {
-                      if (longPressTimer) {
-                        clearTimeout(longPressTimer);
-                        setLongPressTimer(null);
-                      }
-                      if (selectionMode) handleMessageTap(msg.id);
-                    }}
-                    onClick={() => {
-                      if (selectionMode) handleMessageTap(msg.id);
-                    }}
-                  >
-                    <p className="text-sm break-words overflow-wrap-anywhere" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>{msg.content}</p>
-                    <p className={`text-xs mt-1 ${msg.sender_id === userId ? 'text-teal-200' : 'text-gray-400'}`}>
-                      {formatTime(msg.created_at)}
-                    </p>
-                  </div>
-                </div>
+                    );
+                  })()}
               </div>
             ))
           )}
@@ -1138,7 +1397,7 @@ function MessagesContent() {
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
             onClick={() => router.push('/connections')}
-            className="relative px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+            className="relative px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             {pendingRequestsCount > 0 && (
               <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center border-2 border-white shadow-sm">
@@ -1149,7 +1408,7 @@ function MessagesContent() {
           </button>
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+            className={`px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showSearch
                 ? 'bg-teal-600 text-white shadow-md scale-105'
                 : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
@@ -1158,8 +1417,8 @@ function MessagesContent() {
             Search
           </button>
           <button
-            onClick={() => router.push('/discover')}
-            className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            onClick={() => setShowNewMessageModal(true)}
+            className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
           >
             + New
           </button>
@@ -1171,13 +1430,13 @@ function MessagesContent() {
             <>
               <button 
                 onClick={cancelConversationSelection}
-                className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+                className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
               >
                 Cancel
               </button>
               <button
                 onClick={() => setShowDeleteConversationModal(true)}
-                className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-red-600 text-white shadow-md scale-105 hover:bg-red-700 disabled:bg-gray-300"
+                className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-red-600 text-white shadow-md scale-105 hover:bg-red-700 disabled:bg-gray-300"
                 disabled={selectedConversations.length === 0}
               >
                 Delete ({selectedConversations.length})
@@ -1282,7 +1541,7 @@ function MessagesContent() {
               {!searchTerm && (
                 <button
                   onClick={() => router.push('/discover')}
-                  className="bg-teal-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-teal-700"
+                  className="bg-teal-600 text-white px-2 py-1.5 rounded-xl font-medium hover:bg-teal-700 text-sm"
                 >
                   Find Families
                 </button>
@@ -1315,7 +1574,7 @@ function MessagesContent() {
                   onClick={() => handleConversationTap(convo.id)}
                   onTouchStart={() => {
                     if (longPressTimer) clearTimeout(longPressTimer);
-                    if (!conversationSelectionMode) {
+                    if (!conversationSelectionMode && convo.id !== 'saved-messages') {
                       const timer = setTimeout(() => handleConversationLongPress(convo.id), 1000);
                       setLongPressTimer(timer);
                     }
@@ -1383,13 +1642,13 @@ function MessagesContent() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowDeleteModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+                  className="flex-1 px-2 py-1.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={deleteConversation}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700"
+                  className="flex-1 px-2 py-1.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 text-sm"
                 >
                   Delete
                 </button>
@@ -1421,13 +1680,13 @@ function MessagesContent() {
                   onClick={() => {
                     setShowDeleteMessageModal(false);
                   }}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+                  className="flex-1 px-2 py-1.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={deleteSelectedMessages}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700"
+                  className="flex-1 px-2 py-1.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 text-sm"
                 >
                   Delete
                 </button>
@@ -1457,13 +1716,13 @@ function MessagesContent() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowDeleteConversationModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+                  className="flex-1 px-2 py-1.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={deleteSelectedConversations}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700"
+                  className="flex-1 px-2 py-1.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 text-sm"
                 >
                   Delete
                 </button>
@@ -1488,7 +1747,7 @@ function MessagesContent() {
             <div className="space-y-3">
               <button
                 onClick={() => saveMessageToSaved(contextMenuMessage)}
-                className="w-full px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 flex items-center justify-center gap-2"
+                className="w-full px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 flex items-center justify-center gap-2 text-sm"
               >
                 Save to Saved Messages
               </button>
@@ -1499,7 +1758,7 @@ function MessagesContent() {
                   setShowMessageContextMenu(false);
                   setContextMenuMessage(null);
                 }}
-                className="w-full px-4 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 flex items-center justify-center gap-2"
+                className="w-full px-2 py-1.5 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 flex items-center justify-center gap-2 text-sm"
               >
                 Select Message
               </button>
@@ -1508,11 +1767,43 @@ function MessagesContent() {
                   setShowMessageContextMenu(false);
                   setContextMenuMessage(null);
                 }}
-                className="w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+                className="w-full px-2 py-1.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm"
               >
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <img
+            src={lightboxUrl}
+            alt="Attachment"
+            className="max-w-full max-h-[75vh] rounded-xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="flex gap-3 mt-4" onClick={(e) => e.stopPropagation()}>
+            <a
+              href={lightboxUrl}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 text-sm"
+            >
+              Download
+            </a>
+            <button
+              onClick={() => setLightboxUrl(null)}
+              className="px-5 py-2 bg-white/20 text-white rounded-xl font-medium hover:bg-white/30 text-sm"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
@@ -1527,7 +1818,168 @@ function MessagesContent() {
         </div>
       )}
 
-      {/* Compose modal removed - users can start conversations from discover page */}
+      {/* New Message Modal */}
+      {showNewMessageModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-100">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900">New Message</h2>
+                <button 
+                  onClick={() => {
+                    setShowNewMessageModal(false);
+                    setSelectedContacts(new Set());
+                    setContactSearchTerm('');
+                    setNewMessageText('');
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Search contacts */}
+              <div className="mb-4">
+                <input
+                  type="text"
+                  placeholder="Search connections..."
+                  value={contactSearchTerm}
+                  onChange={(e) => setContactSearchTerm(e.target.value)}
+                  onFocus={() => !availableConnections.length && loadAvailableConnections()}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  autoFocus
+                />
+              </div>
+
+              {/* Selected contacts */}
+              {selectedContacts.size > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">To:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Array.from(selectedContacts).map(contactId => {
+                      const contact = availableConnections.find(c => c.id === contactId);
+                      if (!contact) return null;
+                      return (
+                        <div key={contactId} className="flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-full">
+                          <span className="text-sm font-medium text-teal-700">
+                            {contact.family_name || contact.display_name}
+                          </span>
+                          <button
+                            onClick={() => toggleContactSelection(contactId)}
+                            className="text-teal-500 hover:text-teal-700 ml-1"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Contacts list */}
+            <div className="flex-1 overflow-y-auto p-6 pt-4">
+              {loadingConnections ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              ) : filteredConnections.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p className="mb-2">
+                    {contactSearchTerm ? 'No matching connections' : 'No connections yet'}
+                  </p>
+                  <p className="text-sm">
+                    {contactSearchTerm 
+                      ? 'Try a different search term'
+                      : 'Connect with families in Discover to start messaging'
+                    }
+                  </p>
+                  {!contactSearchTerm && (
+                    <button
+                      onClick={() => {
+                        setShowNewMessageModal(false);
+                        router.push('/discover');
+                      }}
+                      className="mt-4 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                    >
+                      Find Families
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredConnections.map(connection => (
+                    <button
+                      key={connection.id}
+                      onClick={() => toggleContactSelection(connection.id)}
+                      className={`w-full p-3 rounded-xl text-left flex items-center gap-3 transition-colors ${
+                        selectedContacts.has(connection.id)
+                          ? 'bg-teal-50 border border-teal-200'
+                          : 'hover:bg-gray-50 border border-transparent'
+                      }`}
+                    >
+                      <AvatarUpload
+                        userId={connection.id}
+                        currentAvatarUrl={connection.avatar_url}
+                        name={connection.family_name || connection.display_name || 'Unknown'}
+                        size="sm"
+                        editable={false}
+                        showFamilySilhouette={true}
+                      />
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">
+                          {connection.family_name || connection.display_name}
+                        </p>
+                        <p className="text-sm text-gray-500">{connection.location_name}</p>
+                      </div>
+                      {selectedContacts.has(connection.id) && (
+                        <div className="w-6 h-6 bg-teal-600 rounded-full flex items-center justify-center">
+                          <span className="text-white text-sm">✓</span>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Message input */}
+            <div className="p-6 border-t border-gray-100">
+              <textarea
+                value={newMessageText}
+                onChange={(e) => setNewMessageText(e.target.value)}
+                placeholder="Write your message..."
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                rows={3}
+              />
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => {
+                    setShowNewMessageModal(false);
+                    setSelectedContacts(new Set());
+                    setContactSearchTerm('');
+                    setNewMessageText('');
+                  }}
+                  className="flex-1 px-2 py-1.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={startNewConversation}
+                  disabled={selectedContacts.size === 0 || !newMessageText.trim()}
+                  className="flex-1 px-2 py-1.5 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
+                >
+                  Send Message
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Bottom spacing for mobile nav */}
+      <div className="h-20"></div>
     </div>
     </ProtectedRoute>
   );

@@ -28,6 +28,7 @@ type Circle = {
   member_count?: number;
   is_member?: boolean;
   created_by: string;
+  is_public: boolean;
 };
 
 type Connection = {
@@ -166,10 +167,10 @@ export default function ManagePage() {
           setEvents(enrichedEvents);
         }
 
-        // Load Circles (try both member and owner queries for now)
+        // Load Circles (only user's circles)
         try {
           const circlesRes = await fetch(
-            `${supabaseUrl}/rest/v1/circles?select=*&order=created_at.desc`,
+            `${supabaseUrl}/rest/v1/circles?created_by=eq.${session.user.id}&select=*&order=created_at.desc`,
             {
               headers: {
                 'apikey': supabaseKey!,
@@ -180,17 +181,16 @@ export default function ManagePage() {
           
           if (circlesRes.ok) {
             const circlesData = await circlesRes.json();
-            // For now, show all circles - could be filtered to user's circles later
-            setCircles(circlesData.slice(0, 5)); // Limit to 5 for performance
+            setCircles(circlesData);
           }
         } catch (err) {
           console.log('Error loading circles:', err);
           setCircles([]);
         }
 
-        // Load Connections
+        // Load Connection Requests (pending status where user is receiver)
         const connectionsRes = await fetch(
-          `${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&status=eq.accepted&select=*`,
+          `${supabaseUrl}/rest/v1/connections?receiver_id=eq.${session.user.id}&status=eq.pending&select=*`,
           {
             headers: {
               'apikey': supabaseKey!,
@@ -201,9 +201,9 @@ export default function ManagePage() {
         
         if (connectionsRes.ok) {
           const connectionsData = await connectionsRes.json();
-          // Enrich with other user data
+          // Enrich with requester user data (since current user is receiver)
           const enrichedConnections = await Promise.all(connectionsData.map(async (conn: Connection) => {
-            const otherUserId = conn.requester_id === session.user.id ? conn.receiver_id : conn.requester_id;
+            const otherUserId = conn.requester_id; // Current user is receiver, so other user is requester
             
             const userRes = await fetch(
               `${supabaseUrl}/rest/v1/profiles?id=eq.${otherUserId}&select=id,family_name,display_name,location_name`,
@@ -256,6 +256,13 @@ export default function ManagePage() {
     return user.display_name || user.family_name || 'Unknown User';
   };
 
+  // Helper function to get connection requests (pending status)
+  const getConnectionRequests = () => {
+    return connections.filter(connection => 
+      connection.status === 'pending'
+    );
+  };
+
   if (loading) {
     return (
       <ProtectedRoute>
@@ -280,11 +287,10 @@ export default function ManagePage() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Manage</h1>
-            <p className="text-gray-600">Your events, circles, and connections</p>
           </div>
 
           {/* Section Navigation */}
-          <div className="flex mb-6 bg-white rounded-xl p-1 shadow-sm">
+          <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide justify-center">
             {[
               { key: 'events', label: 'Events', count: events.length },
               { key: 'circles', label: 'Circles', count: circles.length },
@@ -293,20 +299,13 @@ export default function ManagePage() {
               <button
                 key={section.key}
                 onClick={() => setActiveSection(section.key as any)}
-                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
                   activeSection === section.key
-                    ? 'bg-teal-600 text-white shadow-md'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    ? 'bg-teal-600 text-white shadow-md scale-105'
+                    : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
                 }`}
               >
                 {section.label}
-                {section.count > 0 && (
-                  <span className={`ml-1 text-xs ${
-                    activeSection === section.key ? 'text-teal-200' : 'text-gray-400'
-                  }`}>
-                    ({section.count})
-                  </span>
-                )}
               </button>
             ))}
           </div>
@@ -314,15 +313,6 @@ export default function ManagePage() {
           {/* Events Section */}
           {activeSection === 'events' && (
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900">Your Events</h2>
-                <Link
-                  href="/events"
-                  className="text-teal-600 hover:text-teal-700 text-sm font-medium"
-                >
-                  View All Events
-                </Link>
-              </div>
               
               {events.length === 0 ? (
                 <div className="text-center py-8">
@@ -335,46 +325,92 @@ export default function ManagePage() {
                   </Link>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {events.map((event) => (
-                    <div
-                      key={event.id}
-                      className="bg-white rounded-xl shadow-sm p-4 border border-gray-100"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-semibold text-gray-900">{event.title}</h3>
-                        <div className="flex gap-1">
-                          {event.host_id === userId && (
-                            <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full">
-                              Host
-                            </span>
-                          )}
-                          {event.user_rsvp && event.host_id !== userId && (
-                            <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">
-                              Going
-                            </span>
-                          )}
-                          {event.is_private && (
-                            <span className="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-full">
-                              Private
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-2">
-                        📅 {formatDate(event.event_date)} at {formatTime(event.event_time)}
-                      </p>
-                      {event.location_name ? (
-                        <p className="text-sm text-gray-600 mb-2">{event.location_name}</p>
-                      ) : (
-                        <p className="text-sm text-gray-500 italic mb-2">Location TBA</p>
-                      )}
-                      <div className="flex justify-between text-sm text-gray-500">
-                        <span>By {event.host?.name}</span>
-                        <span>{event.rsvp_count} going</span>
+                <div className="space-y-6">
+                  {/* Public Events */}
+                  {events.filter(event => !event.is_private).length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Public</h3>
+                      <div className="space-y-3">
+                        {events.filter(event => !event.is_private).map((event) => (
+                          <div
+                            key={event.id}
+                            className="bg-white rounded-xl shadow-sm p-4 border border-gray-100"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-semibold text-gray-900">{event.title}</h4>
+                              <div className="flex gap-1">
+                                {event.host_id === userId && (
+                                  <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full">
+                                    Host
+                                  </span>
+                                )}
+                                {event.user_rsvp && event.host_id !== userId && (
+                                  <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">
+                                    Going
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-2">
+                              📅 {formatDate(event.event_date)} at {formatTime(event.event_time)}
+                            </p>
+                            {event.location_name ? (
+                              <p className="text-sm text-gray-600 mb-2">{event.location_name}</p>
+                            ) : (
+                              <p className="text-sm text-gray-500 italic mb-2">Location TBA</p>
+                            )}
+                            <div className="flex justify-between text-sm text-gray-500">
+                              <span>By {event.host?.name}</span>
+                              <span>{event.rsvp_count} going</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
+                  )}
+
+                  {/* Private Events */}
+                  {events.filter(event => event.is_private).length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Private</h3>
+                      <div className="space-y-3">
+                        {events.filter(event => event.is_private).map((event) => (
+                          <div
+                            key={event.id}
+                            className="bg-white rounded-xl shadow-sm p-4 border border-gray-100"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-semibold text-gray-900">{event.title}</h4>
+                              <div className="flex gap-1">
+                                {event.host_id === userId && (
+                                  <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full">
+                                    Host
+                                  </span>
+                                )}
+                                {event.user_rsvp && event.host_id !== userId && (
+                                  <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">
+                                    Going
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-2">
+                              📅 {formatDate(event.event_date)} at {formatTime(event.event_time)}
+                            </p>
+                            {event.location_name ? (
+                              <p className="text-sm text-gray-600 mb-2">{event.location_name}</p>
+                            ) : (
+                              <p className="text-sm text-gray-500 italic mb-2">Location TBA</p>
+                            )}
+                            <div className="flex justify-between text-sm text-gray-500">
+                              <span>By {event.host?.name}</span>
+                              <span>{event.rsvp_count} going</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -383,15 +419,6 @@ export default function ManagePage() {
           {/* Circles Section */}
           {activeSection === 'circles' && (
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900">Your Circles</h2>
-                <Link
-                  href="/circles"
-                  className="text-teal-600 hover:text-teal-700 text-sm font-medium"
-                >
-                  View All Circles
-                </Link>
-              </div>
               
               {circles.length === 0 ? (
                 <div className="text-center py-8">
@@ -404,27 +431,64 @@ export default function ManagePage() {
                   </Link>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {circles.map((circle) => (
-                    <Link
-                      key={circle.id}
-                      href={`/circles/${circle.id}`}
-                      className="block bg-white rounded-xl shadow-sm p-4 border border-gray-100 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-semibold text-gray-900">{circle.name}</h3>
-                        <span className="bg-teal-100 text-teal-700 text-xs px-2 py-1 rounded-full">
-                          Member
-                        </span>
+                <div className="space-y-6">
+                  {/* Public Circles */}
+                  {circles.filter(circle => circle.is_public).length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Public</h3>
+                      <div className="space-y-3">
+                        {circles.filter(circle => circle.is_public).map((circle) => (
+                          <Link
+                            key={circle.id}
+                            href={`/circles/${circle.id}`}
+                            className="block bg-white rounded-xl shadow-sm p-4 border border-gray-100 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-semibold text-gray-900">{circle.name}</h4>
+                              <span className="bg-teal-100 text-teal-700 text-xs px-2 py-1 rounded-full">
+                                Member
+                              </span>
+                            </div>
+                            {circle.description && (
+                              <p className="text-sm text-gray-600 mb-2 line-clamp-2">{circle.description}</p>
+                            )}
+                            <div className="text-sm text-gray-500">
+                              {circle.member_count || 0} members
+                            </div>
+                          </Link>
+                        ))}
                       </div>
-                      {circle.description && (
-                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">{circle.description}</p>
-                      )}
-                      <div className="text-sm text-gray-500">
-                        {circle.member_count || 0} members
+                    </div>
+                  )}
+
+                  {/* Private Circles */}
+                  {circles.filter(circle => !circle.is_public).length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Private</h3>
+                      <div className="space-y-3">
+                        {circles.filter(circle => !circle.is_public).map((circle) => (
+                          <Link
+                            key={circle.id}
+                            href={`/circles/${circle.id}`}
+                            className="block bg-white rounded-xl shadow-sm p-4 border border-gray-100 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-semibold text-gray-900">{circle.name}</h4>
+                              <span className="bg-teal-100 text-teal-700 text-xs px-2 py-1 rounded-full">
+                                Member
+                              </span>
+                            </div>
+                            {circle.description && (
+                              <p className="text-sm text-gray-600 mb-2 line-clamp-2">{circle.description}</p>
+                            )}
+                            <div className="text-sm text-gray-500">
+                              {circle.member_count || 0} members
+                            </div>
+                          </Link>
+                        ))}
                       </div>
-                    </Link>
-                  ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -433,19 +497,18 @@ export default function ManagePage() {
           {/* Connections Section */}
           {activeSection === 'connections' && (
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900">Your Connections</h2>
+              <div className="flex items-center justify-end mb-4">
                 <Link
                   href="/connections"
                   className="text-teal-600 hover:text-teal-700 text-sm font-medium"
                 >
-                  Manage Connections
+                  View All Connections
                 </Link>
               </div>
               
-              {connections.length === 0 ? (
+              {getConnectionRequests().length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-500">No connections yet</p>
+                  <p className="text-gray-500">No pending connection requests</p>
                   <Link
                     href="/discover"
                     className="text-teal-600 hover:text-teal-700 text-sm mt-2 inline-block"
@@ -455,7 +518,7 @@ export default function ManagePage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {connections.slice(0, 5).map((connection) => (
+                  {getConnectionRequests().slice(0, 5).map((connection) => (
                     <div
                       key={connection.id}
                       className="bg-white rounded-xl shadow-sm p-4 border border-gray-100"
@@ -471,20 +534,20 @@ export default function ManagePage() {
                             </p>
                           )}
                         </div>
-                        <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">
-                          Connected
+                        <span className="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-full">
+                          Pending
                         </span>
                       </div>
                     </div>
                   ))}
                   
-                  {connections.length > 5 && (
+                  {getConnectionRequests().length > 5 && (
                     <div className="text-center pt-2">
                       <Link
                         href="/connections"
                         className="text-teal-600 hover:text-teal-700 text-sm font-medium"
                       >
-                        View all {connections.length} connections
+                        View all {getConnectionRequests().length} pending requests
                       </Link>
                     </div>
                   )}
@@ -494,6 +557,9 @@ export default function ManagePage() {
           )}
         </div>
       </div>
+      
+      {/* Bottom spacing for mobile nav */}
+      <div className="h-20"></div>
     </ProtectedRoute>
   );
 }

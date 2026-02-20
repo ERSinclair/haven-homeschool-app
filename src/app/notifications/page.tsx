@@ -363,6 +363,9 @@ export default function NotificationsPage() {
           </button>
         )}
       </div>
+      
+      {/* Bottom spacing for mobile nav */}
+      <div className="h-20"></div>
     </div>
     </ProtectedRoute>
   );

@@ -35,11 +35,135 @@ export default function ConnectionsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [connectionToDelete, setConnectionToDelete] = useState<Connection | null>(null);
   const [viewMode, setViewMode] = useState<'connections' | 'messages'>('connections');
+  
+  // Multi-select state
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedConnections, setSelectedConnections] = useState<Set<string>>(new Set());
+  
+  // Message modal state
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [selectedConnectionForMessage, setSelectedConnectionForMessage] = useState<Connection | null>(null);
+  const [messageText, setMessageText] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [successMessageText, setSuccessMessageText] = useState('');
+  
   const router = useRouter();
 
   useEffect(() => {
     loadConnections();
   }, []);
+
+  // Multi-select functions
+  const handleLongPress = (connectionId: string) => {
+    if (!isMultiSelectMode) {
+      setIsMultiSelectMode(true);
+      setSelectedConnections(new Set([connectionId]));
+    }
+  };
+
+  const toggleConnectionSelection = (connectionId: string) => {
+    const newSelected = new Set(selectedConnections);
+    if (newSelected.has(connectionId)) {
+      newSelected.delete(connectionId);
+    } else {
+      newSelected.add(connectionId);
+    }
+    setSelectedConnections(newSelected);
+    
+    // Exit multi-select if no connections selected
+    if (newSelected.size === 0) {
+      setIsMultiSelectMode(false);
+    }
+  };
+
+  const exitMultiSelect = () => {
+    setIsMultiSelectMode(false);
+    setSelectedConnections(new Set());
+  };
+
+  const sendMessageToSelected = () => {
+    if (selectedConnections.size > 0) {
+      // Get the selected connections for the message modal
+      const selectedConnectionsList = filteredConnections.filter(conn => 
+        selectedConnections.has(conn.id)
+      );
+      setSelectedConnectionForMessage(selectedConnectionsList[0]); // Use first for modal display
+      setShowMessageModal(true);
+    }
+  };
+
+  // Function to send message
+  const sendMessage = async () => {
+    if (!messageText.trim() || sendingMessage) {
+      return;
+    }
+
+    try {
+      setSendingMessage(true);
+
+      const session = getStoredSession();
+      if (!session?.user) return;
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      // Determine recipients
+      const recipients = isMultiSelectMode && selectedConnections.size > 0
+        ? filteredConnections.filter(conn => selectedConnections.has(conn.id))
+        : selectedConnectionForMessage ? [selectedConnectionForMessage] : [];
+
+      if (recipients.length === 0) {
+        throw new Error('No recipients selected');
+      }
+
+      // Send message to each recipient
+      const messagePromises = recipients.map(connection => 
+        fetch(`${supabaseUrl}/rest/v1/messages`, {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({
+            sender_id: session.user.id,
+            receiver_id: connection.user.id,
+            content: messageText.trim(),
+            message_type: 'text'
+          }),
+        })
+      );
+
+      const responses = await Promise.all(messagePromises);
+      const failedSends = responses.filter(response => !response.ok);
+
+      if (failedSends.length === 0) {
+        // All messages sent successfully
+        setShowMessageModal(false);
+        setSelectedConnectionForMessage(null);
+        setMessageText('');
+        
+        if (isMultiSelectMode) {
+          exitMultiSelect();
+          setSuccessMessageText(`Message sent to ${recipients.length} connection${recipients.length > 1 ? 's' : ''}!`);
+        } else {
+          setSuccessMessageText('Message sent successfully!');
+        }
+        
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 3000);
+      } else {
+        throw new Error(`Failed to send ${failedSends.length} message(s)`);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message. Please try again.');
+    } finally {
+      setSendingMessage(false);
+    }
+  };
 
   // Helper function to extract last name
   const getLastName = (connection: Connection) => {
@@ -310,13 +434,13 @@ export default function ConnectionsPage() {
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
             onClick={() => router.push('/messages')}
-            className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             Messages
           </button>
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+            className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showSearch || searchTerm
                 ? 'bg-teal-600 text-white shadow-md scale-105'
                 : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
@@ -330,7 +454,7 @@ export default function ConnectionsPage() {
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
             <button
               onClick={() => setActiveTab('connections')}
-              className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+              className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-32 flex items-center justify-center ${
                 activeTab === 'connections'
                   ? 'bg-teal-600 text-white shadow-md scale-105'
                   : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
@@ -340,7 +464,7 @@ export default function ConnectionsPage() {
             </button>
             <button
               onClick={() => setActiveTab('requests')}
-              className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center gap-2 ${
+              className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-32 flex items-center justify-center gap-1 ${
                 activeTab === 'requests'
                   ? 'bg-teal-600 text-white shadow-md scale-105'
                   : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
@@ -348,7 +472,7 @@ export default function ConnectionsPage() {
             >
               Requests
               {pendingRequests.length > 0 ? (
-                <span className="bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 min-w-[20px] flex items-center justify-center border-2 border-white shadow-sm flex-shrink-0">
+                <span className="bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 min-w-[16px] flex items-center justify-center border border-white shadow-sm flex-shrink-0 text-xs">
                   {pendingRequests.length > 9 ? '9+' : pendingRequests.length}
                 </span>
               ) : (
@@ -357,7 +481,7 @@ export default function ConnectionsPage() {
             </button>
             <button
               onClick={() => setActiveTab('sent')}
-              className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+              className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-32 flex items-center justify-center ${
                 activeTab === 'sent'
                   ? 'bg-teal-600 text-white shadow-md scale-105'
                   : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
@@ -366,6 +490,32 @@ export default function ConnectionsPage() {
               Sent ({filteredSentRequests.length})
             </button>
           </div>
+
+        {/* Multi-select header */}
+        {isMultiSelectMode && (
+          <div className="bg-teal-600 text-white rounded-xl p-4 mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="font-medium">
+                {selectedConnections.size} connection{selectedConnections.size !== 1 ? 's' : ''} selected
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={sendMessageToSelected}
+                disabled={selectedConnections.size === 0}
+                className="px-4 py-2 bg-white text-teal-600 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-50 text-sm"
+              >
+                Message
+              </button>
+              <button
+                onClick={exitMultiSelect}
+                className="px-4 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-400 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Main Content */}
         {error && (
@@ -385,71 +535,119 @@ export default function ConnectionsPage() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   {searchTerm ? 'No Results Found' : 'No Connections Yet'}
                 </h3>
-                <p className="text-gray-600 mb-4">
-                  {searchTerm 
-                    ? `No connections match "${searchTerm}". Try a different search term.`
-                    : 'Start connecting with other families to build your network.'
-                  }
-                </p>
-                {!searchTerm && (
-                  <button
-                    onClick={() => router.push('/discover')}
-                    className="px-6 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700"
-                  >
-                    Find Families
-                  </button>
+                {searchTerm && (
+                  <p className="text-gray-600 mb-4">
+                    No connections match "{searchTerm}". Try a different search term.
+                  </p>
                 )}
               </div>
             ) : (
-              filteredConnections.map((connection) => (
-                <div key={connection.id} className="bg-white rounded-xl shadow-sm p-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="cursor-pointer"
-                      onClick={() => setSelectedProfile(connection)}
-                    >
-                      <AvatarUpload
-                        userId={connection.user.id}
-                        currentAvatarUrl={connection.user.avatar_url}
-                        name={connection.user.family_name || connection.user.display_name}
-                        size="md"
-                        editable={false}
-                      />
-                    </div>
-                    <div 
-                      className="flex-1 cursor-pointer"
-                      onClick={() => setSelectedProfile(connection)}
-                    >
-                      <h3 className="font-semibold text-emerald-600">
-                        {connection.user.family_name || connection.user.display_name}
-                      </h3>
-                      <p className="text-sm text-gray-600 mb-1">{connection.user.location_name}</p>
-                      
-                      {/* Children dots with ages */}
-                      {connection.user.kids_ages && connection.user.kids_ages.length > 0 && (
-                        <div className="flex items-center gap-1">
-                          {connection.user.kids_ages.map((age, index) => (
-                            <div key={index} className="flex items-center">
-                              <div className="w-6 h-6 bg-teal-100 rounded-full flex items-center justify-center">
-                                <span className="text-xs font-medium text-teal-700">{age}</span>
-                              </div>
-                              {index < (connection.user.kids_ages?.length || 0) - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
+              filteredConnections.map((connection) => {
+                const isSelected = selectedConnections.has(connection.id);
+                let longPressTimer: NodeJS.Timeout | null = null;
+
+                const handleTouchStart = () => {
+                  longPressTimer = setTimeout(() => {
+                    handleLongPress(connection.id);
+                  }, 1000); // 1 second long press
+                };
+
+                const handleTouchEnd = () => {
+                  if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                  }
+                };
+
+                const handleClick = () => {
+                  if (isMultiSelectMode) {
+                    toggleConnectionSelection(connection.id);
+                  } else {
+                    setSelectedProfile(connection);
+                  }
+                };
+
+                return (
+                  <div 
+                    key={connection.id} 
+                    className={`bg-white rounded-xl shadow-sm p-4 transition-all ${
+                      isSelected ? 'ring-2 ring-teal-500 bg-teal-50' : ''
+                    }`}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                    onMouseDown={handleTouchStart}
+                    onMouseUp={handleTouchEnd}
+                    onMouseLeave={handleTouchEnd}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        {isMultiSelectMode && (
+                          <div className="absolute -top-2 -right-2 z-10">
+                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                              isSelected 
+                                ? 'bg-teal-600 border-teal-600' 
+                                : 'bg-white border-gray-300'
+                            }`}>
+                              {isSelected && (
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
                             </div>
-                          ))}
+                          </div>
+                        )}
+                        <div
+                          className="cursor-pointer"
+                          onClick={handleClick}
+                        >
+                          <AvatarUpload
+                            userId={connection.user.id}
+                            currentAvatarUrl={connection.user.avatar_url}
+                            name={connection.user.family_name || connection.user.display_name}
+                            size="md"
+                            editable={false}
+                          />
+                        </div>
+                      </div>
+                      <div 
+                        className="flex-1 cursor-pointer"
+                        onClick={handleClick}
+                      >
+                        <h3 className="font-semibold text-emerald-600">
+                          {connection.user.family_name || connection.user.display_name}
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-1">{connection.user.location_name}</p>
+                        
+                        {/* Children dots with ages */}
+                        {connection.user.kids_ages && connection.user.kids_ages.length > 0 && (
+                          <div className="flex items-center gap-1">
+                            {connection.user.kids_ages.map((age, index) => (
+                              <div key={index} className="flex items-center">
+                                <div className="w-6 h-6 bg-teal-100 rounded-full flex items-center justify-center">
+                                  <span className="text-xs font-medium text-teal-700">{age}</span>
+                                </div>
+                                {index < (connection.user.kids_ages?.length || 0) - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {!isMultiSelectMode && (
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => {
+                              setSelectedConnectionForMessage(connection);
+                              setShowMessageModal(true);
+                            }}
+                            className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors text-sm"
+                          >
+                            Message
+                          </button>
                         </div>
                       )}
                     </div>
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => router.push(`/messages?open=${connection.user.id}`)}
-                        className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors text-sm"
-                      >
-                        Message
-                      </button>
-                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
@@ -511,13 +709,13 @@ export default function ConnectionsPage() {
                   <div className="flex gap-2 mt-3">
                     <button
                       onClick={() => handleAcceptRequest(request.id)}
-                      className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 text-sm"
+                      className="flex-1 px-2 py-1.5 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 text-sm"
                     >
                       Accept
                     </button>
                     <button
                       onClick={() => handleRejectRequest(request.id)}
-                      className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 text-sm"
+                      className="flex-1 px-2 py-1.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 text-sm"
                     >
                       Decline
                     </button>
@@ -660,22 +858,31 @@ export default function ConnectionsPage() {
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    router.push(`/messages?open=${selectedProfile.user.id}`);
+                    setSelectedConnectionForMessage(selectedProfile);
+                    setShowMessageModal(true);
                     setSelectedProfile(null);
                   }}
-                  className="flex-1 px-6 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors"
+                  className="flex-1 px-2 py-1.5 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors text-sm"
                 >
                   Message
+                </button>
+                <button
+                  onClick={() => {
+                    window.location.href = `/profile?user=${selectedProfile.user.id}`;
+                  }}
+                  className="flex-1 px-2 py-1.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors text-sm"
+                >
+                  Profile
                 </button>
                 <button
                   onClick={() => {
                     setConnectionToDelete(selectedProfile);
                     setShowDeleteModal(true);
                   }}
-                  className="px-4 py-3 bg-red-100 text-red-600 rounded-xl font-medium hover:bg-red-200 transition-colors"
+                  className="px-2 py-1.5 bg-red-100 text-red-600 rounded-xl font-medium hover:bg-red-200 transition-colors text-sm"
                 >
                   Delete
                 </button>
@@ -722,6 +929,112 @@ export default function ConnectionsPage() {
           </div>
         </div>
       )}
+
+      {/* Send Message Modal */}
+      {showMessageModal && (selectedConnectionForMessage || (isMultiSelectMode && selectedConnections.size > 0)) && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+            {isMultiSelectMode && selectedConnections.size > 1 ? (
+              <div className="mb-4">
+                <h3 className="font-semibold text-emerald-600 mb-2">
+                  Send message to {selectedConnections.size} connections
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {filteredConnections
+                    .filter(conn => selectedConnections.has(conn.id))
+                    .map((conn) => (
+                      <div key={conn.id} className="flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-full">
+                        <div className="w-6 h-6">
+                          <AvatarUpload
+                            userId={conn.user.id}
+                            currentAvatarUrl={conn.user.avatar_url}
+                            name={conn.user.family_name || conn.user.display_name || 'User'}
+                            size="sm"
+                            editable={false}
+                          />
+                        </div>
+                        <span className="text-xs text-teal-700 font-medium">
+                          {conn.user.family_name?.split(' ')[0] || conn.user.display_name}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : selectedConnectionForMessage ? (
+              <div className="flex items-center gap-3 mb-4">
+                <AvatarUpload
+                  userId={selectedConnectionForMessage.user.id}
+                  currentAvatarUrl={selectedConnectionForMessage.user.avatar_url}
+                  name={selectedConnectionForMessage.user.family_name || selectedConnectionForMessage.user.display_name || 'User'}
+                  size="md"
+                  editable={false}
+                />
+                <div>
+                  <h3 className="font-semibold text-emerald-600">
+                    {selectedConnectionForMessage.user.display_name || 
+                     selectedConnectionForMessage.user.family_name?.split(' ')[0] || 
+                     selectedConnectionForMessage.user.family_name}
+                  </h3>
+                  <p className="text-sm text-gray-600">{selectedConnectionForMessage.user.location_name}</p>
+                </div>
+              </div>
+            ) : null}
+            
+            <div className="mb-4">
+              <textarea
+                id="messageInput"
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                placeholder="Type your message..."
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                rows={4}
+                maxLength={500}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {messageText.length}/500 characters
+              </p>
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowMessageModal(false);
+                  setSelectedConnectionForMessage(null);
+                  setMessageText('');
+                  if (isMultiSelectMode) {
+                    exitMultiSelect();
+                  }
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={sendMessage}
+                disabled={!messageText.trim() || sendingMessage}
+                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                {sendingMessage 
+                  ? 'Sending...' 
+                  : isMultiSelectMode && selectedConnections.size > 1 
+                    ? `Send to ${selectedConnections.size} connections`
+                    : 'Send Message'
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {showSuccessMessage && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50">
+          <p className="font-medium">{successMessageText}</p>
+        </div>
+      )}
+      
+      {/* Bottom spacing for mobile nav */}
+      <div className="h-20"></div>
     </div>
     </ProtectedRoute>
   );

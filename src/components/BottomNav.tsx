@@ -69,22 +69,8 @@ export default function BottomNav() {
           connectionRequestsCount = pendingRequests.length;
         }
 
-        // Check pending circle invitations
-        const circleInvitesRes = await fetch(
-          `${supabaseUrl}/rest/v1/circle_members?status=eq.pending&member_id=eq.${session.user.id}&select=id`,
-          {
-            headers: {
-              'apikey': supabaseKey!,
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-          }
-        );
-        
+        // Skip circle invitations check - circles feature not implemented yet
         let circleInvitesCount = 0;
-        if (circleInvitesRes.ok) {
-          const pendingCircleInvites = await circleInvitesRes.json();
-          circleInvitesCount = pendingCircleInvites.length;
-        }
 
         setPendingRequestsCount(connectionRequestsCount + circleInvitesCount);
 
@@ -108,14 +94,13 @@ export default function BottomNav() {
   
   const navItems = [
     { href: '/discover', label: 'Discover', badge: 0 },
-    { href: '/education', label: 'Education', badge: 0 },
     { href: '/circles', label: 'Circles', badge: 0 },
     { href: '/messages', label: 'Message', badge: totalNotifications },
     { href: '/profile', label: 'Profile', badge: 0 },
   ];
 
   // Only show nav when logged in, but not on auth pages  
-  const authPages = ['/', '/signup', '/login', '/welcome', '/forgot-password', '/dashboard'];
+  const authPages = ['/', '/signup', '/login', '/welcome', '/forgot-password', '/reset-password', '/dashboard'];
   
   console.log('BottomNav debug:', { 
     pathname, 
