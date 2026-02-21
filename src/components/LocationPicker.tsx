@@ -273,7 +273,7 @@ export default function LocationPicker({
           />
           <button
             onClick={() => setShowMap(!showMap)}
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-teal-600 hover:text-teal-700"
+            className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-emerald-600 hover:text-emerald-700"
             type="button"
           >
             🗺️
@@ -283,7 +283,7 @@ export default function LocationPicker({
         {/* Loading Indicator */}
         {isLoading && (
           <div className="absolute right-12 top-1/2 transform -translate-y-1/2">
-            <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
           </div>
         )}
 
@@ -332,7 +332,7 @@ export default function LocationPicker({
               {mapLoading && (
                 <div className="absolute inset-0 bg-gray-100 flex items-center justify-center rounded-lg">
                   <div className="text-center">
-                    <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
                     <p className="text-gray-600 text-sm">Loading map...</p>
                   </div>
                 </div>
@@ -357,7 +357,7 @@ export default function LocationPicker({
                           map.current = null;
                         }
                       }}
-                      className="mt-3 px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700"
+                      className="mt-3 px-3 py-1 bg-emerald-600 text-white text-sm rounded hover:bg-emerald-700"
                       type="button"
                     >
                       Retry
@@ -414,7 +414,7 @@ export default function LocationPicker({
                 <button
                   onClick={handleConfirmLocation}
                   disabled={!selectedLocation}
-                  className="flex-1 py-2 px-4 bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:bg-gray-300"
+                  className="flex-1 py-2 px-4 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:bg-gray-300"
                   type="button"
                 >
                   Use This Location

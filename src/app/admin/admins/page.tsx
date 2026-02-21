@@ -132,7 +132,7 @@ export default function AdminManagement() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -155,7 +155,7 @@ export default function AdminManagement() {
           </div>
           <Link 
             href="/admin"
-            className="text-teal-600 hover:text-teal-700 font-medium"
+            className="text-emerald-600 hover:text-emerald-700 font-medium"
           >
             ← Back to Dashboard
           </Link>
@@ -168,18 +168,18 @@ export default function AdminManagement() {
             placeholder="Search users by name, email, or location..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
           />
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Current Admins */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-teal-50">
-              <h2 className="text-lg font-bold text-teal-900 flex items-center gap-2">
+            <div className="px-6 py-4 border-b border-gray-200 bg-emerald-50">
+              <h2 className="text-lg font-bold text-emerald-900 flex items-center gap-2">
                 <span>👑</span> Current Admins ({admins.length})
               </h2>
-              <p className="text-sm text-teal-700">Users with admin access</p>
+              <p className="text-sm text-emerald-700">Users with admin access</p>
             </div>
             
             <div className="p-6">
@@ -199,7 +199,7 @@ export default function AdminManagement() {
                         <div>
                           <div className="flex items-center gap-2">
                             <div className="font-medium text-gray-900">{getUserDisplayName(user)}</div>
-                            <span className="text-teal-600">👑</span>
+                            <span className="text-emerald-600">👑</span>
                           </div>
                           <div className="text-sm text-gray-500">{user.email}</div>
                           <div className="text-xs text-gray-400">Admin since {formatDate(user.created_at)}</div>
@@ -259,7 +259,7 @@ export default function AdminManagement() {
                           setShowConfirmModal(true);
                         }}
                         disabled={actionLoading === user.id}
-                        className="px-3 py-1.5 text-sm bg-teal-100 text-teal-700 rounded-lg hover:bg-teal-200 disabled:opacity-50 transition-colors"
+                        className="px-3 py-1.5 text-sm bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 disabled:opacity-50 transition-colors"
                       >
                         {actionLoading === user.id ? 'Promoting...' : 'Make Admin'}
                       </button>
@@ -295,7 +295,7 @@ export default function AdminManagement() {
           <div className="bg-white rounded-2xl max-w-md w-full p-6">
             <div className="text-center mb-6">
               <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${
-                actionType === 'promote' ? 'bg-teal-100' : 'bg-red-100'
+                actionType === 'promote' ? 'bg-emerald-100' : 'bg-red-100'
               }`}>
                 <span className="text-2xl">
                   {actionType === 'promote' ? '👑' : '⚠️'}
@@ -327,7 +327,7 @@ export default function AdminManagement() {
                 disabled={actionLoading === selectedUser.id}
                 className={`flex-1 px-4 py-2 rounded-xl font-medium text-white disabled:bg-gray-300 disabled:cursor-not-allowed ${
                   actionType === 'promote' 
-                    ? 'bg-teal-600 hover:bg-teal-700' 
+                    ? 'bg-emerald-600 hover:bg-emerald-700' 
                     : 'bg-red-600 hover:bg-red-700'
                 }`}
               >

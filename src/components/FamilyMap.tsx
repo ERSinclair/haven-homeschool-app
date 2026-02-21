@@ -314,7 +314,7 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
       const displayName = family.display_name || family.family_name?.split(' ')[0] || 'Family';
       
       // Different colors for admin users
-      let markerColor = 'bg-teal-600 hover:bg-teal-700';
+      let markerColor = 'bg-emerald-600 hover:bg-emerald-700';
       if (family.admin_level === 'gold') markerColor = 'bg-yellow-500 hover:bg-yellow-600';
       else if (family.admin_level === 'silver') markerColor = 'bg-gray-400 hover:bg-gray-500';
       else if (family.admin_level === 'bronze') markerColor = 'bg-amber-600 hover:bg-amber-700';
@@ -341,7 +341,7 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
       
       // Add View Profile button
       const viewButton = document.createElement('button');
-      viewButton.className = 'mt-2 px-3 py-1 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors';
+      viewButton.className = 'mt-2 px-3 py-1 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors';
       viewButton.textContent = 'View Profile';
       viewButton.onclick = (e) => {
         e.stopPropagation();
@@ -435,7 +435,7 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
       
       // Show user location marker at center of radius
       const markerEl = document.createElement('div');
-      markerEl.className = 'w-4 h-4 bg-teal-600 rounded-full border-2 border-white shadow-lg';
+      markerEl.className = 'w-4 h-4 bg-emerald-600 rounded-full border-2 border-white shadow-lg';
       markerEl.title = 'Your location (center of search radius)';
       userMarkerRef.current = new mapboxgl.Marker(markerEl)
         .setLngLat([userLocation.lng, userLocation.lat])
@@ -462,9 +462,9 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
   if (!MAPBOX_TOKEN) {
     return (
       <div className={`relative ${className}`}>
-        <div className="w-full h-[600px] rounded-xl bg-gradient-to-br from-teal-50 to-emerald-50 border-2 border-dashed border-teal-200 flex items-center justify-center">
+        <div className="w-full h-[600px] rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-50 border-2 border-dashed border-emerald-200 flex items-center justify-center">
           <div className="text-center max-w-md px-6">
-            <div className="w-16 h-16 bg-teal-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full mx-auto mb-4 flex items-center justify-center">
               <span className="text-3xl">🗺️</span>
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Map Token Missing</h3>
@@ -495,9 +495,9 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
         title={`Go to my location (${userProfileLocation || 'Not set'})`}
       >
         {isLocating ? (
-          <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
         ) : (
-          <div className="w-5 h-5 text-teal-600">
+          <div className="w-5 h-5 text-emerald-600">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
             </svg>
@@ -510,7 +510,7 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
       {!isLoaded && (
         <div className="absolute inset-0 bg-gray-100 rounded-xl flex items-center justify-center">
           <div className="text-center">
-            <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+            <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
             <p className="text-gray-600 text-sm">Loading map...</p>
           </div>
         </div>

@@ -17,6 +17,23 @@ type DashboardStats = {
   nearbyFamilies: number;
 };
 
+type RecentFamily = {
+  id: string;
+  family_name: string;
+  display_name?: string;
+  location_name?: string;
+  created_at: string;
+};
+
+type UpcomingEvent = {
+  id: string;
+  title: string;
+  event_date: string;
+  event_time: string;
+  location_name?: string;
+  category?: string;
+};
+
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
@@ -28,6 +45,8 @@ export default function DashboardPage() {
     nearbyFamilies: 0
   });
   const [loading, setLoading] = useState(true);
+  const [recentFamilies, setRecentFamilies] = useState<RecentFamily[]>([]);
+  const [upcomingEventsList, setUpcomingEventsList] = useState<UpcomingEvent[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -58,6 +77,28 @@ export default function DashboardPage() {
 
         // Fetch dashboard stats
         await loadStats(session.user.id, session.access_token);
+
+        // Fetch recent activity
+        const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+
+        const recentFamiliesRes = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?id=neq.${session.user.id}&select=id,family_name,display_name,location_name,created_at&order=created_at.desc&limit=3`,
+          { headers }
+        );
+        if (recentFamiliesRes.ok) {
+          const rf = await recentFamiliesRes.json();
+          setRecentFamilies(Array.isArray(rf) ? rf : []);
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        const upcomingEventsRes = await fetch(
+          `${supabaseUrl}/rest/v1/events?event_date=gte.${today}&select=id,title,event_date,event_time,location_name,category&order=event_date.asc&limit=3`,
+          { headers }
+        );
+        if (upcomingEventsRes.ok) {
+          const ue = await upcomingEventsRes.json();
+          setUpcomingEventsList(Array.isArray(ue) ? ue : []);
+        }
 
       } catch (error) {
         console.error('Error loading dashboard:', error);
@@ -91,17 +132,38 @@ export default function DashboardPage() {
         // Silently handle error, keep default of 0
       }
 
-      // Get connection requests (placeholder)
-      const newConnectionRequests = 0;
-
-      // Get circle invitations (placeholder)
-      const newCircleInvitations = 0;
-
-      // Get upcoming events (simplified)
-      let upcomingEvents = 3; // Default placeholder
+      // Get pending connection requests
+      let newConnectionRequests = 0;
       try {
+        const connRes = await fetch(
+          `${supabaseUrl}/rest/v1/connections?receiver_id=eq.${userId}&status=eq.pending&select=id`,
+          { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${accessToken}` } }
+        );
+        if (connRes.ok) {
+          const conns = await connRes.json();
+          newConnectionRequests = Array.isArray(conns) ? conns.length : 0;
+        }
+      } catch (err) { /* keep 0 */ }
+
+      // Get pending circle invitations
+      let newCircleInvitations = 0;
+      try {
+        const circleInvRes = await fetch(
+          `${supabaseUrl}/rest/v1/circle_invitations?invitee_id=eq.${userId}&status=eq.pending&select=id`,
+          { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${accessToken}` } }
+        );
+        if (circleInvRes.ok) {
+          const circleInvs = await circleInvRes.json();
+          newCircleInvitations = Array.isArray(circleInvs) ? circleInvs.length : 0;
+        }
+      } catch (err) { /* keep 0 */ }
+
+      // Get upcoming events
+      let upcomingEvents = 0;
+      try {
+        const today = new Date().toISOString().split('T')[0];
         const eventsResponse = await fetch(
-          `${supabaseUrl}/rest/v1/events?select=id&limit=10`,
+          `${supabaseUrl}/rest/v1/events?event_date=gte.${today}&select=id`,
           {
             headers: {
               'apikey': supabaseKey!,
@@ -111,17 +173,17 @@ export default function DashboardPage() {
         );
         if (eventsResponse.ok) {
           const events = await eventsResponse.json();
-          upcomingEvents = Array.isArray(events) ? events.length : 3;
+          upcomingEvents = Array.isArray(events) ? events.length : 0;
         }
       } catch (err) {
-        // Use default placeholder
+        // Keep 0 — better than fake numbers
       }
 
       // Get nearby families count
-      let nearbyFamilies = 12; // Default placeholder
+      let nearbyFamilies = 0;
       try {
         const familiesResponse = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?select=id&limit=50`,
+          `${supabaseUrl}/rest/v1/profiles?id=neq.${userId}&select=id`,
           {
             headers: {
               'apikey': supabaseKey!,
@@ -131,10 +193,10 @@ export default function DashboardPage() {
         );
         if (familiesResponse.ok) {
           const families = await familiesResponse.json();
-          nearbyFamilies = Array.isArray(families) ? Math.max(families.length - 1, 0) : 12;
+          nearbyFamilies = Array.isArray(families) ? families.length : 0;
         }
       } catch (err) {
-        // Use default placeholder
+        // Keep 0 — better than fake numbers
       }
 
       setStats({
@@ -146,13 +208,12 @@ export default function DashboardPage() {
       });
 
     } catch (error) {
-      // Set reasonable defaults if everything fails
       setStats({
         newMessages: 0,
         newConnectionRequests: 0,
         newCircleInvitations: 0,
-        upcomingEvents: 3,
-        nearbyFamilies: 12
+        upcomingEvents: 0,
+        nearbyFamilies: 0
       });
     }
   };
@@ -160,7 +221,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -254,29 +315,72 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
-          <h3 className="font-semibold text-emerald-600 mb-4">Community Insights</h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <span className="text-emerald-600 text-xl">🏘️</span>
-                <span className="text-sm font-medium text-emerald-700">{stats.nearbyFamilies} families in your area</span>
-              </div>
+        {/* Recent Families */}
+        {recentFamilies.length > 0 && (
+          <div className="bg-white rounded-xl p-5 shadow-sm mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900">New Families</h3>
+              <Link href="/discover" className="text-xs text-emerald-600 font-medium">See all</Link>
             </div>
-            <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-6 h-6 bg-emerald-100 rounded"></div>
-                <span className="text-sm font-medium text-emerald-700">Peak activity: 2-4 PM weekdays</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <span className="text-emerald-600 text-xl">🎯</span>
-                <span className="text-sm font-medium text-emerald-700">Most active: Playground meetups</span>
-              </div>
+            <div className="space-y-3">
+              {recentFamilies.map((family) => {
+                const daysAgo = Math.floor((Date.now() - new Date(family.created_at).getTime()) / 86400000);
+                const joinedText = daysAgo === 0 ? 'Joined today' : daysAgo === 1 ? 'Joined yesterday' : `Joined ${daysAgo}d ago`;
+                return (
+                  <div key={family.id} className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-emerald-700 font-bold text-sm">
+                        {(family.family_name || family.display_name || '?')[0].toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{family.family_name || family.display_name}</p>
+                      <p className="text-xs text-gray-500">{joinedText}{family.location_name ? ` · ${family.location_name}` : ''}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Upcoming Events */}
+        {upcomingEventsList.length > 0 && (
+          <div className="bg-white rounded-xl p-5 shadow-sm mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900">Upcoming Events</h3>
+              <Link href="/events" className="text-xs text-emerald-600 font-medium">See all</Link>
+            </div>
+            <div className="space-y-3">
+              {upcomingEventsList.map((event) => {
+                const eventDate = new Date(event.event_date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const diffDays = Math.floor((eventDate.getTime() - today.getTime()) / 86400000);
+                const dateText = diffDays === 0 ? 'Today' : diffDays === 1 ? 'Tomorrow' : eventDate.toLocaleDateString('en-AU', { weekday: 'short', month: 'short', day: 'numeric' });
+                return (
+                  <div key={event.id} className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-blue-700 font-bold text-xs text-center leading-tight">
+                        {eventDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }).split(' ').join('\n')}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{event.title}</p>
+                      <p className="text-xs text-gray-500">{dateText}{event.event_time ? ` · ${event.event_time}` : ''}{event.location_name ? ` · ${event.location_name}` : ''}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {recentFamilies.length === 0 && upcomingEventsList.length === 0 && (
+          <div className="bg-white rounded-xl p-5 shadow-sm mb-4 text-center">
+            <p className="text-gray-500 text-sm">Community activity will appear here as families join and events are created.</p>
+          </div>
+        )}
 
         {/* Weather section removed - was causing double welcome screen appearance */}
         <div className="mb-20"></div>

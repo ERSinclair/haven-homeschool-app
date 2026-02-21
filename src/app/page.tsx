@@ -25,15 +25,15 @@ export default function Home() {
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-teal-50 via-white to-emerald-50"></div>
-        <div className="absolute top-0 right-0 w-96 h-96 bg-teal-100 rounded-full blur-3xl opacity-40 -translate-y-1/2 translate-x-1/2"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-emerald-50"></div>
+        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-100 rounded-full blur-3xl opacity-40 -translate-y-1/2 translate-x-1/2"></div>
         
         <div className="relative max-w-4xl mx-auto px-4 pt-12 pb-16 sm:pt-20 sm:pb-24">
           {/* Header with Sign In */}
           <div className="flex justify-end mb-4">
             <Link 
               href="/login"
-              className="text-teal-600 font-medium hover:text-teal-700"
+              className="text-emerald-600 font-medium hover:text-emerald-700"
             >
               Sign in
             </Link>
@@ -41,7 +41,7 @@ export default function Home() {
 
           {/* Header */}
           <div className="text-center mb-12 pt-8">
-            <h1 className="text-5xl sm:text-6xl font-bold bg-gradient-to-r from-teal-600 via-teal-500 to-emerald-500 bg-clip-text text-transparent mb-8" style={{ fontFamily: 'var(--font-fredoka)' }}>
+            <h1 className="text-5xl sm:text-6xl font-bold bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-500 bg-clip-text text-transparent mb-8" style={{ fontFamily: 'var(--font-fredoka)' }}>
               Haven
             </h1>
             <p className="text-xl sm:text-2xl text-gray-700 max-w-lg mx-auto mb-2 font-medium">
@@ -56,7 +56,7 @@ export default function Home() {
           <div className="max-w-sm mx-auto mb-12">
             <Link 
               href="/signup" 
-              className="block w-full bg-teal-600 text-white text-lg font-semibold py-4 px-8 rounded-xl hover:bg-teal-700 active:scale-[0.98] transition-all shadow-lg shadow-teal-600/25 text-center"
+              className="block w-full bg-emerald-600 text-white text-lg font-semibold py-4 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-lg shadow-emerald-600/25 text-center"
             >
               Find Families Near Me
             </Link>
@@ -68,13 +68,13 @@ export default function Home() {
           {/* App Preview */}
           <div className="max-w-sm mx-auto">
             <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-              <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-4 py-3">
+              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3">
                 <p className="text-white text-sm font-medium">Families near Torquay</p>
               </div>
               <div className="divide-y divide-gray-100">
                 {[
                   { name: 'Emma', loc: '2km away', ages: '2, 4', status: 'New to the area', color: 'bg-emerald-500' },
-                  { name: 'Michelle', loc: '3km away', ages: '1, 3', status: 'Stay-at-home mum', color: 'bg-teal-500' },
+                  { name: 'Michelle', loc: '3km away', ages: '1, 3', status: 'Stay-at-home mum', color: 'bg-emerald-500' },
                   { name: 'Lisa', loc: '5km away', ages: '4, 5, 7', status: 'Homeschool family', color: 'bg-cyan-500' },
                 ].map((family, i) => (
                   <div key={i} className="p-4 flex items-center gap-3">
@@ -86,7 +86,7 @@ export default function Home() {
                       <p className="text-sm text-gray-500">
                         {family.loc} · Kids: {family.ages}
                       </p>
-                      <p className="text-xs text-teal-600">{family.status}</p>
+                      <p className="text-xs text-emerald-600">{family.status}</p>
                     </div>
                   </div>
                 ))}
@@ -108,7 +108,7 @@ export default function Home() {
 
           <div className="grid sm:grid-cols-3 gap-6 text-left">
             <div className="bg-white rounded-xl p-6 shadow-sm">
-              <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mb-4">
+              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4">
                 <div className="w-8 h-8 bg-emerald-100 rounded-lg"></div>
               </div>
               <h3 className="font-semibold text-gray-900 mb-2">Actually local</h3>
@@ -152,7 +152,7 @@ export default function Home() {
               { num: '3', title: 'Connect directly', desc: 'Message families, arrange meetups, build your community.' },
             ].map((step, i) => (
               <div key={i} className="flex gap-4 items-start">
-                <div className="w-10 h-10 bg-teal-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                <div className="w-10 h-10 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">
                   {step.num}
                 </div>
                 <div>
@@ -166,7 +166,7 @@ export default function Home() {
       </div>
 
       {/* Testimonial */}
-      <div className="bg-teal-600 py-12 px-4">
+      <div className="bg-emerald-600 py-12 px-4">
         <div className="max-w-2xl mx-auto text-center">
           <p className="text-xl text-white mb-6">
             "We moved to the Surf Coast knowing nobody. Within two weeks of joining, we'd found three families for weekly park meetups. My kids finally have homeschool friends."
@@ -186,7 +186,7 @@ export default function Home() {
       {/* Not just for homeschoolers */}
       <div className="py-12 px-4 bg-gray-50">
         <div className="max-w-2xl mx-auto text-center">
-          <p className="text-sm font-medium text-teal-600 mb-2">FOR ALL FAMILIES</p>
+          <p className="text-sm font-medium text-emerald-600 mb-2">FOR ALL FAMILIES</p>
           <h3 className="text-xl font-bold text-gray-900 mb-3">
             Young families, new to area, stay-at-home parents
           </h3>
@@ -219,7 +219,7 @@ export default function Home() {
       </div>
 
       {/* Final CTA */}
-      <div className="py-16 px-4 bg-gradient-to-b from-white to-teal-50">
+      <div className="py-16 px-4 bg-gradient-to-b from-white to-emerald-50">
         <div className="max-w-md mx-auto text-center">
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">
             Ready to find your community?
@@ -229,7 +229,7 @@ export default function Home() {
           </p>
           <Link 
             href="/signup" 
-            className="inline-block w-full sm:w-auto bg-teal-600 text-white text-lg font-semibold py-4 px-10 rounded-xl hover:bg-teal-700 active:scale-[0.98] transition-all shadow-lg shadow-teal-600/25"
+            className="inline-block w-full sm:w-auto bg-emerald-600 text-white text-lg font-semibold py-4 px-10 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-lg shadow-emerald-600/25"
           >
             Get Started Free
           </Link>

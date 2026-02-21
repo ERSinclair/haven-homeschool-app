@@ -135,7 +135,7 @@ export default function BroadcastPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -155,7 +155,7 @@ export default function BroadcastPage() {
           </div>
           <Link 
             href="/admin"
-            className="text-teal-600 hover:text-teal-700 font-medium"
+            className="text-emerald-600 hover:text-emerald-700 font-medium"
           >
             ← Back to Dashboard
           </Link>
@@ -176,7 +176,7 @@ export default function BroadcastPage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g., Welcome to Haven!, Community Update, etc."
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 maxLength={100}
               />
               <div className="text-sm text-gray-500 mt-1">{title.length}/100 characters</div>
@@ -191,7 +191,7 @@ export default function BroadcastPage() {
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Write your message here..."
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-none"
                 rows={6}
                 maxLength={500}
               />
@@ -242,7 +242,7 @@ export default function BroadcastPage() {
                     value={targetLocation}
                     onChange={(e) => setTargetLocation(e.target.value)}
                     placeholder="e.g., Torquay, Geelong, Surf Coast..."
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   />
                 </div>
               )}
@@ -260,7 +260,7 @@ export default function BroadcastPage() {
               <button
                 onClick={handleSendBroadcast}
                 disabled={!title.trim() || !content.trim() || sending || (targetType === 'location' && !targetLocation.trim())}
-                className="flex-1 px-4 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 {sending ? 'Sending...' : 'Send Broadcast'}
               </button>
@@ -325,13 +325,13 @@ export default function BroadcastPage() {
               <h3 className="text-lg font-bold text-gray-900 mb-4">Message Preview</h3>
               
               {/* Mock notification display */}
-              <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                 <div className="flex items-start gap-3">
-                  <span className="text-teal-600 text-xl">📢</span>
+                  <span className="text-emerald-600 text-xl">📢</span>
                   <div className="flex-1">
-                    <div className="font-semibold text-teal-900 mb-1">{title}</div>
-                    <div className="text-sm text-teal-800">{content}</div>
-                    <div className="text-xs text-teal-600 mt-2">
+                    <div className="font-semibold text-emerald-900 mb-1">{title}</div>
+                    <div className="text-sm text-emerald-800">{content}</div>
+                    <div className="text-xs text-emerald-600 mt-2">
                       Target: {targetType === 'all' ? 'All Users' : `Users in ${targetLocation}`}
                     </div>
                   </div>
@@ -352,7 +352,7 @@ export default function BroadcastPage() {
                   handleSendBroadcast();
                 }}
                 disabled={sending}
-                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:bg-gray-300"
+                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:bg-gray-300"
               >
                 {sending ? 'Sending...' : 'Send Now'}
               </button>

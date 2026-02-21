@@ -141,7 +141,7 @@ export default function BugReportsAdmin() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -168,7 +168,7 @@ export default function BugReportsAdmin() {
           </div>
           <Link 
             href="/admin"
-            className="text-teal-600 hover:text-teal-700 font-medium"
+            className="text-emerald-600 hover:text-emerald-700 font-medium"
           >
             ← Back to Admin
           </Link>
@@ -182,7 +182,7 @@ export default function BugReportsAdmin() {
               <select 
                 value={statusFilter} 
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                className="border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">All Status</option>
                 <option value="new">New</option>
@@ -197,7 +197,7 @@ export default function BugReportsAdmin() {
               <select 
                 value={priorityFilter} 
                 onChange={(e) => setPriorityFilter(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                className="border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">All Priorities</option>
                 <option value="critical">Critical</option>
@@ -301,7 +301,7 @@ export default function BugReportsAdmin() {
                       <select 
                         value={selectedReport.status}
                         onChange={(e) => updateBugReport(selectedReport.id, { status: e.target.value as any })}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
                         disabled={updating}
                       >
                         <option value="new">New</option>
@@ -316,7 +316,7 @@ export default function BugReportsAdmin() {
                       <select 
                         value={selectedReport.priority}
                         onChange={(e) => updateBugReport(selectedReport.id, { priority: e.target.value as any })}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
                         disabled={updating}
                       >
                         <option value="low">Low</option>
@@ -332,7 +332,7 @@ export default function BugReportsAdmin() {
                     <textarea 
                       value={selectedReport.admin_notes || ''}
                       onChange={(e) => setSelectedReport({ ...selectedReport, admin_notes: e.target.value })}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
                       rows={3}
                       placeholder="Add internal notes..."
                     />
@@ -349,7 +349,7 @@ export default function BugReportsAdmin() {
                   <button
                     onClick={() => updateBugReport(selectedReport.id, { admin_notes: selectedReport.admin_notes })}
                     disabled={updating}
-                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 disabled:bg-gray-300"
+                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:bg-gray-300"
                   >
                     {updating ? 'Saving...' : 'Save Changes'}
                   </button>

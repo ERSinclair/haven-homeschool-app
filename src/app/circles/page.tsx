@@ -187,7 +187,7 @@ export default function CirclesPage() {
   // Get color classes for circle display
   const getColorClasses = (color: string) => {
     const colorMap: { [key: string]: { bg: string; border: string } } = {
-      teal: { bg: 'bg-teal-500', border: 'border-teal-200' },
+      teal: { bg: 'bg-emerald-500', border: 'border-emerald-200' },
       blue: { bg: 'bg-emerald-500', border: 'border-emerald-200' },
       purple: { bg: 'bg-purple-500', border: 'border-purple-200' },
       pink: { bg: 'bg-pink-500', border: 'border-pink-200' },
@@ -240,19 +240,19 @@ export default function CirclesPage() {
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
             onClick={() => setShowPrivate(!showPrivate)}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             {showPrivate ? 'Private' : 'Public'}
           </button>
           <button
             onClick={() => router.push('/circles/invitations')}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             Invitations
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             + Create
           </button>
@@ -262,8 +262,8 @@ export default function CirclesPage() {
             onClick={() => setShowSearch(!showSearch)}
             className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showSearch || searchTerm
-                ? 'bg-teal-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                ? 'bg-emerald-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
             }`}
           >
             Search
@@ -279,7 +279,7 @@ export default function CirclesPage() {
                 placeholder="Search circles by name or description..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 autoFocus
               />
             </div>
@@ -326,7 +326,7 @@ export default function CirclesPage() {
                             <h3 className="font-semibold text-gray-900">{circle.name}</h3>
                             <div className="flex gap-2">
                               {circle.is_admin && (
-                                <span className="inline-block px-2 py-1 text-xs font-medium text-teal-700 bg-teal-100 rounded-full">
+                                <span className="inline-block px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-100 rounded-full">
                                   Admin
                                 </span>
                               )}
@@ -400,7 +400,7 @@ export default function CirclesPage() {
                 <div className="space-y-2">
                   <label className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                     !newCircleData.is_public 
-                      ? 'border-teal-600 bg-teal-50'
+                      ? 'border-emerald-600 bg-emerald-50'
                       : 'border-gray-200 bg-white hover:bg-gray-50'
                   }`}>
                     <input
@@ -412,7 +412,7 @@ export default function CirclesPage() {
                     />
                     <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
                       !newCircleData.is_public 
-                        ? 'border-teal-600 bg-teal-600' 
+                        ? 'border-emerald-600 bg-emerald-600' 
                         : 'border-gray-300'
                     }`}>
                       {!newCircleData.is_public && (
@@ -421,7 +421,7 @@ export default function CirclesPage() {
                     </div>
                     <div>
                       <span className={`font-medium ${
-                        !newCircleData.is_public ? 'text-teal-900' : 'text-gray-700'
+                        !newCircleData.is_public ? 'text-emerald-900' : 'text-gray-700'
                       }`}>
                         Private Circle
                       </span>
@@ -430,7 +430,7 @@ export default function CirclesPage() {
                   </label>
                   <label className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                     newCircleData.is_public 
-                      ? 'border-teal-600 bg-teal-50'
+                      ? 'border-emerald-600 bg-emerald-50'
                       : 'border-gray-200 bg-white hover:bg-gray-50'
                   }`}>
                     <input
@@ -442,7 +442,7 @@ export default function CirclesPage() {
                     />
                     <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
                       newCircleData.is_public 
-                        ? 'border-teal-600 bg-teal-600' 
+                        ? 'border-emerald-600 bg-emerald-600' 
                         : 'border-gray-300'
                     }`}>
                       {newCircleData.is_public && (
@@ -451,7 +451,7 @@ export default function CirclesPage() {
                     </div>
                     <div>
                       <span className={`font-medium ${
-                        newCircleData.is_public ? 'text-teal-900' : 'text-gray-700'
+                        newCircleData.is_public ? 'text-emerald-900' : 'text-gray-700'
                       }`}>
                         Public Circle
                       </span>

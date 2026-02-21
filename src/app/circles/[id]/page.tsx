@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import AvatarUpload from '@/components/AvatarUpload';
 import HavenHeader from '@/components/HavenHeader';
+import { createNotification } from '@/lib/notifications';
 
 type Circle = {
   id: string;
@@ -315,6 +316,18 @@ export default function CirclePage() {
       });
 
       setInvitedUsers(prev => new Set([...prev, userId]));
+
+      // Notify the invitee
+      createNotification({
+        userId,
+        actorId: session.user.id,
+        type: 'circle_invite',
+        title: `You've been invited to a circle`,
+        body: `Someone invited you to join a circle`,
+        link: '/circles/invitations',
+        referenceId: circleId,
+        accessToken: session.access_token,
+      });
     } catch (error) {
       console.error('Error sending invitation:', error);
     } finally {
@@ -557,7 +570,7 @@ export default function CirclePage() {
 
   const getColorClasses = (color: string) => {
     const colorMap: Record<string, { bg: string; text: string }> = {
-      teal: { bg: 'bg-teal-100', text: 'text-teal-700' },
+      teal: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
       blue: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
       emerald: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
       purple: { bg: 'bg-purple-100', text: 'text-purple-700' },
@@ -585,7 +598,7 @@ export default function CirclePage() {
           <p className="text-red-600 mb-4">{error || 'Circle not found'}</p>
           <Link
             href="/circles"
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
           >
             Back to Circles
           </Link>
@@ -632,7 +645,7 @@ export default function CirclePage() {
               onClick={() => setActiveTab('chat')}
               className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
                 activeTab === 'chat'
-                  ? 'border-teal-500 text-teal-600'
+                  ? 'border-emerald-500 text-emerald-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -642,7 +655,7 @@ export default function CirclePage() {
               onClick={() => setActiveTab('members')}
               className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
                 activeTab === 'members'
-                  ? 'border-teal-500 text-teal-600'
+                  ? 'border-emerald-500 text-emerald-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -686,7 +699,7 @@ export default function CirclePage() {
                       <div
                         className={`inline-block px-3 py-2 rounded-lg ${
                           message.sender_id === currentUserId
-                            ? 'bg-teal-600 text-white'
+                            ? 'bg-emerald-600 text-white'
                             : 'bg-white border border-gray-200 text-gray-900'
                         }`}
                       >
@@ -715,7 +728,7 @@ export default function CirclePage() {
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Type a message..."
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
                   maxLength={500}
                   rows={1}
                   style={{
@@ -727,7 +740,7 @@ export default function CirclePage() {
                 <button
                   onClick={sendMessage}
                   disabled={!newMessage.trim() || sendingMessage}
-                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   {sendingMessage ? '...' : 'Send'}
                 </button>
@@ -770,14 +783,14 @@ export default function CirclePage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {member.role === 'admin' && (
-                      <span className="px-2 py-1 text-xs font-medium text-teal-700 bg-teal-100 rounded-full">
+                      <span className="px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-100 rounded-full">
                         Admin
                       </span>
                     )}
                     {member.member_id !== currentUserId && (
                       <Link
                         href={`/messages?user=${member.member_id}`}
-                        className="text-teal-600 hover:text-teal-700 text-sm"
+                        className="text-emerald-600 hover:text-emerald-700 text-sm"
                         onClick={(e) => e.stopPropagation()}
                       >
                         Message
@@ -793,7 +806,7 @@ export default function CirclePage() {
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <button 
                   onClick={openInviteModal}
-                  className="w-full py-3 px-4 text-teal-600 border border-teal-200 rounded-lg hover:bg-teal-50 font-medium"
+                  className="w-full py-3 px-4 text-emerald-600 border border-emerald-200 rounded-lg hover:bg-emerald-50 font-medium"
                 >
                   + Invite Members
                 </button>
@@ -931,7 +944,7 @@ export default function CirclePage() {
                       type="text"
                       value={tempName}
                       onChange={(e) => setTempName(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                       placeholder="Circle name"
                       autoFocus
                     />
@@ -939,7 +952,7 @@ export default function CirclePage() {
                       <button
                         onClick={saveCircleName}
                         disabled={!tempName.trim() || savingChanges}
-                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                        className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:bg-gray-300"
                       >
                         {savingChanges ? 'Saving...' : 'Save'}
                       </button>
@@ -969,7 +982,7 @@ export default function CirclePage() {
                           setEditingName(true);
                           setTempName(circle?.name || '');
                         }}
-                        className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                        className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                       >
                         Edit
                       </button>
@@ -986,7 +999,7 @@ export default function CirclePage() {
                     <textarea
                       value={tempDescription}
                       onChange={(e) => setTempDescription(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
                       placeholder="Describe your circle..."
                       rows={3}
                       autoFocus
@@ -995,7 +1008,7 @@ export default function CirclePage() {
                       <button
                         onClick={saveCircleDescription}
                         disabled={savingChanges}
-                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                        className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:bg-gray-300"
                       >
                         {savingChanges ? 'Saving...' : 'Save'}
                       </button>
@@ -1021,7 +1034,7 @@ export default function CirclePage() {
                           setEditingDescription(true);
                           setTempDescription(circle?.description || '');
                         }}
-                        className="text-teal-600 hover:text-teal-700 text-sm font-medium ml-3"
+                        className="text-emerald-600 hover:text-emerald-700 text-sm font-medium ml-3"
                       >
                         Edit
                       </button>
@@ -1115,7 +1128,7 @@ export default function CirclePage() {
                        selectedMember.profile?.family_name}
                     </h3>
                     {selectedMember.role === 'admin' && (
-                      <span className="px-2 py-1 text-xs font-medium text-teal-700 bg-teal-100 rounded-full">
+                      <span className="px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-100 rounded-full">
                         Admin
                       </span>
                     )}
@@ -1170,7 +1183,7 @@ export default function CirclePage() {
                 {selectedMember.member_id !== currentUserId && (
                   <Link
                     href={`/messages?user=${selectedMember.member_id}`}
-                    className="flex-1 px-4 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors text-center"
+                    className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors text-center"
                     onClick={() => setSelectedMember(null)}
                   >
                     Message

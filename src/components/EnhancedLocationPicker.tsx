@@ -226,7 +226,7 @@ export default function EnhancedLocationPicker({
             {/* Loading indicator */}
             {isLoading && (
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
               </div>
             )}
           </div>
@@ -244,7 +244,7 @@ export default function EnhancedLocationPicker({
             )}
             <button
               onClick={openMapView}
-              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium transition-colors flex items-center gap-1"
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium transition-colors flex items-center gap-1"
               type="button"
             >
               🗺️ Map
@@ -270,9 +270,9 @@ export default function EnhancedLocationPicker({
 
           {/* Selected Location Preview */}
           {selectedLocation && (
-            <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg">
-              <div className="font-medium text-teal-900">{selectedLocation.name}</div>
-              <div className="text-sm text-teal-700">{selectedLocation.address}</div>
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <div className="font-medium text-emerald-900">{selectedLocation.name}</div>
+              <div className="text-sm text-emerald-700">{selectedLocation.address}</div>
             </div>
           )}
 
@@ -338,7 +338,7 @@ export default function EnhancedLocationPicker({
                 <button
                   onClick={confirmMapLocation}
                   disabled={!selectedLocation}
-                  className="flex-1 py-2 px-4 bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:bg-gray-300 transition-colors"
+                  className="flex-1 py-2 px-4 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:bg-gray-300 transition-colors"
                   type="button"
                 >
                   Use This Location

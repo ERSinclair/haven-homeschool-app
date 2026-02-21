@@ -47,8 +47,8 @@ export default function EducationPage() {
             onClick={() => setShowSearch(!showSearch)}
             className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
               showSearch || searchTerm
-                ? 'bg-teal-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                ? 'bg-emerald-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
             }`}
           >
             Search
@@ -77,7 +77,7 @@ export default function EducationPage() {
           {activeSection === 'resources' && (
             <div className="space-y-4">
               <div className="text-center py-12">
-                <div className="w-20 h-20 bg-teal-50 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <div className="w-20 h-20 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
                   <svg 
                     viewBox="0 0 64 64" 
                     className="w-16 h-16"
@@ -151,7 +151,7 @@ export default function EducationPage() {
           {activeSection === 'circles' && (
             <div className="space-y-4">
               <div className="text-center py-12">
-                <div className="w-20 h-20 bg-teal-50 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <div className="w-20 h-20 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
                   <svg 
                     viewBox="0 0 64 64" 
                     className="w-16 h-16"

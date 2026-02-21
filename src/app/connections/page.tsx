@@ -442,8 +442,8 @@ export default function ConnectionsPage() {
             onClick={() => setShowSearch(!showSearch)}
             className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showSearch || searchTerm
-                ? 'bg-teal-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                ? 'bg-emerald-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
             }`}
           >
             Search
@@ -456,8 +456,8 @@ export default function ConnectionsPage() {
               onClick={() => setActiveTab('connections')}
               className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-32 flex items-center justify-center ${
                 activeTab === 'connections'
-                  ? 'bg-teal-600 text-white shadow-md scale-105'
-                  : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                  ? 'bg-emerald-600 text-white shadow-md scale-105'
+                  : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
               }`}
             >
               Connections ({filteredConnections.length})
@@ -466,8 +466,8 @@ export default function ConnectionsPage() {
               onClick={() => setActiveTab('requests')}
               className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-32 flex items-center justify-center gap-1 ${
                 activeTab === 'requests'
-                  ? 'bg-teal-600 text-white shadow-md scale-105'
-                  : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                  ? 'bg-emerald-600 text-white shadow-md scale-105'
+                  : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
               }`}
             >
               Requests
@@ -483,8 +483,8 @@ export default function ConnectionsPage() {
               onClick={() => setActiveTab('sent')}
               className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-32 flex items-center justify-center ${
                 activeTab === 'sent'
-                  ? 'bg-teal-600 text-white shadow-md scale-105'
-                  : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                  ? 'bg-emerald-600 text-white shadow-md scale-105'
+                  : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
               }`}
             >
               Sent ({filteredSentRequests.length})
@@ -493,7 +493,7 @@ export default function ConnectionsPage() {
 
         {/* Multi-select header */}
         {isMultiSelectMode && (
-          <div className="bg-teal-600 text-white rounded-xl p-4 mb-4 flex items-center justify-between">
+          <div className="bg-emerald-600 text-white rounded-xl p-4 mb-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="font-medium">
                 {selectedConnections.size} connection{selectedConnections.size !== 1 ? 's' : ''} selected
@@ -503,13 +503,13 @@ export default function ConnectionsPage() {
               <button
                 onClick={sendMessageToSelected}
                 disabled={selectedConnections.size === 0}
-                className="px-4 py-2 bg-white text-teal-600 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-50 text-sm"
+                className="px-4 py-2 bg-white text-emerald-600 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-50 text-sm"
               >
                 Message
               </button>
               <button
                 onClick={exitMultiSelect}
-                className="px-4 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-400 text-sm"
+                className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-400 text-sm"
               >
                 Cancel
               </button>
@@ -570,7 +570,7 @@ export default function ConnectionsPage() {
                   <div 
                     key={connection.id} 
                     className={`bg-white rounded-xl shadow-sm p-4 transition-all ${
-                      isSelected ? 'ring-2 ring-teal-500 bg-teal-50' : ''
+                      isSelected ? 'ring-2 ring-emerald-500 bg-emerald-50' : ''
                     }`}
                     onTouchStart={handleTouchStart}
                     onTouchEnd={handleTouchEnd}
@@ -584,7 +584,7 @@ export default function ConnectionsPage() {
                           <div className="absolute -top-2 -right-2 z-10">
                             <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
                               isSelected 
-                                ? 'bg-teal-600 border-teal-600' 
+                                ? 'bg-emerald-600 border-emerald-600' 
                                 : 'bg-white border-gray-300'
                             }`}>
                               {isSelected && (
@@ -622,8 +622,8 @@ export default function ConnectionsPage() {
                           <div className="flex items-center gap-1">
                             {connection.user.kids_ages.map((age, index) => (
                               <div key={index} className="flex items-center">
-                                <div className="w-6 h-6 bg-teal-100 rounded-full flex items-center justify-center">
-                                  <span className="text-xs font-medium text-teal-700">{age}</span>
+                                <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
+                                  <span className="text-xs font-medium text-emerald-700">{age}</span>
                                 </div>
                                 {index < (connection.user.kids_ages?.length || 0) - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
                               </div>
@@ -638,7 +638,7 @@ export default function ConnectionsPage() {
                               setSelectedConnectionForMessage(connection);
                               setShowMessageModal(true);
                             }}
-                            className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors text-sm"
+                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors text-sm"
                           >
                             Message
                           </button>
@@ -692,8 +692,8 @@ export default function ConnectionsPage() {
                         <div className="flex items-center gap-1 mt-1">
                           {request.user.kids_ages.map((age, index) => (
                             <div key={index} className="flex items-center">
-                              <div className="w-6 h-6 bg-teal-100 rounded-full flex items-center justify-center">
-                                <span className="text-xs font-medium text-teal-700">{age}</span>
+                              <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
+                                <span className="text-xs font-medium text-emerald-700">{age}</span>
                               </div>
                               {index < (request.user.kids_ages?.length || 0) - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
                             </div>
@@ -709,7 +709,7 @@ export default function ConnectionsPage() {
                   <div className="flex gap-2 mt-3">
                     <button
                       onClick={() => handleAcceptRequest(request.id)}
-                      className="flex-1 px-2 py-1.5 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 text-sm"
+                      className="flex-1 px-2 py-1.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 text-sm"
                     >
                       Accept
                     </button>
@@ -766,8 +766,8 @@ export default function ConnectionsPage() {
                         <div className="flex items-center gap-1 mt-1">
                           {request.user.kids_ages.map((age, index) => (
                             <div key={index} className="flex items-center">
-                              <div className="w-6 h-6 bg-teal-100 rounded-full flex items-center justify-center">
-                                <span className="text-xs font-medium text-teal-700">{age}</span>
+                              <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
+                                <span className="text-xs font-medium text-emerald-700">{age}</span>
                               </div>
                               {index < (request.user.kids_ages?.length || 0) - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
                             </div>
@@ -849,8 +849,8 @@ export default function ConnectionsPage() {
                   <h4 className="font-semibold text-gray-900 mb-3">Children</h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedProfile.user.kids_ages.map((age, index) => (
-                      <div key={index} className="bg-teal-50 border border-teal-200 rounded-full px-3 py-2">
-                        <span className="text-teal-700 font-medium">{age} years old</span>
+                      <div key={index} className="bg-emerald-50 border border-emerald-200 rounded-full px-3 py-2">
+                        <span className="text-emerald-700 font-medium">{age} years old</span>
                       </div>
                     ))}
                   </div>
@@ -865,7 +865,7 @@ export default function ConnectionsPage() {
                     setShowMessageModal(true);
                     setSelectedProfile(null);
                   }}
-                  className="flex-1 px-2 py-1.5 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors text-sm"
+                  className="flex-1 px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors text-sm"
                 >
                   Message
                 </button>
@@ -943,7 +943,7 @@ export default function ConnectionsPage() {
                   {filteredConnections
                     .filter(conn => selectedConnections.has(conn.id))
                     .map((conn) => (
-                      <div key={conn.id} className="flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-full">
+                      <div key={conn.id} className="flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-full">
                         <div className="w-6 h-6">
                           <AvatarUpload
                             userId={conn.user.id}
@@ -953,7 +953,7 @@ export default function ConnectionsPage() {
                             editable={false}
                           />
                         </div>
-                        <span className="text-xs text-teal-700 font-medium">
+                        <span className="text-xs text-emerald-700 font-medium">
                           {conn.user.family_name?.split(' ')[0] || conn.user.display_name}
                         </span>
                       </div>
@@ -986,7 +986,7 @@ export default function ConnectionsPage() {
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 placeholder="Type your message..."
-                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
                 rows={4}
                 maxLength={500}
               />
@@ -1012,7 +1012,7 @@ export default function ConnectionsPage() {
               <button
                 onClick={sendMessage}
                 disabled={!messageText.trim() || sendingMessage}
-                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 {sendingMessage 
                   ? 'Sending...' 

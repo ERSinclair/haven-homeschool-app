@@ -267,7 +267,7 @@ export default function ManagePage() {
     return (
       <ProtectedRoute>
         <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
         </div>
       </ProtectedRoute>
     );
@@ -279,7 +279,7 @@ export default function ManagePage() {
         <div className="max-w-md mx-auto px-4 py-8">
           {/* Back Link */}
           <div className="mb-6">
-            <Link href="/events" className="text-teal-600 hover:text-teal-700 font-medium">
+            <Link href="/events" className="text-emerald-600 hover:text-emerald-700 font-medium">
               ← Back
             </Link>
           </div>
@@ -301,8 +301,8 @@ export default function ManagePage() {
                 onClick={() => setActiveSection(section.key as any)}
                 className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
                   activeSection === section.key
-                    ? 'bg-teal-600 text-white shadow-md scale-105'
-                    : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                    ? 'bg-emerald-600 text-white shadow-md scale-105'
+                    : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
                 }`}
               >
                 {section.label}
@@ -319,7 +319,7 @@ export default function ManagePage() {
                   <p className="text-gray-500">No active events</p>
                   <Link
                     href="/events"
-                    className="text-teal-600 hover:text-teal-700 text-sm mt-2 inline-block"
+                    className="text-emerald-600 hover:text-emerald-700 text-sm mt-2 inline-block"
                   >
                     Browse events to join
                   </Link>
@@ -425,7 +425,7 @@ export default function ManagePage() {
                   <p className="text-gray-500">No circles yet</p>
                   <Link
                     href="/circles"
-                    className="text-teal-600 hover:text-teal-700 text-sm mt-2 inline-block"
+                    className="text-emerald-600 hover:text-emerald-700 text-sm mt-2 inline-block"
                   >
                     Find circles to join
                   </Link>
@@ -445,7 +445,7 @@ export default function ManagePage() {
                           >
                             <div className="flex justify-between items-start mb-2">
                               <h4 className="font-semibold text-gray-900">{circle.name}</h4>
-                              <span className="bg-teal-100 text-teal-700 text-xs px-2 py-1 rounded-full">
+                              <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full">
                                 Member
                               </span>
                             </div>
@@ -474,7 +474,7 @@ export default function ManagePage() {
                           >
                             <div className="flex justify-between items-start mb-2">
                               <h4 className="font-semibold text-gray-900">{circle.name}</h4>
-                              <span className="bg-teal-100 text-teal-700 text-xs px-2 py-1 rounded-full">
+                              <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full">
                                 Member
                               </span>
                             </div>
@@ -500,7 +500,7 @@ export default function ManagePage() {
               <div className="flex items-center justify-end mb-4">
                 <Link
                   href="/connections"
-                  className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                  className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                 >
                   View All Connections
                 </Link>
@@ -511,7 +511,7 @@ export default function ManagePage() {
                   <p className="text-gray-500">No pending connection requests</p>
                   <Link
                     href="/discover"
-                    className="text-teal-600 hover:text-teal-700 text-sm mt-2 inline-block"
+                    className="text-emerald-600 hover:text-emerald-700 text-sm mt-2 inline-block"
                   >
                     Discover families to connect with
                   </Link>
@@ -545,7 +545,7 @@ export default function ManagePage() {
                     <div className="text-center pt-2">
                       <Link
                         href="/connections"
-                        className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                        className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                       >
                         View all {getConnectionRequests().length} pending requests
                       </Link>

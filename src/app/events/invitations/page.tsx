@@ -155,7 +155,7 @@ export default function EventInvitationsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -248,7 +248,7 @@ export default function EventInvitationsPage() {
                     <button
                       onClick={() => handleInvitation(invitation.id, 'accept')}
                       disabled={processingInvite === invitation.id}
-                      className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:opacity-50 text-sm"
+                      className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:opacity-50 text-sm"
                     >
                       {processingInvite === invitation.id ? 'Processing...' : 'Accept & RSVP'}
                     </button>
@@ -268,7 +268,7 @@ export default function EventInvitationsPage() {
             </p>
             <Link
               href="/events"
-              className="inline-flex items-center px-2 py-1.5 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors text-sm"
+              className="inline-flex items-center px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors text-sm"
             >
               Browse Events
             </Link>

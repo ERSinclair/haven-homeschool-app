@@ -25,6 +25,7 @@ export default function WelcomePage() {
       const profiles = await response.json();
       if (profiles && profiles.length > 0) {
         setProfileData(profiles[0]);
+        fetchStats(userId, accessToken, profiles[0]);
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -34,7 +35,52 @@ export default function WelcomePage() {
   const [profileData, setProfileData] = useState<any>(null);
   const [step, setStep] = useState(0);
   const [isFromSignup, setIsFromSignup] = useState(false);
+  const [stats, setStats] = useState({ families: 0, events: 0, similarAges: 0 });
   const router = useRouter();
+
+  const fetchStats = async (userId: string, accessToken: string, userProfile?: any) => {
+    try {
+      const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${accessToken}` };
+
+      // Total families (excluding self)
+      const familiesRes = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=neq.${userId}&select=id,kids_ages`,
+        { headers }
+      );
+      const families = familiesRes.ok ? await familiesRes.json() : [];
+
+      // Upcoming events
+      const today = new Date().toISOString().split('T')[0];
+      const eventsRes = await fetch(
+        `${supabaseUrl}/rest/v1/events?event_date=gte.${today}&select=id`,
+        { headers }
+      );
+      const events = eventsRes.ok ? await eventsRes.json() : [];
+
+      // Families with overlapping kids ages
+      const myKidsAges: number[] = userProfile?.kids_ages || [];
+      let similarAges = 0;
+      if (myKidsAges.length > 0) {
+        similarAges = families.filter((f: any) => {
+          const theirAges: number[] = f.kids_ages || [];
+          return theirAges.some((age: number) =>
+            myKidsAges.some((myAge: number) => Math.abs(age - myAge) <= 2)
+          );
+        }).length;
+      } else {
+        // Fallback: count families who have kids listed
+        similarAges = families.filter((f: any) => f.kids_ages && f.kids_ages.length > 0).length;
+      }
+
+      setStats({
+        families: Array.isArray(families) ? families.length : 0,
+        events: Array.isArray(events) ? events.length : 0,
+        similarAges,
+      });
+    } catch (err) {
+      // Keep zeroes on error — better than fake numbers
+    }
+  };
 
   useEffect(() => {
     const session = getStoredSession();
@@ -131,18 +177,18 @@ export default function WelcomePage() {
           </p>
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-emerald-50 rounded-xl py-3 px-2 text-center">
-              <p className="text-2xl font-bold text-emerald-600">12</p>
+              <p className="text-2xl font-bold text-emerald-600">{stats.families}</p>
               <p className="text-xs text-emerald-500 mt-0.5">Families</p>
             </div>
             <div className="bg-emerald-50 rounded-xl py-3 px-2 text-center">
-              <p className="text-2xl font-bold text-emerald-600">8</p>
+              <p className="text-2xl font-bold text-emerald-600">{stats.similarAges}</p>
               <p className="text-xs text-emerald-500 mt-0.5">
                 {profileData?.user_type === 'teacher' ? 'Seeking help' : 
                  profileData?.user_type === 'business' ? 'Potential clients' : 'Similar ages'}
               </p>
             </div>
             <div className="bg-emerald-50 rounded-xl py-3 px-2 text-center">
-              <p className="text-2xl font-bold text-emerald-600">3</p>
+              <p className="text-2xl font-bold text-emerald-600">{stats.events}</p>
               <p className="text-xs text-emerald-500 mt-0.5">Events</p>
             </div>
           </div>

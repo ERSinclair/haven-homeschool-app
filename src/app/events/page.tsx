@@ -7,6 +7,7 @@ import { getStoredSession } from '@/lib/session';
 import SimpleLocationPicker from '@/components/SimpleLocationPicker';
 import HavenHeader from '@/components/HavenHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { createNotification } from '@/lib/notifications';
 
 type Event = {
   id: string;
@@ -261,47 +262,40 @@ export default function EventsPage() {
   // No longer needed with individual buttons
 
   const handleRsvp = async (eventId: string, going: boolean) => {
-    console.log('RSVP clicked:', { eventId, going, userId, hasSession: !!getStoredSession() });
-    
     const session = getStoredSession();
-    if (!session) {
-      console.error('No session found');
-      alert('Please log in to RSVP to events');
+    if (!session || !userId) {
       router.push('/login');
       return;
     }
-    
-    if (!userId) {
-      console.error('No userId found');
-      alert('User ID not found. Please try refreshing the page.');
-      return;
+
+    // Optimistic update
+    setEvents(prev => prev.map(e =>
+      e.id === eventId
+        ? { ...e, user_rsvp: going, rsvp_count: (e.rsvp_count || 0) + (going ? 1 : -1) }
+        : e
+    ));
+    if (selectedEvent?.id === eventId) {
+      setSelectedEvent(prev => prev ? {
+        ...prev,
+        user_rsvp: going,
+        rsvp_count: (prev.rsvp_count || 0) + (going ? 1 : -1),
+      } : null);
     }
 
     try {
       let response;
       if (going) {
-        console.log('Creating RSVP...');
-        // Create RSVP
-        response = await fetch(
-          `${supabaseUrl}/rest/v1/event_rsvps`,
-          {
-            method: 'POST',
-            headers: {
-              'apikey': supabaseKey!,
-              'Authorization': `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'return=representation',
-            },
-            body: JSON.stringify({
-              event_id: eventId,
-              profile_id: userId,
-              status: 'going',
-            }),
-          }
-        );
+        response = await fetch(`${supabaseUrl}/rest/v1/event_rsvps`, {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({ event_id: eventId, profile_id: userId, status: 'going' }),
+        });
       } else {
-        console.log('Deleting RSVP...');
-        // Delete RSVP
         response = await fetch(
           `${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${eventId}&profile_id=eq.${userId}`,
           {
@@ -314,34 +308,38 @@ export default function EventsPage() {
         );
       }
 
-      console.log('RSVP response:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('RSVP API Error:', errorText);
-        alert(`Error updating RSVP: ${response.statusText}`);
-        return;
+      if (response.ok) {
+        // Notify the event host when someone RSVPs (not if they're RSVPing their own event)
+        if (going) {
+          const event = events.find(e => e.id === eventId);
+          if (event && event.host_id !== userId) {
+            createNotification({
+              userId: event.host_id,
+              actorId: userId,
+              type: 'event_rsvp',
+              title: `Someone is coming to your event`,
+              body: event.title,
+              link: '/events',
+              referenceId: eventId,
+              accessToken: session.access_token,
+            });
+          }
+        }
+      } else {
+        // Revert optimistic update on failure
+        setEvents(prev => prev.map(e =>
+          e.id === eventId
+            ? { ...e, user_rsvp: !going, rsvp_count: (e.rsvp_count || 0) + (going ? -1 : 1) }
+            : e
+        ));
       }
-
-      console.log('RSVP successful, updating UI');
-      // Update local state
-      setEvents(prev => prev.map(e => 
-        e.id === eventId 
-          ? { ...e, user_rsvp: going, rsvp_count: (e.rsvp_count || 0) + (going ? 1 : -1) }
+    } catch {
+      // Revert on network error
+      setEvents(prev => prev.map(e =>
+        e.id === eventId
+          ? { ...e, user_rsvp: !going, rsvp_count: (e.rsvp_count || 0) + (going ? -1 : 1) }
           : e
       ));
-      
-      // Update selected event if it's the same one
-      if (selectedEvent?.id === eventId) {
-        setSelectedEvent(prev => prev ? {
-          ...prev,
-          user_rsvp: going,
-          rsvp_count: (prev.rsvp_count || 0) + (going ? 1 : -1)
-        } : null);
-      }
-    } catch (err) {
-      console.error('Error updating RSVP:', err);
-      alert('Network error updating RSVP. Please try again.');
     }
   };
 
@@ -708,7 +706,7 @@ export default function EventsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -761,7 +759,7 @@ export default function EventsPage() {
                           href={`https://www.google.com/maps?q=${(selectedEvent as Event).latitude},${(selectedEvent as Event).longitude}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-700 text-sm font-medium"
+                          className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                         >
                           🗺️ View on Maps
                         </a>
@@ -798,7 +796,7 @@ export default function EventsPage() {
                   className={`w-full py-3 rounded-xl font-semibold transition-colors ${
                     (selectedEvent as Event).user_rsvp
                       ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      : 'bg-teal-600 text-white hover:bg-teal-700'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
                   }`}
                 >
                   {(selectedEvent as Event).user_rsvp ? "Can't make it" : "I'm going!"}
@@ -822,7 +820,7 @@ export default function EventsPage() {
       <div className="max-w-md mx-auto px-4 py-8">
         {/* Back Link */}
         <div className="mb-6">
-          <Link href="/discover" className="text-teal-600 hover:text-teal-700 font-medium">
+          <Link href="/discover" className="text-emerald-600 hover:text-emerald-700 font-medium">
             ← Back
           </Link>
         </div>
@@ -835,21 +833,21 @@ export default function EventsPage() {
             onClick={() => setShowFilters(!showFilters)}
             className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showFilters
-                ? 'bg-teal-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                ? 'bg-emerald-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
             }`}
           >
             Filters
           </button>
           <button
             onClick={() => router.push('/events/invitations')}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             Invitations
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             + Create
           </button>
@@ -874,7 +872,7 @@ export default function EventsPage() {
                       onClick={() => setCategoryFilter(cat.value)}
                       className={`px-2 py-1.5 text-sm font-medium rounded-xl border-2 transition-colors ${
                         categoryFilter === cat.value
-                          ? 'border-teal-600 bg-teal-50 text-teal-700'
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
                           : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
                       }`}
                     >
@@ -932,16 +930,16 @@ export default function EventsPage() {
                 <button
                   key={event.id}
                   onClick={() => setSelectedEvent(event)}
-                  className="w-full bg-teal-50 border border-teal-200 rounded-xl p-3 text-left hover:bg-teal-100"
+                  className="w-full bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-left hover:bg-emerald-100"
                 >
                   <div className="flex justify-between">
-                    <span className="font-medium text-teal-900">{event.title}</span>
-                    <span className="text-teal-600 text-sm">{formatDate(event.event_date)}</span>
+                    <span className="font-medium text-emerald-900">{event.title}</span>
+                    <span className="text-emerald-600 text-sm">{formatDate(event.event_date)}</span>
                   </div>
                   {event.location_name ? (
-                    <p className="text-teal-700 text-sm mt-1">{event.location_name}</p>
+                    <p className="text-emerald-700 text-sm mt-1">{event.location_name}</p>
                   ) : (
-                    <p className="text-teal-600 text-sm italic mt-1">Location TBA</p>
+                    <p className="text-emerald-600 text-sm italic mt-1">Location TBA</p>
                   )}
                 </button>
               ))}
@@ -952,7 +950,7 @@ export default function EventsPage() {
         {/* Events List */}
         {filteredEvents.length === 0 ? (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-teal-50 rounded-full mx-auto mb-4 flex items-center justify-center">
+            <div className="w-16 h-16 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
               <svg 
                 viewBox="0 0 64 64" 
                 className="w-12 h-12"
@@ -1039,7 +1037,7 @@ export default function EventsPage() {
                     <p className="text-sm text-gray-600">{event.location_name}</p>
                     {/* Distance display when location is available */}
                     {userLocation && event.latitude && event.longitude && (
-                      <span className="text-xs text-teal-600 font-medium">
+                      <span className="text-xs text-emerald-600 font-medium">
                         {calculateDistance(userLocation.lat, userLocation.lng, event.latitude, event.longitude).toFixed(1)}km
                       </span>
                     )}
@@ -1102,7 +1100,7 @@ export default function EventsPage() {
                       type="text"
                       value={tempEventTitle}
                       onChange={(e) => setTempEventTitle(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                       placeholder="Event title"
                       autoFocus
                     />
@@ -1110,7 +1108,7 @@ export default function EventsPage() {
                       <button
                         onClick={saveEventTitle}
                         disabled={!tempEventTitle.trim() || savingEventChanges}
-                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                        className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:bg-gray-300"
                       >
                         {savingEventChanges ? 'Saving...' : 'Save'}
                       </button>
@@ -1135,7 +1133,7 @@ export default function EventsPage() {
                         setEditingEventTitle(true);
                         setTempEventTitle((selectedEvent as Event).title);
                       }}
-                      className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                      className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                     >
                       Edit
                     </button>
@@ -1151,7 +1149,7 @@ export default function EventsPage() {
                     <textarea
                       value={tempEventDescription}
                       onChange={(e) => setTempEventDescription(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
                       placeholder="Event description..."
                       rows={3}
                       autoFocus
@@ -1160,7 +1158,7 @@ export default function EventsPage() {
                       <button
                         onClick={saveEventDescription}
                         disabled={savingEventChanges}
-                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                        className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:bg-gray-300"
                       >
                         {savingEventChanges ? 'Saving...' : 'Save'}
                       </button>
@@ -1185,7 +1183,7 @@ export default function EventsPage() {
                         setEditingEventDescription(true);
                         setTempEventDescription((selectedEvent as Event).description || '');
                       }}
-                      className="text-teal-600 hover:text-teal-700 text-sm font-medium ml-3"
+                      className="text-emerald-600 hover:text-emerald-700 text-sm font-medium ml-3"
                     >
                       Edit
                     </button>
@@ -1210,8 +1208,8 @@ export default function EventsPage() {
                           onClick={() => setTempEventCategory(cat.value)}
                           className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
                             tempEventCategory === cat.value
-                              ? 'bg-teal-600 text-white'
-                              : 'bg-white text-gray-700 border border-gray-200 hover:bg-teal-50'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-white text-gray-700 border border-gray-200 hover:bg-emerald-50'
                           }`}
                         >
                           {cat.label}
@@ -1223,7 +1221,7 @@ export default function EventsPage() {
                         type="text"
                         value={tempCustomCategory}
                         onChange={(e) => setTempCustomCategory(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                         placeholder="Custom category name..."
                       />
                     )}
@@ -1231,7 +1229,7 @@ export default function EventsPage() {
                       <button
                         onClick={saveEventCategory}
                         disabled={savingEventChanges || (tempEventCategory === 'Other' && !tempCustomCategory)}
-                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                        className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:bg-gray-300"
                       >
                         {savingEventChanges ? 'Saving...' : 'Save'}
                       </button>
@@ -1260,7 +1258,7 @@ export default function EventsPage() {
                         setTempEventCategory((selectedEvent as Event).category);
                         setTempCustomCategory('');
                       }}
-                      className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                      className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                     >
                       Edit
                     </button>
@@ -1280,14 +1278,14 @@ export default function EventsPage() {
                           type="date"
                           value={tempEventDate}
                           onChange={(e) => setTempEventDate(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                           autoFocus
                         />
                         <div className="flex gap-1">
                           <button
                             onClick={saveEventDate}
                             disabled={!tempEventDate || savingEventChanges}
-                            className="flex-1 px-2 py-1 bg-teal-600 text-white rounded text-xs hover:bg-teal-700 disabled:bg-gray-300"
+                            className="flex-1 px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700 disabled:bg-gray-300"
                           >
                             {savingEventChanges ? '...' : 'Save'}
                           </button>
@@ -1314,7 +1312,7 @@ export default function EventsPage() {
                               setEditingEventDate(true);
                               setTempEventDate((selectedEvent as Event).event_date);
                             }}
-                            className="text-teal-600 hover:text-teal-700 text-xs font-medium"
+                            className="text-emerald-600 hover:text-emerald-700 text-xs font-medium"
                           >
                             Edit
                           </button>
@@ -1331,14 +1329,14 @@ export default function EventsPage() {
                           type="time"
                           value={tempEventTime}
                           onChange={(e) => setTempEventTime(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                           autoFocus
                         />
                         <div className="flex gap-1">
                           <button
                             onClick={saveEventTime}
                             disabled={!tempEventTime || savingEventChanges}
-                            className="flex-1 px-2 py-1 bg-teal-600 text-white rounded text-xs hover:bg-teal-700 disabled:bg-gray-300"
+                            className="flex-1 px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700 disabled:bg-gray-300"
                           >
                             {savingEventChanges ? '...' : 'Save'}
                           </button>
@@ -1365,7 +1363,7 @@ export default function EventsPage() {
                               setEditingEventTime(true);
                               setTempEventTime((selectedEvent as Event).event_time);
                             }}
-                            className="text-teal-600 hover:text-teal-700 text-xs font-medium"
+                            className="text-emerald-600 hover:text-emerald-700 text-xs font-medium"
                           >
                             Edit
                           </button>
@@ -1386,16 +1384,16 @@ export default function EventsPage() {
                       placeholder="Search for address or venue..."
                     />
                     {tempEventLocation && (
-                      <div className="p-2 bg-teal-50 border border-teal-200 rounded-lg">
-                        <div className="text-sm font-medium text-teal-900">{tempEventLocation.name}</div>
-                        <div className="text-xs text-teal-700">{tempEventLocation.address}</div>
+                      <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <div className="text-sm font-medium text-emerald-900">{tempEventLocation.name}</div>
+                        <div className="text-xs text-emerald-700">{tempEventLocation.address}</div>
                       </div>
                     )}
                     <div className="flex gap-2">
                       <button
                         onClick={saveEventLocation}
                         disabled={savingEventChanges}
-                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                        className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:bg-gray-300"
                       >
                         {savingEventChanges ? 'Saving...' : 'Save'}
                       </button>
@@ -1420,7 +1418,7 @@ export default function EventsPage() {
                         <p className="text-xs text-gray-600">{(selectedEvent as Event).exact_address}</p>
                       )}
                       {(selectedEvent as Event).show_exact_location && (
-                        <p className="text-xs text-teal-600 mt-1">📍 Full address visible to attendees</p>
+                        <p className="text-xs text-emerald-600 mt-1">📍 Full address visible to attendees</p>
                       )}
                     </div>
                     <button
@@ -1437,7 +1435,7 @@ export default function EventsPage() {
                           setTempEventLocation(null);
                         }
                       }}
-                      className="text-teal-600 hover:text-teal-700 text-sm font-medium ml-3"
+                      className="text-emerald-600 hover:text-emerald-700 text-sm font-medium ml-3"
                     >
                       Edit
                     </button>
@@ -1454,7 +1452,7 @@ export default function EventsPage() {
                       type="text"
                       value={tempEventAgeRange}
                       onChange={(e) => setTempEventAgeRange(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                       placeholder="e.g. 5-8 years, Toddlers, All ages"
                       autoFocus
                     />
@@ -1462,7 +1460,7 @@ export default function EventsPage() {
                       <button
                         onClick={saveEventAgeRange}
                         disabled={savingEventChanges}
-                        className="px-3 py-1 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:bg-gray-300"
+                        className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:bg-gray-300"
                       >
                         {savingEventChanges ? 'Saving...' : 'Save'}
                       </button>
@@ -1487,7 +1485,7 @@ export default function EventsPage() {
                         setEditingEventAgeRange(true);
                         setTempEventAgeRange((selectedEvent as Event).age_range || '');
                       }}
-                      className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                      className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                     >
                       Edit
                     </button>
@@ -1532,7 +1530,7 @@ export default function EventsPage() {
                         }
                       </p>
                     </div>
-                    <span className="text-teal-600 text-sm font-medium">
+                    <span className="text-emerald-600 text-sm font-medium">
                       {(selectedEvent as Event).rsvp_count}/{(selectedEvent as Event).max_attendees || '∞'}
                     </span>
                   </div>
@@ -1680,7 +1678,7 @@ function CreateEventModal({
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 bg-white text-gray-900 placeholder-gray-400"
+                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
                 placeholder="Event title"
               />
             </div>
@@ -1697,8 +1695,8 @@ function CreateEventModal({
                   onClick={() => setCategory(cat.value)}
                   className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
                     category === cat.value
-                      ? 'bg-teal-600 text-white shadow-md scale-105'
-                      : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                      ? 'bg-emerald-600 text-white shadow-md scale-105'
+                      : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
                   }`}
                 >
                   {cat.label}
@@ -1712,7 +1710,7 @@ function CreateEventModal({
                     type="text"
                     value={customCategory}
                     onChange={(e) => setCustomCategory(e.target.value)}
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 bg-white text-gray-900 placeholder-gray-400"
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
                     placeholder="Describe your event category..."
                   />
                 </div>
@@ -1725,7 +1723,7 @@ function CreateEventModal({
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 bg-white text-gray-900"
+                  className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900"
                 />
               </div>
               <div>
@@ -1733,7 +1731,7 @@ function CreateEventModal({
                   type="time"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 bg-white text-gray-900"
+                  className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900"
                 />
               </div>
             </div>
@@ -1745,9 +1743,9 @@ function CreateEventModal({
               />
               
               {exactLocation && (
-                <div className="mt-2 p-2 bg-teal-50 border border-teal-200 rounded-lg">
-                  <div className="text-sm font-medium text-teal-900">{exactLocation.name}</div>
-                  <div className="text-xs text-teal-700">{exactLocation.address}</div>
+                <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <div className="text-sm font-medium text-emerald-900">{exactLocation.name}</div>
+                  <div className="text-xs text-emerald-700">{exactLocation.address}</div>
                 </div>
               )}
             </div>
@@ -1757,7 +1755,7 @@ function CreateEventModal({
                 type="text"
                 value={ageRange}
                 onChange={(e) => setAgeRange(e.target.value)}
-                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 bg-white text-gray-900 placeholder-gray-400"
+                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
                 placeholder="Age range (optional)"
               />
             </div>
@@ -1766,7 +1764,7 @@ function CreateEventModal({
               <label 
                 className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                   !isPrivate 
-                    ? 'border-teal-600 bg-teal-50'
+                    ? 'border-emerald-600 bg-emerald-50'
                     : 'border-gray-200 bg-white hover:bg-gray-50'
                 }`}
               >
@@ -1779,7 +1777,7 @@ function CreateEventModal({
                 />
                 <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
                   !isPrivate 
-                    ? 'border-teal-600 bg-teal-600' 
+                    ? 'border-emerald-600 bg-emerald-600' 
                     : 'border-gray-300'
                 }`}>
                   {!isPrivate && (
@@ -1788,7 +1786,7 @@ function CreateEventModal({
                 </div>
                 <div>
                   <span className={`font-medium ${
-                    !isPrivate ? 'text-teal-900' : 'text-gray-700'
+                    !isPrivate ? 'text-emerald-900' : 'text-gray-700'
                   }`}>
                     Public
                   </span>
@@ -1799,7 +1797,7 @@ function CreateEventModal({
               <label 
                 className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                   isPrivate 
-                    ? 'border-teal-600 bg-teal-50'
+                    ? 'border-emerald-600 bg-emerald-50'
                     : 'border-gray-200 bg-white hover:bg-gray-50'
                 }`}
               >
@@ -1812,7 +1810,7 @@ function CreateEventModal({
                 />
                 <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
                   isPrivate 
-                    ? 'border-teal-600 bg-teal-600' 
+                    ? 'border-emerald-600 bg-emerald-600' 
                     : 'border-gray-300'
                 }`}>
                   {isPrivate && (
@@ -1821,7 +1819,7 @@ function CreateEventModal({
                 </div>
                 <div>
                   <span className={`font-medium ${
-                    isPrivate ? 'text-teal-900' : 'text-gray-700'
+                    isPrivate ? 'text-emerald-900' : 'text-gray-700'
                   }`}>
                     Private
                   </span>
@@ -1834,7 +1832,7 @@ function CreateEventModal({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 bg-white text-gray-900 placeholder-gray-400"
+                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
                 rows={4}
                 placeholder="What's the plan?"
               />
@@ -1851,7 +1849,7 @@ function CreateEventModal({
             <button
               onClick={handleCreate}
               disabled={!title || !date || saving || (category === 'Other' && !customCategory)}
-              className="flex-1 py-3.5 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
+              className="flex-1 py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
             >
               {saving ? 'Creating...' : 'Create Event'}
             </button>

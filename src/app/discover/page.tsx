@@ -12,6 +12,7 @@ import AvatarUpload from '@/components/AvatarUpload';
 import HavenHeader from '@/components/HavenHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AdminBadge from '@/components/AdminBadge';
+import { createNotification } from '@/lib/notifications';
 
 type Family = {
   id: string;
@@ -29,6 +30,8 @@ type Family = {
   admin_level?: 'gold' | 'silver' | 'bronze' | null;
   is_online?: boolean;
   last_active?: string;
+  last_active_at?: string;
+  updated_at?: string;
   user_type?: 'family' | 'teacher' | 'business' | 'event' | 'facility' | 'other';
 };
 
@@ -389,14 +392,17 @@ export default function EnhancedDiscoverPage() {
         const familiesData = await familiesRes.json();
         console.log('Enhanced Discover: Families result:', familiesData);
         
-        // Add mock online status (keep real user_type from database)
-        const familiesWithStatus = familiesData.map((family: Family) => ({
-          ...family,
-          is_online: Math.random() > 0.7, // 30% chance of being online
-          last_active: Math.random() > 0.3 ? new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString() : undefined, // Random last active within 30 days
-          // Keep real user_type from database (family/teacher/business)
-          user_type: family.user_type || 'family' // Default to family if not set
-        }));
+        // Use real last_active_at for presence indicators
+        const familiesWithStatus = familiesData.map((family: Family) => {
+          const lastActive = family.last_active_at || family.updated_at;
+          const diffMs = lastActive ? Date.now() - new Date(lastActive).getTime() : Infinity;
+          return {
+            ...family,
+            is_online: diffMs < 15 * 60 * 1000, // Active within 15 min
+            last_active: lastActive,
+            user_type: family.user_type || 'family',
+          };
+        });
         
         setFamilies(familiesWithStatus);
         
@@ -695,7 +701,7 @@ export default function EnhancedDiscoverPage() {
     const connection = connectionRequests.get(familyId);
     
     if (!connection) {
-      return { text: 'Connect', disabled: false, style: 'bg-teal-600 text-white hover:bg-teal-700' };
+      return { text: 'Connect', disabled: false, style: 'bg-emerald-600 text-white hover:bg-emerald-700' };
     }
     
     switch (connection.status) {
@@ -708,7 +714,7 @@ export default function EnhancedDiscoverPage() {
           return { text: 'Accept Request', disabled: false, style: 'bg-blue-600 text-white hover:bg-blue-700' };
         }
       default:
-        return { text: 'Connect', disabled: false, style: 'bg-teal-600 text-white hover:bg-teal-700' };
+        return { text: 'Connect', disabled: false, style: 'bg-emerald-600 text-white hover:bg-emerald-700' };
     }
   };
 
@@ -797,8 +803,19 @@ export default function EnhancedDiscoverPage() {
           newMap.set(familyId, { status: 'pending', isRequester: true });
           return newMap;
         });
-        
-        console.log('Connection request sent to family:', familyId);
+
+        // Notify the receiver
+        const senderName = profile?.name || 'A family';
+        createNotification({
+          userId: familyId,
+          actorId: session.user.id,
+          type: 'connection_request',
+          title: `${senderName} wants to connect`,
+          body: 'Tap to view their profile',
+          link: '/discover',
+          referenceId: session.user.id,
+          accessToken: session.access_token,
+        });
       }
       
     } catch (error) {
@@ -987,7 +1004,7 @@ export default function EnhancedDiscoverPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -1002,13 +1019,13 @@ export default function EnhancedDiscoverPage() {
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
             onClick={() => window.location.href = '/events?type=public'}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             Events
           </button>
           <button
             onClick={() => window.location.href = '/education'}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             Education
           </button>
@@ -1021,8 +1038,8 @@ export default function EnhancedDiscoverPage() {
             onClick={() => setShowSearch(!showSearch)}
             className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showSearch || searchTerm
-                ? 'bg-teal-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                ? 'bg-emerald-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
             }`}
           >
             Search
@@ -1031,8 +1048,8 @@ export default function EnhancedDiscoverPage() {
             onClick={() => setShowFilters(!showFilters)}
             className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showFilters
-                ? 'bg-teal-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                ? 'bg-emerald-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
             }`}
           >
             Filters
@@ -1040,7 +1057,7 @@ export default function EnhancedDiscoverPage() {
           {viewMode !== 'list' && (
             <button
               onClick={() => setViewMode('list')}
-              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
             >
               List
             </button>
@@ -1048,7 +1065,7 @@ export default function EnhancedDiscoverPage() {
           {viewMode !== 'map' && (
             <button
               onClick={() => setViewMode('map')}
-              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
             >
               Map
             </button>
@@ -1069,7 +1086,7 @@ export default function EnhancedDiscoverPage() {
                 placeholder="Search families by name, location, or interests..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 autoFocus
               />
             </div>
@@ -1117,7 +1134,7 @@ export default function EnhancedDiscoverPage() {
                           }
                         }}
                         onFocus={(e) => e.target.select()}
-                        className="w-16 px-2 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                        className="w-16 px-2 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-center"
                       />
                       <span className="text-sm text-gray-600 font-medium">km</span>
                     </div>
@@ -1157,7 +1174,7 @@ export default function EnhancedDiscoverPage() {
                             min: Math.max(0, Math.min(min, prev.max - 1))
                           }));
                         }}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-center"
                         placeholder="0"
                       />
                     </div>
@@ -1175,7 +1192,7 @@ export default function EnhancedDiscoverPage() {
                             max: Math.max(prev.min + 1, Math.min(max, 18))
                           }));
                         }}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-center"
                         placeholder="18"
                       />
                     </div>
@@ -1201,7 +1218,7 @@ export default function EnhancedDiscoverPage() {
                           type.disabled
                             ? 'invisible' // Hide placeholder buttons
                             : (filterTypes.includes(type.value) || (type.isOther && showOtherInput))
-                              ? 'border-teal-600 bg-teal-50 text-teal-700'
+                              ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
                               : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
                         }`}
                       >
@@ -1220,7 +1237,7 @@ export default function EnhancedDiscoverPage() {
                         placeholder="e.g., tutor, support group, co-op, consultant..."
                         value={otherSearchTerm}
                         onChange={(e) => setOtherSearchTerm(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
                         autoFocus
                       />
                       {otherSearchTerm && (
@@ -1307,7 +1324,7 @@ export default function EnhancedDiscoverPage() {
                   <div>
                     <button
                       onClick={() => setShowHiddenModal(true)}
-                      className="px-3 py-2 bg-teal-50 text-teal-700 rounded-xl text-sm font-medium hover:bg-teal-100 border border-teal-200"
+                      className="px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-sm font-medium hover:bg-emerald-100 border border-emerald-200"
                     >
                       Show Hidden ({hiddenFamilies.length})
                     </button>
@@ -1322,7 +1339,7 @@ export default function EnhancedDiscoverPage() {
         {/* Selection Summary */}
         {selectionMode && (
           <div className="mb-6 flex items-center justify-end">
-            <p className="text-teal-600 font-medium">
+            <p className="text-emerald-600 font-medium">
               {selectedFamilies.length} selected
             </p>
           </div>
@@ -1348,7 +1365,7 @@ export default function EnhancedDiscoverPage() {
           <div className="space-y-2 px-6">
             {filteredFamilies.length === 0 ? (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-teal-50 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <div className="w-16 h-16 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
                   <svg 
                     viewBox="0 0 64 64" 
                     className="w-12 h-12"
@@ -1420,7 +1437,7 @@ export default function EnhancedDiscoverPage() {
                   className={`w-full bg-white rounded-xl p-4 transition-all cursor-pointer select-none ${
                     selectionMode 
                       ? selectedFamilies.includes(family.id) 
-                        ? 'ring-2 ring-teal-500 bg-teal-50' 
+                        ? 'ring-2 ring-emerald-500 bg-emerald-50' 
                         : 'hover:bg-gray-50' 
                       : 'hover:bg-gray-50'
                   }`}
@@ -1438,7 +1455,7 @@ export default function EnhancedDiscoverPage() {
                       <div className="mr-4 mt-1">
                         <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
                           selectedFamilies.includes(family.id)
-                            ? 'bg-teal-600 border-teal-600 text-white'
+                            ? 'bg-emerald-600 border-emerald-600 text-white'
                             : 'border-gray-300 bg-white'
                         }`}>
                           {selectedFamilies.includes(family.id) && (
@@ -1491,8 +1508,8 @@ export default function EnhancedDiscoverPage() {
                             <div className="flex items-center gap-1">
                               {family.kids_ages.map((age, index) => (
                                 <div key={index} className="flex items-center">
-                                  <div className="w-6 h-6 bg-teal-100 rounded-full flex items-center justify-center">
-                                    <span className="text-xs font-medium text-teal-700">{age}</span>
+                                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
+                                    <span className="text-xs font-medium text-emerald-700">{age}</span>
                                   </div>
                                   {index < family.kids_ages.length - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
                                 </div>
@@ -1515,7 +1532,7 @@ export default function EnhancedDiscoverPage() {
                         </button>
                         <button
                           onClick={() => setSelectedFamily(family)}
-                          className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors text-sm min-w-[85px]"
+                          className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors text-sm min-w-[85px]"
                         >
                           Message
                         </button>
@@ -1556,7 +1573,7 @@ export default function EnhancedDiscoverPage() {
             <div className="mb-4">
               <textarea
                 placeholder="Hi! I'd love to connect with your family..."
-                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 resize-none"
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none"
                 rows={4}
                 id="messageInput"
               />
@@ -1609,7 +1626,7 @@ export default function EnhancedDiscoverPage() {
                   }
                 }}
                 disabled={isSendingMessage}
-                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:bg-gray-300"
+                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:bg-gray-300"
               >
                 {isSendingMessage ? 'Sending...' : 'Send Message'}
               </button>
@@ -1685,7 +1702,7 @@ export default function EnhancedDiscoverPage() {
               </button>
               <Link
                 href="/circles"
-                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 text-center"
+                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 text-center"
                 onClick={() => {
                   setShowCircleModal(false);
                   setSelectedFamily(null);
@@ -1806,8 +1823,8 @@ export default function EnhancedDiscoverPage() {
                   <h4 className="font-semibold text-gray-900 mb-3">Children</h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedFamilyDetails.kids_ages.map((age, index) => (
-                      <div key={index} className="bg-teal-50 border border-teal-200 rounded-full px-3 py-2">
-                        <span className="text-teal-700 font-medium">{age} years old</span>
+                      <div key={index} className="bg-emerald-50 border border-emerald-200 rounded-full px-3 py-2">
+                        <span className="text-emerald-700 font-medium">{age} years old</span>
                       </div>
                     ))}
                   </div>
@@ -1921,7 +1938,7 @@ export default function EnhancedDiscoverPage() {
                             <div className="flex items-center gap-2">
                               <h4 className="font-medium text-emerald-600">
                                 {family.display_name || family.family_name.split(' ')[0] || family.family_name}
-                                {family.is_verified && <span className="ml-1 text-teal-600 text-sm">✓</span>}
+                                {family.is_verified && <span className="ml-1 text-emerald-600 text-sm">✓</span>}
                               </h4>
                               <AdminBadge adminLevel={family.admin_level || null} />
                             </div>
@@ -1955,7 +1972,7 @@ export default function EnhancedDiscoverPage() {
                       clearHiddenFamilies();
                       setShowHiddenModal(false);
                     }}
-                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700"
+                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
                   >
                     Unhide All
                   </button>

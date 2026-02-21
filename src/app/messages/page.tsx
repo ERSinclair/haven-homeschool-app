@@ -711,7 +711,7 @@ function MessagesContent() {
     const connection = connectionRequests.get(userId);
     
     if (!connection) {
-      return { text: 'Connect', disabled: false, style: 'bg-teal-600 text-white hover:bg-teal-700' };
+      return { text: 'Connect', disabled: false, style: 'bg-emerald-600 text-white hover:bg-emerald-700' };
     }
     
     switch (connection.status) {
@@ -724,7 +724,7 @@ function MessagesContent() {
           return { text: 'Accept Request', disabled: false, style: 'bg-blue-600 text-white hover:bg-blue-700' };
         }
       default:
-        return { text: 'Connect', disabled: false, style: 'bg-teal-600 text-white hover:bg-teal-700' };
+        return { text: 'Connect', disabled: false, style: 'bg-emerald-600 text-white hover:bg-emerald-700' };
     }
   };
 
@@ -1112,7 +1112,7 @@ function MessagesContent() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -1142,7 +1142,7 @@ function MessagesContent() {
                 <>
                   <button
                     onClick={cancelSelection}
-                    className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+                    className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
                   >
                     Cancel
                   </button>
@@ -1160,7 +1160,7 @@ function MessagesContent() {
                   }) && (
                     <button
                       onClick={downloadSelectedFiles}
-                      className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-teal-600 text-white hover:bg-teal-700"
+                      className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-emerald-600 text-white hover:bg-emerald-700"
                     >
                       Download
                     </button>
@@ -1246,7 +1246,7 @@ function MessagesContent() {
                     const textContent = file ? msg.content.replace(file.fileUrl, '').trim() : msg.content;
                     const isImageOnly = file?.isImage && !textContent;
                     const isSelected = selectedMessages.includes(msg.id);
-                    const selectionClass = isSelected ? 'ring-2 ring-teal-300 scale-95' : selectionMode ? 'opacity-60' : '';
+                    const selectionClass = isSelected ? 'ring-2 ring-emerald-300 scale-95' : selectionMode ? 'opacity-60' : '';
                     const touchHandlers = {
                       onTouchStart: () => {
                         if (longPressTimer) clearTimeout(longPressTimer);
@@ -1268,7 +1268,7 @@ function MessagesContent() {
                             className="absolute -left-8 top-1/2 transform -translate-y-1/2 z-10 cursor-pointer"
                             onClick={(e) => { e.stopPropagation(); handleMessageTap(msg.id); }}
                           >
-                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-teal-600 border-teal-600' : 'bg-white border-gray-300'}`}>
+                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-gray-300'}`}>
                               {isSelected && <span className="text-white text-xs font-bold">✓</span>}
                             </div>
                           </div>
@@ -1293,7 +1293,7 @@ function MessagesContent() {
                           <div
                             className={`max-w-[75%] px-4 py-3 rounded-2xl transition-all cursor-pointer ${
                               msg.sender_id === userId
-                                ? 'bg-teal-600 text-white rounded-br-md ml-auto'
+                                ? 'bg-emerald-600 text-white rounded-br-md ml-auto'
                                 : 'bg-white text-gray-900 rounded-bl-md shadow-sm mr-auto'
                             } ${selectionClass}`}
                             {...touchHandlers}
@@ -1323,7 +1323,7 @@ function MessagesContent() {
                             {textContent && (
                               <p className="text-sm break-words overflow-wrap-anywhere" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>{textContent}</p>
                             )}
-                            <p className={`text-xs mt-1 ${msg.sender_id === userId ? 'text-teal-200' : 'text-gray-400'}`}>
+                            <p className={`text-xs mt-1 ${msg.sender_id === userId ? 'text-emerald-200' : 'text-gray-400'}`}>
                               {formatTime(msg.created_at)}
                             </p>
                           </div>
@@ -1371,7 +1371,7 @@ function MessagesContent() {
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessageHandler()}
                 placeholder="Type a message..."
-                className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 resize-none overflow-wrap-anywhere break-words"
+                className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none overflow-wrap-anywhere break-words"
                 rows={1}
                 style={{ 
                   minHeight: '48px',
@@ -1403,7 +1403,7 @@ function MessagesContent() {
               <button
                 onClick={sendMessageHandler}
                 disabled={(!newMessage.trim() && !selectedFile) || sending}
-                className="px-4 py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:bg-gray-200 disabled:text-gray-400"
+                className="px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
               >
                 {sending ? '...' : '→'}
               </button>
@@ -1438,15 +1438,15 @@ function MessagesContent() {
             onClick={() => setShowSearch(!showSearch)}
             className={`px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showSearch
-                ? 'bg-teal-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                ? 'bg-emerald-600 text-white shadow-md scale-105'
+                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
             }`}
           >
             Search
           </button>
           <button
             onClick={() => setShowNewMessageModal(true)}
-            className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+            className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             + New
           </button>
@@ -1458,7 +1458,7 @@ function MessagesContent() {
             <>
               <button 
                 onClick={cancelConversationSelection}
-                className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+                className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
               >
                 Cancel
               </button>
@@ -1569,7 +1569,7 @@ function MessagesContent() {
               {!searchTerm && (
                 <button
                   onClick={() => router.push('/discover')}
-                  className="bg-teal-600 text-white px-2 py-1.5 rounded-xl font-medium hover:bg-teal-700 text-sm"
+                  className="bg-emerald-600 text-white px-2 py-1.5 rounded-xl font-medium hover:bg-emerald-700 text-sm"
                 >
                   Find Families
                 </button>
@@ -1589,7 +1589,7 @@ function MessagesContent() {
                   >
                     <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
                       selectedConversations.includes(convo.id) 
-                        ? 'bg-teal-600 border-teal-600' 
+                        ? 'bg-emerald-600 border-emerald-600' 
                         : 'bg-white border-gray-300 hover:border-gray-400'
                     }`}>
                       {selectedConversations.includes(convo.id) && (
@@ -1616,7 +1616,7 @@ function MessagesContent() {
                   className={`w-full bg-white rounded-xl p-4 flex items-center gap-3 transition-all text-left ${
                     conversationSelectionMode
                       ? selectedConversations.includes(convo.id)
-                        ? 'ring-2 ring-teal-300 scale-95 ml-8'
+                        ? 'ring-2 ring-emerald-300 scale-95 ml-8'
                         : 'opacity-60 ml-8'
                       : 'hover:bg-gray-50'
                   }`}
@@ -1645,7 +1645,7 @@ function MessagesContent() {
                   </p>
                 </div>
                 {convo.unread && !conversationSelectionMode && (
-                  <div className="w-3 h-3 bg-teal-600 rounded-full flex-shrink-0"></div>
+                  <div className="w-3 h-3 bg-emerald-600 rounded-full flex-shrink-0"></div>
                 )}
                 </button>
               </div>
@@ -1786,7 +1786,7 @@ function MessagesContent() {
                   setShowMessageContextMenu(false);
                   setContextMenuMessage(null);
                 }}
-                className="w-full px-2 py-1.5 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 flex items-center justify-center gap-2 text-sm"
+                className="w-full px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 flex items-center justify-center gap-2 text-sm"
               >
                 Select Message
               </button>
@@ -1839,7 +1839,7 @@ function MessagesContent() {
       {/* Success Notification */}
       {showSuccessNotification && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div className="bg-teal-600 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 pointer-events-auto">
+          <div className="bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 pointer-events-auto">
             <span className="text-lg">✓</span>
             <span className="font-medium">{successMessage}</span>
           </div>
@@ -1874,7 +1874,7 @@ function MessagesContent() {
                   value={contactSearchTerm}
                   onChange={(e) => setContactSearchTerm(e.target.value)}
                   onFocus={() => !availableConnections.length && loadAvailableConnections()}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   autoFocus
                 />
               </div>
@@ -1888,13 +1888,13 @@ function MessagesContent() {
                       const contact = availableConnections.find(c => c.id === contactId);
                       if (!contact) return null;
                       return (
-                        <div key={contactId} className="flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-full">
-                          <span className="text-sm font-medium text-teal-700">
+                        <div key={contactId} className="flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-full">
+                          <span className="text-sm font-medium text-emerald-700">
                             {contact.family_name || contact.display_name}
                           </span>
                           <button
                             onClick={() => toggleContactSelection(contactId)}
-                            className="text-teal-500 hover:text-teal-700 ml-1"
+                            className="text-emerald-500 hover:text-emerald-700 ml-1"
                           >
                             ×
                           </button>
@@ -1910,7 +1910,7 @@ function MessagesContent() {
             <div className="flex-1 overflow-y-auto p-6 pt-4">
               {loadingConnections ? (
                 <div className="flex justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
                 </div>
               ) : filteredConnections.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
@@ -1929,7 +1929,7 @@ function MessagesContent() {
                         setShowNewMessageModal(false);
                         router.push('/discover');
                       }}
-                      className="mt-4 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                      className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
                     >
                       Find Families
                     </button>
@@ -1943,7 +1943,7 @@ function MessagesContent() {
                       onClick={() => toggleContactSelection(connection.id)}
                       className={`w-full p-3 rounded-xl text-left flex items-center gap-3 transition-colors ${
                         selectedContacts.has(connection.id)
-                          ? 'bg-teal-50 border border-teal-200'
+                          ? 'bg-emerald-50 border border-emerald-200'
                           : 'hover:bg-gray-50 border border-transparent'
                       }`}
                     >
@@ -1962,7 +1962,7 @@ function MessagesContent() {
                         <p className="text-sm text-gray-500">{connection.location_name}</p>
                       </div>
                       {selectedContacts.has(connection.id) && (
-                        <div className="w-6 h-6 bg-teal-600 rounded-full flex items-center justify-center">
+                        <div className="w-6 h-6 bg-emerald-600 rounded-full flex items-center justify-center">
                           <span className="text-white text-sm">✓</span>
                         </div>
                       )}
@@ -1978,7 +1978,7 @@ function MessagesContent() {
                 value={newMessageText}
                 onChange={(e) => setNewMessageText(e.target.value)}
                 placeholder="Write your message..."
-                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
                 rows={3}
               />
               <div className="flex gap-3 mt-4">
@@ -1996,7 +1996,7 @@ function MessagesContent() {
                 <button
                   onClick={startNewConversation}
                   disabled={selectedContacts.size === 0 || !newMessageText.trim()}
-                  className="flex-1 px-2 py-1.5 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
+                  className="flex-1 px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
                 >
                   Send Message
                 </button>
@@ -2017,7 +2017,7 @@ export default function MessagesPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     }>
       <MessagesContent />

@@ -142,7 +142,7 @@ export default function FeedbackAdmin() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -169,7 +169,7 @@ export default function FeedbackAdmin() {
           </div>
           <Link 
             href="/admin"
-            className="text-teal-600 hover:text-teal-700 font-medium"
+            className="text-emerald-600 hover:text-emerald-700 font-medium"
           >
             ← Back to Admin
           </Link>
@@ -183,7 +183,7 @@ export default function FeedbackAdmin() {
               <select 
                 value={statusFilter} 
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                className="border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">All Status</option>
                 <option value="new">New</option>
@@ -198,7 +198,7 @@ export default function FeedbackAdmin() {
               <select 
                 value={typeFilter} 
                 onChange={(e) => setTypeFilter(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                className="border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">All Types</option>
                 <option value="suggestion">Suggestion</option>
@@ -303,7 +303,7 @@ export default function FeedbackAdmin() {
                       <select 
                         value={selectedFeedback.type}
                         onChange={(e) => updateFeedback(selectedFeedback.id, { type: e.target.value as any })}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
                         disabled={updating}
                       >
                         <option value="suggestion">Suggestion</option>
@@ -319,7 +319,7 @@ export default function FeedbackAdmin() {
                       <select 
                         value={selectedFeedback.status}
                         onChange={(e) => updateFeedback(selectedFeedback.id, { status: e.target.value as any })}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
                         disabled={updating}
                       >
                         <option value="new">New</option>
@@ -335,7 +335,7 @@ export default function FeedbackAdmin() {
                     <textarea 
                       value={selectedFeedback.admin_notes || ''}
                       onChange={(e) => setSelectedFeedback({ ...selectedFeedback, admin_notes: e.target.value })}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
                       rows={3}
                       placeholder="Add internal notes..."
                     />
@@ -352,7 +352,7 @@ export default function FeedbackAdmin() {
                   <button
                     onClick={() => updateFeedback(selectedFeedback.id, { admin_notes: selectedFeedback.admin_notes })}
                     disabled={updating}
-                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 disabled:bg-gray-300"
+                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:bg-gray-300"
                   >
                     {updating ? 'Saving...' : 'Save Changes'}
                   </button>

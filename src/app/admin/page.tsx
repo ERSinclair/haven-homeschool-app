@@ -117,7 +117,7 @@ export default function AdminDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -127,7 +127,7 @@ export default function AdminDashboard() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-teal-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full mx-auto mb-4 flex items-center justify-center">
               <span className="text-2xl">🔐</span>
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Admin Access</h1>
@@ -142,7 +142,7 @@ export default function AdminDashboard() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@example.com"
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 required
               />
             </div>
@@ -154,7 +154,7 @@ export default function AdminDashboard() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 required
               />
             </div>
@@ -171,7 +171,7 @@ export default function AdminDashboard() {
             <button
               type="submit"
               disabled={loginLoading}
-              className="w-full bg-teal-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className="w-full bg-emerald-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
               {loginLoading ? 'Signing In...' : 'Access Admin Panel'}
             </button>
@@ -180,7 +180,7 @@ export default function AdminDashboard() {
           <div className="mt-6 text-center">
             <Link 
               href="/discover"
-              className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+              className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
             >
               ← Back to Haven
             </Link>
@@ -202,7 +202,7 @@ export default function AdminDashboard() {
           </div>
           <Link 
             href="/discover"
-            className="text-teal-600 hover:text-teal-700 font-medium"
+            className="text-emerald-600 hover:text-emerald-700 font-medium"
           >
             ← Back to App
           </Link>
@@ -213,7 +213,7 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 mb-8">
             <div className="bg-white rounded-xl p-4 shadow-sm">
               <h3 className="font-semibold text-gray-700 text-sm mb-2">Active Users</h3>
-              <p className="text-2xl font-bold text-teal-600">{stats.total_active_users || 0}</p>
+              <p className="text-2xl font-bold text-emerald-600">{stats.total_active_users || 0}</p>
             </div>
             
             <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -250,7 +250,7 @@ export default function AdminDashboard() {
             className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
           >
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center group-hover:bg-teal-200 transition-colors">
+              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
                 <div className="w-8 h-8 bg-gray-100 rounded"></div>
               </div>
               <div>
@@ -258,7 +258,7 @@ export default function AdminDashboard() {
                 <p className="text-sm text-gray-600">View, ban, and manage users</p>
               </div>
             </div>
-            <div className="text-teal-600 font-medium">Manage Users →</div>
+            <div className="text-emerald-600 font-medium">Manage Users →</div>
           </Link>
 
           <Link 

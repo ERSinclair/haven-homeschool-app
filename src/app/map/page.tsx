@@ -30,7 +30,7 @@ export default function MapPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div>
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">Loading map...</p>
         </div>
       </div>
@@ -47,7 +47,7 @@ export default function MapPage() {
             <div className="flex items-center justify-between">
               <Link 
                 href="/discover"
-                className="text-teal-600 hover:text-teal-700 font-medium"
+                className="text-emerald-600 hover:text-emerald-700 font-medium"
               >
                 ← Back to Discover
               </Link>
@@ -89,7 +89,7 @@ export default function MapPage() {
             {/* Features Preview */}
             <div className="grid md:grid-cols-3 gap-6 max-w-3xl mx-auto mb-8">
               <div className="bg-gray-50 rounded-lg p-6">
-                <div className="w-12 h-12 bg-teal-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <div className="w-12 h-12 bg-emerald-100 rounded-full mx-auto mb-4 flex items-center justify-center">
                   <div className="w-6 h-6 bg-emerald-100 rounded"></div>
                 </div>
                 <h4 className="font-semibold text-gray-900 mb-2">Privacy-Safe Locations</h4>
@@ -123,7 +123,7 @@ export default function MapPage() {
             <div className="flex gap-4 justify-center">
               <Link
                 href="/discover"
-                className="bg-teal-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-teal-700 transition-colors"
+                className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-emerald-700 transition-colors"
               >
                 Back to Family List
               </Link>

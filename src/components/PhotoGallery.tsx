@@ -527,7 +527,7 @@ export default function PhotoGallery({
       <div className="bg-white rounded-2xl shadow-sm p-6">
         <h3 className="text-lg font-bold text-gray-900 mb-4">Photo Gallery</h3>
         <div className="flex items-center justify-center py-8">
-          <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
         </div>
       </div>
     );
@@ -573,7 +573,7 @@ export default function PhotoGallery({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="px-2 py-1.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:bg-gray-400 transition-colors"
+                className="px-2 py-1.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:bg-gray-400 transition-colors"
               >
                 {uploading ? 'Uploading...' : 'Add Photos'}
               </button>
@@ -583,7 +583,7 @@ export default function PhotoGallery({
 
         {/* Upload progress */}
         {uploadProgress && (
-          <div className="mb-4 text-sm text-teal-600 bg-teal-50 px-3 py-2 rounded">
+          <div className="mb-4 text-sm text-emerald-600 bg-emerald-50 px-3 py-2 rounded">
             {uploadProgress}
           </div>
         )}
@@ -607,7 +607,7 @@ export default function PhotoGallery({
             {editable && (
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="mt-2 text-teal-600 text-sm font-medium hover:text-teal-700"
+                className="mt-2 text-emerald-600 text-sm font-medium hover:text-emerald-700"
               >
                 Add your first photo
               </button>
@@ -617,15 +617,15 @@ export default function PhotoGallery({
           <>
             {/* Selection mode header */}
             {selectionMode && (
-              <div className="flex items-center justify-between mb-4 p-3 bg-teal-50 rounded-xl">
+              <div className="flex items-center justify-between mb-4 p-3 bg-emerald-50 rounded-xl">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={exitSelectionMode}
-                    className="text-teal-600 font-medium"
+                    className="text-emerald-600 font-medium"
                   >
                     Cancel
                   </button>
-                  <span className="text-sm text-teal-700">
+                  <span className="text-sm text-emerald-700">
                     {selectedPhotos.length} selected
                   </span>
                 </div>
@@ -646,8 +646,8 @@ export default function PhotoGallery({
                 <div
                   key={photo.id}
                   className={`aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:shadow-md transition-all relative ${
-                    selectedPhotos.includes(photo.id) ? 'ring-2 ring-teal-600' : ''
-                  } ${selectionMode ? 'hover:ring-2 hover:ring-teal-300' : ''} ${
+                    selectedPhotos.includes(photo.id) ? 'ring-2 ring-emerald-600' : ''
+                  } ${selectionMode ? 'hover:ring-2 hover:ring-emerald-300' : ''} ${
                     longPressing === photo.id ? 'ring-2 ring-orange-400 scale-95' : ''
                   }`}
                   onClick={(e) => {
@@ -688,7 +688,7 @@ export default function PhotoGallery({
                     <div className="absolute top-2 right-2">
                       <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
                         selectedPhotos.includes(photo.id)
-                          ? 'bg-teal-600 border-teal-600 text-white'
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
                           : 'bg-white border-gray-300'
                       }`}>
                         {selectedPhotos.includes(photo.id) && (
@@ -767,7 +767,7 @@ export default function PhotoGallery({
                 onClick={() => setTempPrivacy('public')}
                 className={`w-full p-4 rounded-xl border-2 text-left transition-colors ${
                   tempPrivacy === 'public' 
-                    ? 'border-teal-600 bg-teal-50' 
+                    ? 'border-emerald-600 bg-emerald-50' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
@@ -778,7 +778,7 @@ export default function PhotoGallery({
                     <div className="text-sm text-gray-600">Everyone can see your photos</div>
                   </div>
                   {tempPrivacy === 'public' && (
-                    <div className="ml-auto text-teal-600">✓</div>
+                    <div className="ml-auto text-emerald-600">✓</div>
                   )}
                 </div>
               </button>
@@ -788,7 +788,7 @@ export default function PhotoGallery({
                 onClick={() => setTempPrivacy('connections')}
                 className={`w-full p-4 rounded-xl border-2 text-left transition-colors ${
                   tempPrivacy === 'connections' 
-                    ? 'border-teal-600 bg-teal-50' 
+                    ? 'border-emerald-600 bg-emerald-50' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
@@ -799,7 +799,7 @@ export default function PhotoGallery({
                     <div className="text-sm text-gray-600">Only your connections can see your photos</div>
                   </div>
                   {tempPrivacy === 'connections' && (
-                    <div className="ml-auto text-teal-600">✓</div>
+                    <div className="ml-auto text-emerald-600">✓</div>
                   )}
                 </div>
               </button>
@@ -807,7 +807,7 @@ export default function PhotoGallery({
               {/* Selected Users */}
               <div className={`border-2 rounded-xl transition-colors ${
                 tempPrivacy === 'selected' 
-                  ? 'border-teal-600 bg-teal-50' 
+                  ? 'border-emerald-600 bg-emerald-50' 
                   : 'border-gray-200'
               }`}>
                 <button
@@ -821,7 +821,7 @@ export default function PhotoGallery({
                       <div className="text-sm text-gray-600">Choose who can see your photos</div>
                     </div>
                     {tempPrivacy === 'selected' && (
-                      <div className="ml-auto text-teal-600">✓</div>
+                      <div className="ml-auto text-emerald-600">✓</div>
                     )}
                   </div>
                 </button>
@@ -841,7 +841,7 @@ export default function PhotoGallery({
                                 setTempSelectedUsers(tempSelectedUsers.filter(id => id !== connection.id));
                               }
                             }}
-                            className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                           />
                           <span className="text-sm text-gray-700">{connection.name}</span>
                         </label>
@@ -861,7 +861,7 @@ export default function PhotoGallery({
                 onClick={() => setTempPrivacy('private')}
                 className={`w-full p-4 rounded-xl border-2 text-left transition-colors ${
                   tempPrivacy === 'private' 
-                    ? 'border-teal-600 bg-teal-50' 
+                    ? 'border-emerald-600 bg-emerald-50' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
@@ -872,7 +872,7 @@ export default function PhotoGallery({
                     <div className="text-sm text-gray-600">Only you can see your photos</div>
                   </div>
                   {tempPrivacy === 'private' && (
-                    <div className="ml-auto text-teal-600">✓</div>
+                    <div className="ml-auto text-emerald-600">✓</div>
                   )}
                 </div>
               </button>
@@ -888,7 +888,7 @@ export default function PhotoGallery({
               </button>
               <button
                 onClick={savePrivacySettings}
-                className="flex-1 px-4 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors"
+                className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors"
               >
                 Save Settings
               </button>

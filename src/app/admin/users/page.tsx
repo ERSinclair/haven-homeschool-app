@@ -177,7 +177,7 @@ export default function UserManagement() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -197,7 +197,7 @@ export default function UserManagement() {
           </div>
           <Link 
             href="/admin"
-            className="text-teal-600 hover:text-teal-700 font-medium"
+            className="text-emerald-600 hover:text-emerald-700 font-medium"
           >
             ← Back to Dashboard
           </Link>
@@ -213,7 +213,7 @@ export default function UserManagement() {
                 placeholder="Search users by name, email, or location..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
             
@@ -229,7 +229,7 @@ export default function UserManagement() {
                   onClick={() => setFilterStatus(option.value as any)}
                   className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                     filterStatus === option.value
-                      ? 'bg-teal-600 text-white'
+                      ? 'bg-emerald-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >

@@ -353,7 +353,7 @@ export default function ProfilePage() {
           <p className="text-gray-600 mb-8">You need to be logged in to view your profile.</p>
           <Link
             href="/login"
-            className="inline-block bg-teal-600 text-white font-semibold py-3 px-8 rounded-xl hover:bg-teal-700 transition-all"
+            className="inline-block bg-emerald-600 text-white font-semibold py-3 px-8 rounded-xl hover:bg-emerald-700 transition-all"
           >
             Sign in
           </Link>
@@ -381,21 +381,21 @@ export default function ProfilePage() {
         {!isEditing && !isViewingOtherUser && (
           <>
             <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-              <Link href="/manage" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105">
+              <Link href="/manage" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
                 Manage
               </Link>
-              <Link href="/settings" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105">
+              <Link href="/settings" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
                 Settings
               </Link>
               <button
                 onClick={() => setIsEditing(true)}
-                className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+                className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
               >
                 Edit
               </button>
             </div>
             <div className="flex gap-2 mb-4 justify-center">
-              <Link href="/notifications" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105">
+              <Link href="/notifications" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
                 Notifications
               </Link>
             </div>
@@ -442,7 +442,7 @@ export default function ProfilePage() {
             )}
             
             {profile.is_verified && (
-              <span className="inline-flex items-center text-teal-600 text-sm mt-1">
+              <span className="inline-flex items-center text-emerald-600 text-sm mt-1">
                 Verified family
               </span>
             )}
@@ -479,7 +479,7 @@ export default function ProfilePage() {
                       }}
                       className={`p-2 rounded-lg border-2 text-sm text-center ${
                         (Array.isArray(editData.status) ? editData.status : []).includes(opt.value)
-                          ? 'border-teal-600 bg-teal-50 text-teal-700'
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
                           : 'border-gray-200 hover:border-gray-300'
                       }`}
                     >
@@ -502,7 +502,7 @@ export default function ProfilePage() {
                             newDescriptions[index] = e.target.value;
                             setCustomDescriptions(newDescriptions);
                           }}
-                          className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 focus:border-transparent bg-white"
+                          className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-emerald-500 focus:border-transparent bg-white"
                         />
                         <button
                           type="button"
@@ -524,7 +524,7 @@ export default function ProfilePage() {
                     <button
                       type="button"
                       onClick={() => setCustomDescriptions([...customDescriptions, ''])}
-                      className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                      className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                     >
                       + Add another
                     </button>
@@ -607,8 +607,8 @@ export default function ProfilePage() {
                   <div className="flex items-center justify-center gap-1">
                     {profile.kids_ages.map((age, index) => (
                       <div key={index} className="flex items-center">
-                        <div className="w-6 h-6 bg-teal-100 rounded-full flex items-center justify-center">
-                          <span className="text-xs font-medium text-teal-700">{age}</span>
+                        <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-medium text-emerald-700">{age}</span>
                         </div>
                         {index < profile.kids_ages.length - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
                       </div>
@@ -682,14 +682,14 @@ export default function ProfilePage() {
                     }
                   }
                 }}
-                className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
+                className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving || (editData.status.includes('other') && !customDescriptions.some(desc => desc.trim()))}
-                className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-teal-700 hover:bg-teal-50 hover:text-teal-700 border border-teal-200 hover:border-teal-300 hover:shadow-md hover:scale-105 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200"
+                className="px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-300 hover:shadow-md hover:scale-105 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200"
               >
                 {isSaving ? 'Saving...' : 'Save'}
               </button>
@@ -800,7 +800,7 @@ export default function ProfilePage() {
               <textarea
                 value={bugReportMessage}
                 onChange={(e) => setBugReportMessage(e.target.value)}
-                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 resize-none"
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none"
                 rows={4}
                 placeholder="Please describe what happened, what you expected to happen, and any steps to reproduce the issue..."
               />
@@ -846,7 +846,7 @@ export default function ProfilePage() {
               <textarea
                 value={feedbackMessage}
                 onChange={(e) => setFeedbackMessage(e.target.value)}
-                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 resize-none"
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none"
                 rows={4}
                 placeholder="Tell us about features you'd like to see, improvements we could make, or anything else on your mind..."
               />

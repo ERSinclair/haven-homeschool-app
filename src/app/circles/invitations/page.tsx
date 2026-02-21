@@ -45,9 +45,60 @@ export default function CircleInvitationsPage() {
 
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const headers = {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+        };
 
-        // Invitations will be loaded from circle_invitations table when feature is live
-        setInvitations([]);
+        // Fetch invitations with circle data
+        const invRes = await fetch(
+          `${supabaseUrl}/rest/v1/circle_invitations?invitee_id=eq.${session.user.id}&select=*,circles(name,description,emoji,color)&order=created_at.desc`,
+          { headers }
+        );
+
+        if (!invRes.ok) {
+          setInvitations([]);
+          setLoading(false);
+          return;
+        }
+
+        const rawInvs = await invRes.json();
+        if (!Array.isArray(rawInvs) || rawInvs.length === 0) {
+          setInvitations([]);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch inviter profiles in one query
+        const inviterIds = [...new Set(rawInvs.map((i: any) => i.inviter_id))];
+        const profilesRes = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?id=in.(${inviterIds.join(',')})&select=id,family_name,display_name,avatar_url`,
+          { headers }
+        );
+        const profiles = profilesRes.ok ? await profilesRes.json() : [];
+        const profileMap: Record<string, any> = {};
+        profiles.forEach((p: any) => { profileMap[p.id] = p; });
+
+        // Merge data
+        const merged: CircleInvitation[] = rawInvs.map((inv: any) => {
+          const circle = inv.circles || {};
+          const inviter = profileMap[inv.inviter_id] || {};
+          return {
+            id: inv.id,
+            circle_id: inv.circle_id,
+            circle_name: circle.name || 'Unknown Circle',
+            circle_description: circle.description,
+            circle_emoji: circle.emoji || '⭕',
+            circle_color: circle.color || 'emerald',
+            inviter_id: inv.inviter_id,
+            inviter_name: inviter.family_name || inviter.display_name || 'Someone',
+            inviter_avatar_url: inviter.avatar_url,
+            created_at: inv.created_at,
+            status: inv.status,
+          };
+        });
+
+        setInvitations(merged);
       } catch (err) {
         console.error('Error loading circle invitations:', err);
         setError('Failed to load invitations. Please try again.');
@@ -61,46 +112,56 @@ export default function CircleInvitationsPage() {
 
   const handleInvitation = async (invitationId: string, action: 'accept' | 'decline') => {
     setProcessingInvite(invitationId);
-    
+
     try {
-      // Show success message
-      const invitation = invitations.find(inv => inv.id === invitationId);
-      if (action === 'accept') {
-        alert(`You've joined "${invitation?.circle_name}"! Welcome to the circle. You can now participate in discussions and activities.`);
-      } else {
-        alert('Circle invitation declined.');
-      }
-      
-      // Update local state
-      setInvitations(prev => prev.map(inv => 
-        inv.id === invitationId 
-          ? { ...inv, status: action === 'accept' ? 'accepted' : 'declined' }
-          : inv
-      ));
-      
-      // In a real implementation, this would call the API:
-      /*
       const session = getStoredSession();
+      if (!session?.user) return;
+
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      
-      const response = await fetch(
+      const headers = {
+        'apikey': supabaseKey!,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      };
+
+      const invitation = invitations.find(inv => inv.id === invitationId);
+
+      // Update invitation status
+      await fetch(
         `${supabaseUrl}/rest/v1/circle_invitations?id=eq.${invitationId}`,
         {
           method: 'PATCH',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ status: action === 'accept' ? 'accepted' : 'declined' })
+          headers,
+          body: JSON.stringify({ status: action === 'accept' ? 'accepted' : 'declined' }),
         }
       );
-      */
-      
+
+      if (action === 'accept' && invitation) {
+        // Add user to circle_members
+        await fetch(
+          `${supabaseUrl}/rest/v1/circle_members`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              circle_id: invitation.circle_id,
+              member_id: session.user.id,
+              role: 'member',
+              joined_at: new Date().toISOString(),
+            }),
+          }
+        );
+      }
+
+      // Update local state
+      setInvitations(prev => prev.map(inv =>
+        inv.id === invitationId
+          ? { ...inv, status: action === 'accept' ? 'accepted' : 'declined' }
+          : inv
+      ));
     } catch (err) {
       console.error('Error processing invitation:', err);
-      alert('Failed to process invitation. Please try again.');
     } finally {
       setProcessingInvite(null);
     }
@@ -125,7 +186,7 @@ export default function CircleInvitationsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -214,7 +275,7 @@ export default function CircleInvitationsPage() {
                     <button
                       onClick={() => handleInvitation(invitation.id, 'accept')}
                       disabled={processingInvite === invitation.id}
-                      className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:opacity-50 text-sm"
+                      className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:opacity-50 text-sm"
                     >
                       {processingInvite === invitation.id ? 'Processing...' : 'Accept'}
                     </button>
@@ -228,16 +289,13 @@ export default function CircleInvitationsPage() {
         {/* No Pending Invitations */}
         {pendingInvitations.length === 0 && (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <span className="text-2xl">📮</span>
-            </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Invitations</h3>
             <p className="text-gray-600 mb-4">
               You don't have any pending circle invitations right now.
             </p>
             <Link
               href="/circles"
-              className="inline-flex items-center px-2 py-1.5 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors text-sm"
+              className="inline-flex items-center px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors text-sm"
             >
               Browse Circles
             </Link>

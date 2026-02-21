@@ -611,8 +611,8 @@ export default function SignupPage() {
                       onClick={() => setUserType('family')}
                       className={`px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
                         userType === 'family'
-                          ? 'bg-teal-600 text-white shadow-md scale-105'
-                          : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                          ? 'bg-emerald-600 text-white shadow-md scale-105'
+                          : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
                       }`}
                     >
                       Family
@@ -622,8 +622,8 @@ export default function SignupPage() {
                       onClick={() => setUserType('teacher')}
                       className={`px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
                         userType === 'teacher'
-                          ? 'bg-teal-600 text-white shadow-md scale-105'
-                          : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                          ? 'bg-emerald-600 text-white shadow-md scale-105'
+                          : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
                       }`}
                     >
                       Teacher
@@ -633,8 +633,8 @@ export default function SignupPage() {
                       onClick={() => setUserType('business')}
                       className={`px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
                         userType === 'business'
-                          ? 'bg-teal-600 text-white shadow-md scale-105'
-                          : 'bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105'
+                          ? 'bg-emerald-600 text-white shadow-md scale-105'
+                          : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
                       }`}
                     >
                       Business
@@ -648,7 +648,7 @@ export default function SignupPage() {
                     type="email"
                     value={email}
                     onChange={handleEmailChange}
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                     placeholder="you@email.com"
                   />
                 </div>
@@ -658,7 +658,7 @@ export default function SignupPage() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                     placeholder="At least 6 characters"
                   />
                 </div>
@@ -671,7 +671,7 @@ export default function SignupPage() {
                     className={`w-full p-3.5 border rounded-xl focus:ring-2 ${
                       confirmPassword && password !== confirmPassword 
                         ? 'border-red-300 focus:ring-red-500' 
-                        : 'border-gray-200 focus:ring-teal-500'
+                        : 'border-gray-200 focus:ring-emerald-500'
                     }`}
                     placeholder="Confirm your password"
                   />
@@ -700,7 +700,7 @@ export default function SignupPage() {
                       type="text"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase())}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                       placeholder="first name"
                     />
                   </div>
@@ -709,7 +709,7 @@ export default function SignupPage() {
                       type="text"
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase())}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                       placeholder="last name"
                     />
                   </div>
@@ -778,7 +778,7 @@ export default function SignupPage() {
                         });
                       }}
                       placeholder="Town/Suburb"
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                     />
                     <select
                       value={location.split(',')[1]?.trim() || 'VIC'}
@@ -795,7 +795,7 @@ export default function SignupPage() {
                           lng: 144.3256,
                         });
                       }}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                     >
                       <option value="VIC">VIC</option>
                       <option value="NSW">NSW</option>
@@ -808,8 +808,8 @@ export default function SignupPage() {
                     </select>
                   </div>
                   {location && location.includes(',') && location.split(',')[0].trim() && (
-                    <div className="mt-2 p-2 bg-teal-50 border border-teal-200 rounded-lg">
-                      <div className="text-sm font-medium text-teal-900">{location}</div>
+                    <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="text-sm font-medium text-emerald-900">{location}</div>
                     </div>
                   )}
                 </div>
@@ -827,7 +827,7 @@ export default function SignupPage() {
                         key={opt.value}
                         className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                           status.includes(opt.value) 
-                            ? 'border-teal-600 bg-teal-50' 
+                            ? 'border-emerald-600 bg-emerald-50' 
                             : 'border-gray-100'
                         }`}
                       >
@@ -852,7 +852,7 @@ export default function SignupPage() {
                         <span className="text-xl mr-3">{opt.icon}</span>
                         <span className={
                           status.includes(opt.value) 
-                            ? 'text-teal-700 font-medium'
+                            ? 'text-emerald-700 font-medium'
                             : 'text-gray-700'
                         }>{opt.label}</span>
                       </label>
@@ -872,7 +872,7 @@ export default function SignupPage() {
                                 newDescriptions[index] = e.target.value;
                                 setCustomDescriptions(newDescriptions);
                               }}
-                              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                             />
                             <button
                               type="button"
@@ -894,7 +894,7 @@ export default function SignupPage() {
                         <button
                           type="button"
                           onClick={() => setCustomDescriptions([...customDescriptions, ''])}
-                          className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                          className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                         >
                           + Add another
                         </button>
@@ -1001,7 +1001,7 @@ export default function SignupPage() {
                         });
                       }}
                       placeholder="Town/Suburb"
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                     />
                     <select
                       value={location.split(',')[1]?.trim() || 'VIC'}
@@ -1018,7 +1018,7 @@ export default function SignupPage() {
                           lng: 144.3256,
                         });
                       }}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                     >
                       <option value="VIC">VIC</option>
                       <option value="NSW">NSW</option>
@@ -1031,8 +1031,8 @@ export default function SignupPage() {
                     </select>
                   </div>
                   {location && location.includes(',') && location.split(',')[0].trim() && (
-                    <div className="mt-2 p-2 bg-teal-50 border border-teal-200 rounded-lg">
-                      <div className="text-sm font-medium text-teal-900">{location}</div>
+                    <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="text-sm font-medium text-emerald-900">{location}</div>
                     </div>
                   )}
                 </div>
@@ -1051,7 +1051,7 @@ export default function SignupPage() {
                         key={opt.value}
                         className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                           status.includes(opt.value) 
-                            ? 'border-teal-600 bg-teal-50' 
+                            ? 'border-emerald-600 bg-emerald-50' 
                             : 'border-gray-100'
                         }`}
                       >
@@ -1076,7 +1076,7 @@ export default function SignupPage() {
                         <span className="text-xl mr-3">{opt.icon}</span>
                         <span className={
                           status.includes(opt.value) 
-                            ? 'text-teal-700 font-medium'
+                            ? 'text-emerald-700 font-medium'
                             : 'text-gray-700'
                         }>{opt.label}</span>
                       </label>
@@ -1096,7 +1096,7 @@ export default function SignupPage() {
                                 newDescriptions[index] = e.target.value;
                                 setCustomDescriptions(newDescriptions);
                               }}
-                              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                             />
                             <button
                               type="button"
@@ -1118,7 +1118,7 @@ export default function SignupPage() {
                         <button
                           type="button"
                           onClick={() => setCustomDescriptions([...customDescriptions, ''])}
-                          className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                          className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                         >
                           + Add another
                         </button>
@@ -1172,13 +1172,13 @@ export default function SignupPage() {
                     onClick={() => setShowBusinessName(!showBusinessName)}
                     className={`w-full p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
                       showBusinessName || businessName 
-                        ? 'border-teal-600 bg-teal-50' 
+                        ? 'border-emerald-600 bg-emerald-50' 
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
                     <span className={
                       showBusinessName || businessName 
-                        ? 'text-teal-700 font-medium'
+                        ? 'text-emerald-700 font-medium'
                         : 'text-gray-700'
                     }>
                       Business Name (Optional)
@@ -1193,7 +1193,7 @@ export default function SignupPage() {
                         placeholder="Enter your business name..."
                         value={businessName}
                         onChange={(e) => setBusinessName(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                         autoFocus
                       />
                     </div>
@@ -1258,7 +1258,7 @@ export default function SignupPage() {
                         });
                       }}
                       placeholder="Town/Suburb"
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                     />
                     <select
                       value={location.split(',')[1]?.trim() || 'VIC'}
@@ -1275,7 +1275,7 @@ export default function SignupPage() {
                           lng: 144.3256,
                         });
                       }}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                     >
                       <option value="VIC">VIC</option>
                       <option value="NSW">NSW</option>
@@ -1288,8 +1288,8 @@ export default function SignupPage() {
                     </select>
                   </div>
                   {location && location.includes(',') && location.split(',')[0].trim() && (
-                    <div className="mt-2 p-2 bg-teal-50 border border-teal-200 rounded-lg">
-                      <div className="text-sm font-medium text-teal-900">{location}</div>
+                    <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="text-sm font-medium text-emerald-900">{location}</div>
                     </div>
                   )}
                 </div>
@@ -1308,7 +1308,7 @@ export default function SignupPage() {
                         key={opt.value}
                         className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                           status.includes(opt.value) 
-                            ? 'border-teal-600 bg-teal-50' 
+                            ? 'border-emerald-600 bg-emerald-50' 
                             : 'border-gray-100'
                         }`}
                       >
@@ -1333,7 +1333,7 @@ export default function SignupPage() {
                         <span className="text-xl mr-3">{opt.icon}</span>
                         <span className={
                           status.includes(opt.value) 
-                            ? 'text-teal-700 font-medium'
+                            ? 'text-emerald-700 font-medium'
                             : 'text-gray-700'
                         }>{opt.label}</span>
                       </label>
@@ -1353,7 +1353,7 @@ export default function SignupPage() {
                                 newDescriptions[index] = e.target.value;
                                 setCustomDescriptions(newDescriptions);
                               }}
-                              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                             />
                             <button
                               type="button"
@@ -1375,7 +1375,7 @@ export default function SignupPage() {
                         <button
                           type="button"
                           onClick={() => setCustomDescriptions([...customDescriptions, ''])}
-                          className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                          className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                         >
                           + Add another
                         </button>
@@ -1414,7 +1414,7 @@ export default function SignupPage() {
                       key={opt.value}
                       className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                         relationship.includes(opt.value) 
-                          ? 'border-teal-600 bg-teal-50' 
+                          ? 'border-emerald-600 bg-emerald-50' 
                           : 'border-gray-100'
                       }`}
                     >
@@ -1439,7 +1439,7 @@ export default function SignupPage() {
                       <span className="text-xl mr-3">{opt.icon}</span>
                       <span className={
                         relationship.includes(opt.value) 
-                          ? 'text-teal-700 font-medium'
+                          ? 'text-emerald-700 font-medium'
                           : 'text-gray-700'
                       }>{opt.label}</span>
                     </label>
@@ -1459,7 +1459,7 @@ export default function SignupPage() {
                               newDescriptions[index] = e.target.value;
                               setRelationshipCustomDescriptions(newDescriptions);
                             }}
-                            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                           />
                           <button
                             type="button"
@@ -1481,7 +1481,7 @@ export default function SignupPage() {
                       <button
                         type="button"
                         onClick={() => setRelationshipCustomDescriptions([...relationshipCustomDescriptions, ''])}
-                        className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                        className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                       >
                         + Add another
                       </button>
@@ -1572,7 +1572,7 @@ export default function SignupPage() {
                 <label 
                   className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
                     relationship.includes('no-kids') 
-                      ? 'border-teal-600 bg-teal-50' 
+                      ? 'border-emerald-600 bg-emerald-50' 
                       : 'border-gray-100'
                   }`}
                 >
@@ -1592,7 +1592,7 @@ export default function SignupPage() {
                   />
                   <span className={
                     relationship.includes('no-kids') 
-                      ? 'text-teal-700 font-medium'
+                      ? 'text-emerald-700 font-medium'
                       : 'text-gray-700'
                   }>I Don't Have Kids</span>
                 </label>

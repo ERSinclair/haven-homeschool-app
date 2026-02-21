@@ -204,7 +204,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -219,7 +219,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
           </Link>
           <div className="flex items-center gap-2">
             <span className="text-xl">🏡</span>
-            <span className="font-bold text-teal-600 text-lg" style={{ fontFamily: 'var(--font-fredoka)' }}>
+            <span className="font-bold text-emerald-600 text-lg" style={{ fontFamily: 'var(--font-fredoka)' }}>
               Haven
             </span>
           </div>
@@ -231,7 +231,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
           <div className="flex items-center justify-between relative">
             <div className="absolute left-0 right-0 top-4 h-0.5 bg-gray-200">
               <div 
-                className="h-full bg-teal-600 transition-all duration-300"
+                className="h-full bg-emerald-600 transition-all duration-300"
                 style={{ width: `${((step - 1) / 3) * 100}%` }}
               />
             </div>
@@ -244,14 +244,14 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
               <div key={item.num} className="relative flex flex-col items-center">
                 <div 
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold z-10 ${
-                    step >= item.num ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-500'
+                    step >= item.num ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-500'
                   }`}
                 >
                   {step > item.num ? '✓' : item.num}
                 </div>
                 <span 
                   className={`text-xs mt-2 ${
-                    step >= item.num ? 'text-teal-600 font-medium' : 'text-gray-400'
+                    step >= item.num ? 'text-emerald-600 font-medium' : 'text-gray-400'
                   }`}
                 >
                   {item.label}
@@ -285,7 +285,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                       type="text"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                       placeholder="first name"
                     />
                   </div>
@@ -294,7 +294,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                       type="text"
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                       placeholder="last name"
                     />
                   </div>
@@ -305,7 +305,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                     placeholder="Torquay, VIC"
                   />
                 </div>
@@ -325,7 +325,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                           status.includes(opt.value) 
                             ? opt.value === 'considering' 
                               ? 'border-green-200 bg-green-50' 
-                              : 'border-teal-600 bg-teal-50' 
+                              : 'border-emerald-600 bg-emerald-50' 
                             : 'border-gray-100'
                         }`}
                       >
@@ -352,7 +352,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                           status.includes(opt.value) 
                             ? opt.value === 'considering'
                               ? 'text-gray-900 font-medium'
-                              : 'text-teal-700 font-medium'
+                              : 'text-emerald-700 font-medium'
                             : 'text-gray-700'
                         }>
                           {opt.label}
@@ -374,7 +374,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                                 newDescriptions[index] = e.target.value;
                                 setCustomDescriptions(newDescriptions);
                               }}
-                              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                             />
                             <button
                               type="button"
@@ -396,7 +396,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                         <button
                           type="button"
                           onClick={() => setCustomDescriptions([...customDescriptions, ''])}
-                          className="text-teal-600 hover:text-teal-700 text-sm font-medium"
+                          className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                         >
                           + Add another
                         </button>
@@ -407,7 +407,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                 <button
                   onClick={handleStep2Continue}
                   disabled={!firstName.trim() || !lastName.trim() || !location || status.length === 0 || saving || (status.includes('other') && !customDescriptions.some(desc => desc.trim()))}
-                  className="w-full py-3.5 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:bg-gray-200 disabled:text-gray-400"
+                  className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {saving ? 'Saving...' : 'Continue'}
                 </button>
@@ -442,7 +442,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                     }}
                     className={`aspect-square rounded-xl font-semibold transition-all ${
                       kidsAges.includes(age)
-                        ? 'bg-teal-600 text-white'
+                        ? 'bg-emerald-600 text-white'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
@@ -461,7 +461,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                 <button
                   onClick={handleStep3Continue}
                   disabled={kidsAges.length === 0 || saving}
-                  className="flex-1 py-3.5 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:bg-gray-200 disabled:text-gray-400"
+                  className="flex-1 py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {saving ? 'Saving...' : 'Continue'}
                 </button>
@@ -484,7 +484,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                   <label 
                     key={method.value}
                     className={`flex items-center p-4 rounded-xl border-2 cursor-pointer ${
-                      contactMethods.includes(method.value) ? 'border-teal-600 bg-teal-50' : 'border-gray-100'
+                      contactMethods.includes(method.value) ? 'border-emerald-600 bg-emerald-50' : 'border-gray-100'
                     }`}
                   >
                     <input
@@ -501,7 +501,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                     />
                     <span className="text-2xl mr-4">{method.icon}</span>
                     <div className="flex-1">
-                      <p className={contactMethods.includes(method.value) ? 'text-teal-700 font-medium' : 'text-gray-700'}>
+                      <p className={contactMethods.includes(method.value) ? 'text-emerald-700 font-medium' : 'text-gray-700'}>
                         {method.label}
                       </p>
                       <p className="text-sm text-gray-500">{method.desc}</p>
@@ -520,7 +520,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                 <button
                   onClick={handleStep4Continue}
                   disabled={contactMethods.length === 0 || saving}
-                  className="flex-1 py-3.5 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:bg-gray-200 disabled:text-gray-400"
+                  className="flex-1 py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {saving ? 'Completing...' : 'Finish'}
                 </button>
@@ -537,7 +537,7 @@ export default function ResumeSignupPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     }>
       <ResumeSignupContent />
