@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Nunito, Fredoka } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import ToastContainer from "@/components/ToastContainer";
 import ScrollToTop from "@/components/ScrollToTop";
 import { AuthProvider } from "@/lib/AuthContext";
 import { ThemeProvider } from "@/lib/ThemeContext";
@@ -43,7 +44,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <meta name="theme-color" content="#0D9488" />
+        <meta name="theme-color" content="#059669" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="format-detection" content="telephone=no" />
@@ -85,6 +86,7 @@ export default function RootLayout({
               {children}
             </main>
             <BottomNav />
+            <ToastContainer />
           </AuthProvider>
         </ThemeProvider>
       </body>

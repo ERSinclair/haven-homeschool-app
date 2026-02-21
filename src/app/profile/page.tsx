@@ -1,4 +1,5 @@
 'use client';
+import { toast } from '@/lib/toast';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -168,7 +169,7 @@ export default function ProfilePage() {
     try {
       const session = getStoredSession();
       if (!session) {
-        alert('Session expired. Please log in again.');
+        toast('Session expired. Please log in again.', 'error');
         return;
       }
       
@@ -204,7 +205,7 @@ export default function ProfilePage() {
 
       if (!res.ok) {
         const err = await res.json();
-        alert('Error saving profile: ' + (err.message || 'Unknown error'));
+        toast('Error saving profile: ' + (err.message || 'Unknown error'), 'error');
       } else {
         // Update local state
         setProfile(prev => prev ? {
@@ -224,7 +225,7 @@ export default function ProfilePage() {
         setIsEditing(false);
       }
     } catch (err) {
-      alert('Error saving profile. Please try again.');
+      toast('Error saving profile. Please try again.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -252,7 +253,7 @@ export default function ProfilePage() {
       setSubmitSuccess('Bug report submitted successfully! Thank you for helping us improve Haven.');
       setTimeout(() => setSubmitSuccess(null), 5000);
     } else {
-      alert('Failed to submit bug report: ' + result.error);
+      toast('Failed to submit bug report', 'error');
     }
     setSubmitting(false);
   };
@@ -269,7 +270,7 @@ export default function ProfilePage() {
       setSubmitSuccess('Feedback submitted successfully! We appreciate your input.');
       setTimeout(() => setSubmitSuccess(null), 5000);
     } else {
-      alert('Failed to submit feedback: ' + result.error);
+      toast('Failed to submit feedback', 'error');
     }
     setSubmitting(false);
   };
@@ -379,27 +380,20 @@ export default function ProfilePage() {
 
         {/* Profile Controls */}
         {!isEditing && !isViewingOtherUser && (
-          <>
-            <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-              <Link href="/manage" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
-                Manage
-              </Link>
-              <Link href="/settings" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
-                Settings
-              </Link>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
-              >
-                Edit
-              </button>
-            </div>
-            <div className="flex gap-2 mb-4 justify-center">
-              <Link href="/notifications" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
-                Notifications
-              </Link>
-            </div>
-          </>
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
+            <Link href="/connections" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
+              Connections
+            </Link>
+            <Link href="/settings" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
+              Settings
+            </Link>
+            <button
+              onClick={() => setIsEditing(true)}
+              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+            >
+              Edit
+            </button>
+          </div>
         )}
 
         {/* Profile Card */}

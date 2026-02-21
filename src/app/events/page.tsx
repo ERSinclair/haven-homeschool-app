@@ -1,4 +1,5 @@
 'use client';
+import { toast } from '@/lib/toast';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -379,7 +380,7 @@ export default function EventsPage() {
 
     } catch (err) {
       console.error('Error updating event title:', err);
-      alert('Failed to update event title. Please try again.');
+      toast('Failed to update event title. Please try again.', 'error');
     } finally {
       setSavingEventChanges(false);
     }
@@ -421,7 +422,7 @@ export default function EventsPage() {
 
     } catch (err) {
       console.error('Error updating event description:', err);
-      alert('Failed to update event description. Please try again.');
+      toast('Failed to update event description. Please try again.', 'error');
     } finally {
       setSavingEventChanges(false);
     }
@@ -463,7 +464,7 @@ export default function EventsPage() {
 
     } catch (err) {
       console.error('Error updating event date:', err);
-      alert('Failed to update event date. Please try again.');
+      toast('Failed to update event date. Please try again.', 'error');
     } finally {
       setSavingEventChanges(false);
     }
@@ -505,7 +506,7 @@ export default function EventsPage() {
 
     } catch (err) {
       console.error('Error updating event time:', err);
-      alert('Failed to update event time. Please try again.');
+      toast('Failed to update event time. Please try again.', 'error');
     } finally {
       setSavingEventChanges(false);
     }
@@ -566,7 +567,7 @@ export default function EventsPage() {
 
     } catch (err) {
       console.error('Error updating event location:', err);
-      alert('Failed to update event location. Please try again.');
+      toast('Failed to update event location. Please try again.', 'error');
     } finally {
       setSavingEventChanges(false);
     }
@@ -608,7 +609,7 @@ export default function EventsPage() {
 
     } catch (err) {
       console.error('Error updating age range:', err);
-      alert('Failed to update age range. Please try again.');
+      toast('Failed to update age range. Please try again.', 'error');
     } finally {
       setSavingEventChanges(false);
     }
@@ -653,7 +654,7 @@ export default function EventsPage() {
 
     } catch (err) {
       console.error('Error updating event category:', err);
-      alert('Failed to update event category. Please try again.');
+      toast('Failed to update event category. Please try again.', 'error');
     } finally {
       setSavingEventChanges(false);
     }

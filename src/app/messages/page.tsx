@@ -1,4 +1,5 @@
 'use client';
+import { toast } from '@/lib/toast';
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -202,6 +203,12 @@ function MessagesContent() {
         const msgs = await res.json();
         setMessages(msgs);
 
+        // Scroll to bottom after messages load
+        setTimeout(() => {
+          const container = document.querySelector('.messages-container');
+          if (container) container.scrollTop = container.scrollHeight;
+        }, 80);
+
         // Mark conversation as read by clearing unread status
         // This happens when user opens a conversation
         await fetch(
@@ -246,6 +253,16 @@ function MessagesContent() {
       abortController.abort();
     };
   }, [selectedId, userId]);
+
+  // Reset to conversation list when Message tab is tapped while already on /messages
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.href === '/messages') setSelectedId(null);
+    };
+    window.addEventListener('haven-nav-reset', handler);
+    return () => window.removeEventListener('haven-nav-reset', handler);
+  }, []);
 
   // Cleanup timer on unmount and clear selection when switching conversations
   useEffect(() => {
@@ -481,7 +498,7 @@ function MessagesContent() {
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
         console.error('Error deleting conversation:', err);
-        alert('Failed to delete conversation. Please try again.');
+        toast('Failed to delete conversation. Please try again.', 'error');
       }
     }
   };
@@ -519,7 +536,7 @@ function MessagesContent() {
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
         console.error('Error deleting messages:', err);
-        alert('Failed to delete messages. Please try again.');
+        toast('Failed to delete messages. Please try again.', 'error');
       }
     }
   };
@@ -586,7 +603,7 @@ function MessagesContent() {
       setTimeout(() => setShowSuccessNotification(false), 3000);
     } catch (err) {
       console.error('Error saving message:', err);
-      alert('Failed to save message');
+      toast('Failed to save message', 'error');
     }
   };
 
@@ -691,7 +708,7 @@ function MessagesContent() {
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
         console.error('Error deleting conversations:', err);
-        alert('Failed to delete conversations. Please try again.');
+        toast('Failed to delete conversations. Please try again.', 'error');
       }
     }
   };
@@ -733,7 +750,7 @@ function MessagesContent() {
     try {
       const session = getStoredSession();
       if (!session?.user) {
-        alert('Please log in to send connection requests');
+        toast('Please log in to send connection requests', 'error');
         return;
       }
 
@@ -741,7 +758,7 @@ function MessagesContent() {
 
       // If already connected, do nothing
       if (existingConnection?.status === 'accepted') {
-        alert('You are already connected with this user.');
+        toast('You are already connected with this user.', 'info');
         return;
       }
 
@@ -776,7 +793,7 @@ function MessagesContent() {
 
       // If there's a pending request where current user is receiver, don't allow sending back
       if (existingConnection?.status === 'pending' && !existingConnection.isRequester) {
-        alert('This user has already sent you a connection request. Please check your connections page to accept it.');
+        toast('This user has already sent you a connection request. Please check your connections page to accept it.', 'info');
         return;
       }
 
@@ -819,9 +836,9 @@ function MessagesContent() {
       if (error instanceof Error && error.name !== 'AbortError') {
         console.error('Error with connection request:', error);
         if (error.message.includes('duplicate key value')) {
-          alert('Connection request already sent to this user.');
+          toast('Connection request already sent to this user.', 'info');
         } else {
-          alert('Failed to process connection request. Please try again.');
+          toast('Failed to process connection request. Please try again.', 'error');
         }
       }
     }
@@ -1067,7 +1084,7 @@ function MessagesContent() {
       }
     } catch (err) {
       console.error('Error starting new conversation:', err);
-      alert('Failed to start conversation. Please try again.');
+      toast('Failed to start conversation. Please try again.', 'error');
     }
   };
 
@@ -1123,18 +1140,7 @@ function MessagesContent() {
         <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
           <div className="max-w-md mx-auto px-4 py-4">
             {/* Header with back button */}
-            <div className="mb-8">
-              <HavenHeader />
-              <div className="flex items-center justify-between mb-6 mt-4">
-                <button 
-                  onClick={() => setSelectedId(null)} 
-                  className="text-emerald-600 hover:text-emerald-700 font-medium"
-                >
-                  ← Back
-                </button>
-                <div></div>
-              </div>
-            </div>
+            <HavenHeader onBack={() => setSelectedId(null)} />
 
             {/* Conversation Controls */}
             <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">

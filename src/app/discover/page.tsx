@@ -1,4 +1,5 @@
 'use client';
+import { toast } from '@/lib/toast';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -722,7 +723,7 @@ export default function EnhancedDiscoverPage() {
     try {
       const session = getStoredSession();
       if (!session?.user) {
-        alert('Please log in to send connection requests');
+        toast('Please log in to send connection requests', 'error');
         return;
       }
 
@@ -733,7 +734,7 @@ export default function EnhancedDiscoverPage() {
 
       // If already connected, do nothing
       if (existingConnection?.status === 'accepted') {
-        alert('You are already connected with this family.');
+        toast('You are already connected with this family.', 'info');
         return;
       }
 
@@ -768,7 +769,7 @@ export default function EnhancedDiscoverPage() {
 
       // If there's a pending request where current user is receiver, don't allow sending back
       if (existingConnection?.status === 'pending' && !existingConnection.isRequester) {
-        alert('This family has already sent you a connection request. Please check your connections page to accept it.');
+        toast('This family has already sent you a connection request. Please check your connections page to accept it.', 'info');
         return;
       }
 
@@ -811,8 +812,8 @@ export default function EnhancedDiscoverPage() {
           actorId: session.user.id,
           type: 'connection_request',
           title: `${senderName} wants to connect`,
-          body: 'Tap to view their profile',
-          link: '/discover',
+          body: 'Tap to accept or decline',
+          link: '/connections',
           referenceId: session.user.id,
           accessToken: session.access_token,
         });
@@ -821,9 +822,9 @@ export default function EnhancedDiscoverPage() {
     } catch (error) {
       console.error('Error with connection request:', error);
       if (error instanceof Error && error.message.includes('duplicate key value')) {
-        alert('Connection request already sent to this family.');
+        toast('Connection request already sent to this family.', 'info');
       } else {
-        alert('Failed to process connection request. Please try again.');
+        toast('Failed to process connection request. Please try again.', 'error');
       }
     }
   };
@@ -1018,10 +1019,16 @@ export default function EnhancedDiscoverPage() {
         {/* Section Navigation */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
-            onClick={() => window.location.href = '/events?type=public'}
+            onClick={() => window.location.href = '/events'}
             className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
           >
             Events
+          </button>
+          <button
+            onClick={() => window.location.href = '/circles/discover'}
+            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+          >
+            Circles
           </button>
           <button
             onClick={() => window.location.href = '/education'}
@@ -1621,7 +1628,7 @@ export default function EnhancedDiscoverPage() {
                       // Hide success message after 3 seconds
                       setTimeout(() => setShowSuccessMessage(false), 3000);
                     } else {
-                      alert('Failed to send message. Please try again.');
+                      toast('Failed to send message. Please try again.', 'error');
                     }
                   }
                 }}
@@ -1676,7 +1683,7 @@ export default function EnhancedDiscoverPage() {
                       setShowSuccessMessage(true);
                       setTimeout(() => setShowSuccessMessage(false), 3000);
                     } else {
-                      alert('Failed to send circle invitation. They may already be invited or be a member.');
+                      toast('Failed to send circle invitation. They may already be invited or be a member.', 'error');
                     }
                   }}
                   disabled={invitingToCircle}

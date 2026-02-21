@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/session';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -10,6 +10,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [messagesBadge, setMessagesBadge] = useState(0);
   const [circlesBadge, setCirclesBadge] = useState(0);
@@ -78,12 +79,25 @@ export default function BottomNav() {
   const authPages = ['/', '/signup', '/login', '/welcome', '/forgot-password', '/reset-password', '/dashboard'];
   if (authPages.includes(pathname) || !isLoggedIn) return null;
 
+  // Profile goes straight to notifications if there's something unread
+  const profileHref = notifBadge > 0 ? '/notifications' : '/profile';
+
   const navItems = [
-    { href: '/discover',  label: 'Discover', badge: 0 },
-    { href: '/circles',   label: 'Circles',  badge: circlesBadge },
-    { href: '/messages',  label: 'Message',  badge: messagesBadge },
-    { href: '/profile',   label: 'Profile',  badge: notifBadge },
+    { href: '/discover',    label: 'Discover', badge: 0 },
+    { href: '/circles',     label: 'Circles',  badge: circlesBadge },
+    { href: '/events/my',   label: 'Events',   badge: 0 },
+    { href: '/messages',    label: 'Message',  badge: messagesBadge },
+    { href: profileHref,    label: 'Profile',  badge: notifBadge, rootHref: '/profile' },
   ];
+
+  const handleNavClick = (href: string) => {
+    const isCurrentPage = pathname === href || pathname.startsWith(href + '/');
+    if (isCurrentPage) {
+      // Dispatch reset event so pages can respond (e.g. messages → conversation list)
+      window.dispatchEvent(new CustomEvent('haven-nav-reset', { detail: { href } }));
+    }
+    router.push(href);
+  };
 
   return (
     <div
@@ -94,11 +108,13 @@ export default function BottomNav() {
       <nav className="h-full bg-white">
         <div className="max-w-md mx-auto h-full flex justify-around items-center px-2">
           {navItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+            const rootHref = (item as any).rootHref || item.href;
+            const isActive = pathname === rootHref || pathname.startsWith(rootHref + '/') ||
+                             pathname === item.href || pathname.startsWith(item.href + '/');
             return (
-              <Link
+              <button
                 key={item.href}
-                href={item.href}
+                onClick={() => handleNavClick(item.href)}
                 className={`relative flex flex-col items-center justify-center w-full h-full transition-all duration-200 ${
                   isActive ? 'text-emerald-600' : 'text-gray-500 hover:text-gray-700'
                 }`}
@@ -116,7 +132,7 @@ export default function BottomNav() {
                 {isActive && (
                   <span className="absolute bottom-0 w-10 h-1 bg-emerald-600 rounded-full shadow-sm"></span>
                 )}
-              </Link>
+              </button>
             );
           })}
         </div>

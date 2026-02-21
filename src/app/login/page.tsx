@@ -40,15 +40,10 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    console.log('Starting login...', { email });
-    
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    console.log('Supabase URL:', supabaseUrl);
 
     try {
-      // Try direct fetch instead of SDK
-      console.log('Sending fetch request...');
       const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
         method: 'POST',
         headers: {
@@ -58,9 +53,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       
-      console.log('Fetch response status:', response.status);
       const result = await response.json();
-      console.log('Fetch result:', result);
 
       if (!response.ok) {
         setError(result.error_description || result.msg || 'Login failed');
@@ -79,7 +72,6 @@ export default function LoginPage() {
         user: result.user,
       }));
 
-      console.log('Session stored, checking profile completion...');
       
       // Check if profile is complete
       try {
@@ -99,10 +91,8 @@ export default function LoginPage() {
           const completionStep = checkProfileCompletion(profile);
           
           // Always go to welcome screen - let users choose their own flow
-          console.log('Login successful, going to welcome screen');
           window.location.href = '/welcome';
         } else {
-          console.log('Could not load profile, resuming signup');
           window.location.href = '/signup/resume?step=2';
         }
       } catch (profileErr) {

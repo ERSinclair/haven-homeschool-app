@@ -102,7 +102,6 @@ export default function SignupPage() {
       
       // If column doesn't exist, treat all usernames as available for now
       if (data.code === "42703") {
-        console.log('Username column not found - treating as available');
         setUsernameAvailable(true);
         return;
       }

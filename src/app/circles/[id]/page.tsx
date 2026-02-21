@@ -1,4 +1,5 @@
 'use client';
+import { toast } from '@/lib/toast';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -322,8 +323,8 @@ export default function CirclePage() {
         userId,
         actorId: session.user.id,
         type: 'circle_invite',
-        title: `You've been invited to a circle`,
-        body: `Someone invited you to join a circle`,
+        title: `You've been invited to join ${circle?.name || 'a circle'}`,
+        body: `Tap to view your circle invitations`,
         link: '/circles/invitations',
         referenceId: circleId,
         accessToken: session.access_token,
@@ -415,7 +416,7 @@ export default function CirclePage() {
 
     } catch (err) {
       console.error('Error updating admin status:', err);
-      alert('Failed to update member role. Please try again.');
+      toast('Failed to update member role. Please try again.', 'error');
     } finally {
       setAdminLoading(false);
     }
@@ -466,7 +467,7 @@ export default function CirclePage() {
 
     } catch (err) {
       console.error('Error removing member:', err);
-      alert('Failed to remove member. Please try again.');
+      toast('Failed to remove member. Please try again.', 'error');
     } finally {
       setAdminLoading(false);
     }
@@ -508,7 +509,7 @@ export default function CirclePage() {
 
     } catch (err) {
       console.error('Error updating circle name:', err);
-      alert('Failed to update circle name. Please try again.');
+      toast('Failed to update circle name. Please try again.', 'error');
     } finally {
       setSavingChanges(false);
     }
@@ -550,7 +551,7 @@ export default function CirclePage() {
 
     } catch (err) {
       console.error('Error updating circle description:', err);
-      alert('Failed to update circle description. Please try again.');
+      toast('Failed to update circle description. Please try again.', 'error');
     } finally {
       setSavingChanges(false);
     }
@@ -614,7 +615,7 @@ export default function CirclePage() {
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-md mx-auto px-4 py-4">
-          <HavenHeader backHref="/circles" />
+          <HavenHeader backHref="/circles" showWordmark={false} />
           
           {/* Circle Info */}
           <div className="flex items-center justify-between">

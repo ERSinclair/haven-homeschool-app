@@ -1,4 +1,5 @@
 'use client';
+import { toast } from '@/lib/toast';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -159,7 +160,7 @@ export default function ConnectionsPage() {
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Failed to send message. Please try again.');
+      toast('Failed to send message. Please try again.', 'error');
     } finally {
       setSendingMessage(false);
     }

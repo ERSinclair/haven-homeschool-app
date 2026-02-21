@@ -8,9 +8,27 @@ interface HavenHeaderProps {
   backLabel?: string;
   onBack?: () => void;
   wordmarkMargin?: string;
+  showWordmark?: boolean;
 }
 
-export default function HavenHeader({ className = "", backHref, backLabel = "Back", onBack, wordmarkMargin = "mb-24" }: HavenHeaderProps) {
+export default function HavenHeader({ className = "", backHref, backLabel = "Back", onBack, wordmarkMargin = "mb-24", showWordmark = true }: HavenHeaderProps) {
+  if (!showWordmark) {
+    return (
+      <div className={className}>
+        {backHref && (
+          <Link href={backHref} className="text-emerald-600 hover:text-emerald-700 font-medium text-sm">
+            ← {backLabel}
+          </Link>
+        )}
+        {onBack && (
+          <button onClick={onBack} className="text-emerald-600 hover:text-emerald-700 font-medium text-sm">
+            ← {backLabel}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={`mb-8 mt-8 ${className}`}>
       <div className="flex items-center justify-between mb-6">

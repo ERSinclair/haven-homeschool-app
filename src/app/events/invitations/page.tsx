@@ -59,10 +59,53 @@ export default function EventInvitationsPage() {
 
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const headers = {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+        };
 
-        setInvitations([]);
+        // Fetch invitations with event data
+        const invRes = await fetch(
+          `${supabaseUrl}/rest/v1/event_invitations?invitee_id=eq.${session.user.id}&select=*,events(title,description,event_date,event_time,category,location_name)&order=created_at.desc`,
+          { headers }
+        );
+
+        if (!invRes.ok) { setLoading(false); return; }
+        const rawInvs = await invRes.json();
+        if (!Array.isArray(rawInvs) || rawInvs.length === 0) { setLoading(false); return; }
+
+        // Fetch host profiles
+        const hostIds = [...new Set(rawInvs.map((i: any) => i.inviter_id))];
+        const profilesRes = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?id=in.(${hostIds.join(',')})&select=id,family_name,display_name,avatar_url`,
+          { headers }
+        );
+        const profiles = profilesRes.ok ? await profilesRes.json() : [];
+        const profileMap: Record<string, any> = {};
+        profiles.forEach((p: any) => { profileMap[p.id] = p; });
+
+        const merged = rawInvs.map((inv: any) => {
+          const event = inv.events || {};
+          const host = profileMap[inv.inviter_id] || {};
+          return {
+            id: inv.id,
+            event_id: inv.event_id,
+            event_title: event.title || 'Event',
+            event_description: event.description,
+            event_date: event.event_date || '',
+            event_time: event.event_time || '',
+            event_category: event.category || 'Other',
+            event_location_name: event.location_name || '',
+            host_id: inv.inviter_id,
+            host_name: host.family_name || host.display_name || 'Someone',
+            host_avatar_url: host.avatar_url,
+            created_at: inv.created_at,
+            status: inv.status,
+          };
+        });
+
+        setInvitations(merged);
       } catch (err) {
-        console.error('Error loading event invitations:', err);
         setError('Failed to load invitations. Please try again.');
       } finally {
         setLoading(false);
@@ -74,46 +117,46 @@ export default function EventInvitationsPage() {
 
   const handleInvitation = async (invitationId: string, action: 'accept' | 'decline') => {
     setProcessingInvite(invitationId);
-    
     try {
-      // Show success message
+      const session = getStoredSession();
+      if (!session?.user) return;
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const headers = {
+        'apikey': supabaseKey!,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      };
+
       const invitation = invitations.find(inv => inv.id === invitationId);
-      if (action === 'accept') {
-        alert(`You're attending "${invitation?.event_title}"! Your RSVP has been confirmed. You'll receive event updates and reminders.`);
-      } else {
-        alert('Event invitation declined.');
+
+      await fetch(`${supabaseUrl}/rest/v1/event_invitations?id=eq.${invitationId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status: action === 'accept' ? 'accepted' : 'declined' }),
+      });
+
+      // If accepting, also create an RSVP
+      if (action === 'accept' && invitation) {
+        await fetch(`${supabaseUrl}/rest/v1/event_rsvps`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            event_id: invitation.event_id,
+            profile_id: session.user.id,
+            status: 'going',
+          }),
+        });
       }
-      
-      // Update local state
-      setInvitations(prev => prev.map(inv => 
-        inv.id === invitationId 
+
+      setInvitations(prev => prev.map(inv =>
+        inv.id === invitationId
           ? { ...inv, status: action === 'accept' ? 'accepted' : 'declined' }
           : inv
       ));
-      
-      // In a real implementation, this would call the API:
-      /*
-      const session = getStoredSession();
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/event_invitations?id=eq.${invitationId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ status: action === 'accept' ? 'accepted' : 'declined' })
-        }
-      );
-      */
-      
     } catch (err) {
-      console.error('Error processing invitation:', err);
-      alert('Failed to process invitation. Please try again.');
+      // Silent — state stays as-is
     } finally {
       setProcessingInvite(null);
     }

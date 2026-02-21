@@ -1,8 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import Compressor from 'compressorjs';
+import { getStoredSession } from '@/lib/session';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 interface AvatarUploadProps {
   userId: string;
@@ -78,29 +81,49 @@ export default function AvatarUpload({
       setUploading(true);
 
       const processedFile = await processImage(file);
+      const session = getStoredSession();
+      if (!session) { setError('Not logged in'); return; }
+
       const fileName = `${userId}/avatar.jpg`;
 
-      const { data, error: uploadError } = await supabase.storage
-        .from('profile-photos')
-        .upload(fileName, processedFile, { upsert: true });
+      // Upload to storage
+      const uploadRes = await fetch(
+        `${supabaseUrl}/storage/v1/object/profile-photos/${fileName}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'x-upsert': 'true',
+          },
+          body: processedFile,
+        }
+      );
 
-      if (uploadError) {
+      if (!uploadRes.ok) {
         setError('Failed to upload image. Please try again.');
         return;
       }
 
-      const { data: urlData } = supabase.storage
-        .from('profile-photos')
-        .getPublicUrl(fileName);
+      // Build public URL
+      const newAvatarUrl = `${supabaseUrl}/storage/v1/object/public/profile-photos/${fileName}?t=${Date.now()}`;
 
-      const newAvatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+      // Save URL to profile
+      const updateRes = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({ avatar_url: newAvatarUrl }),
+        }
+      );
 
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: newAvatarUrl })
-        .eq('id', userId);
-
-      if (updateError) {
+      if (!updateRes.ok) {
         setError('Failed to update profile. Please try again.');
         return;
       }
@@ -123,18 +146,35 @@ export default function AvatarUpload({
       setUploading(true);
       setError(null);
 
+      const session = getStoredSession();
+      if (!session) return;
+
       const fileName = `${userId}/avatar.jpg`;
-      await supabase.storage.from('profile-photos').remove([fileName]);
 
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: null })
-        .eq('id', userId);
+      await fetch(
+        `${supabaseUrl}/storage/v1/object/profile-photos/${fileName}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
 
-      if (updateError) {
-        setError('Failed to remove avatar');
-        return;
-      }
+      await fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({ avatar_url: null }),
+        }
+      );
 
       setAvatarUrl(null);
       onAvatarChange?.(null);
