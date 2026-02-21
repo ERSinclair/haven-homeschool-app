@@ -601,7 +601,7 @@ function MessagesContent() {
   };
 
   const handleConversationLongPress = (conversationId: string) => {
-    if (!conversationSelectionMode && convo.id !== 'saved-messages') {
+    if (!conversationSelectionMode && conversationId !== 'saved-messages') {
       setConversationSelectionMode(true);
       setSelectedConversations([conversationId]);
     }
