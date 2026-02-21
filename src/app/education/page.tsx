@@ -22,7 +22,7 @@ export default function EducationPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader />
+        <HavenHeader backHref="/discover" />
 
         {/* Section Navigation */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">

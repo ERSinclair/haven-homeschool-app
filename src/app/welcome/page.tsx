@@ -98,33 +98,30 @@ export default function WelcomePage() {
 
       <div className="max-w-md mx-auto px-4 py-8">
         {/* Haven header — same position as other pages */}
-        <HavenHeader />
+        <HavenHeader backHref="/discover" backLabel="Close" wordmarkMargin="mb-4" />
 
         {/* Welcome Message — sits where the top button row sits on other pages */}
         <div className={`transition-all duration-500 text-center mb-6 ${step >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           {isFromSignup && (
             <div className="w-14 h-14 bg-emerald-600 rounded-full mx-auto mb-4"></div>
           )}
-          <h1 className="text-3xl font-bold text-emerald-700 mb-2" style={{ fontFamily: 'var(--font-fredoka)' }}>
-            {isFromSignup 
-              ? <>Welcome to Haven{profileData?.family_name || profileData?.display_name ? `, ${profileData.family_name || profileData.display_name}` : ''}!</>
-              : <>Welcome back{profileData?.family_name || profileData?.display_name ? `, ${profileData.family_name || profileData.display_name}` : ''}!</>
-            }
+          <h1 className="text-3xl font-bold text-emerald-700 mb-16" style={{ fontFamily: 'var(--font-fredoka)' }}>
+            {(() => {
+              const firstName = (profileData?.family_name || profileData?.display_name || '').split(' ')[0];
+              return isFromSignup
+                ? <>Welcome to Haven{firstName ? `, ${firstName}` : ''}!</>
+                : <>Welcome{firstName ? `, ${firstName}` : ''}!</>;
+            })()}
           </h1>
-          <p className="text-emerald-600 text-base">
-            {isFromSignup 
-              ? profileData?.user_type === 'family' 
+          {isFromSignup && (
+            <p className="text-emerald-600 text-base">
+              {profileData?.user_type === 'family'
                 ? "Your family community awaits"
                 : profileData?.user_type === 'teacher'
                   ? "Ready to connect with homeschool families"
-                  : "Welcome to the homeschool community"
-              : profileData?.user_type === 'family'
-                ? "Good to see you back"
-                : profileData?.user_type === 'teacher'
-                  ? "Connect with homeschool families"
-                  : "Connect with the homeschool community"
-            }
-          </p>
+                  : "Welcome to the homeschool community"}
+            </p>
+          )}
         </div>
 
         {/* Stats Preview */}

@@ -191,9 +191,12 @@ export default function ProfilePage() {
             location_name: editData.location_name,
             bio: editData.bio,
             kids_ages: children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18),
-            status: editData.status.includes('other') && customDescriptions.some(desc => desc.trim()) 
-              ? customDescriptions.filter(desc => desc.trim()).join(', ')
-              : (editData.status.filter(s => s !== 'other').length > 0 ? editData.status.filter(s => s !== 'other') : ['considering']),
+            status: (() => {
+              const predefined = editData.status.filter(s => s !== 'other');
+              const custom = customDescriptions.filter(desc => desc.trim());
+              const combined = [...predefined, ...custom];
+              return combined.length > 0 ? combined : ['considering'];
+            })(),
             updated_at: new Date().toISOString(),
           }),
         }
@@ -211,9 +214,12 @@ export default function ProfilePage() {
           location_name: editData.location_name,
           bio: editData.bio,
           kids_ages: children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18),
-          status: editData.status.includes('other') && customDescriptions.some(desc => desc.trim()) 
-            ? customDescriptions.filter(desc => desc.trim()).join(', ')
-            : (editData.status.filter(s => s !== 'other').length > 0 ? editData.status.filter(s => s !== 'other') : ['considering']),
+          status: (() => {
+              const predefined = editData.status.filter(s => s !== 'other');
+              const custom = customDescriptions.filter(desc => desc.trim());
+              const combined = [...predefined, ...custom];
+              return combined.length > 0 ? combined : ['considering'];
+            })(),
         } : null);
         setIsEditing(false);
       }
@@ -289,40 +295,26 @@ export default function ProfilePage() {
   // Utility function to safely parse status data
   const parseStatus = (statusData: any): string[] => {
     if (!statusData) return [];
-    
-    // If it's a single string (most common case)
+
     if (typeof statusData === 'string') {
-      // Check if it's a valid predefined status
-      const validStatuses = ['considering', 'new', 'experienced', 'connecting'];
-      if (validStatuses.includes(statusData)) {
-        return [statusData];
-      }
-      
       // Try to parse as JSON array
       try {
         const parsed = JSON.parse(statusData);
         if (Array.isArray(parsed)) {
-          return parsed.filter(item => typeof item === 'string' && validStatuses.includes(item));
+          return parsed.filter((item): item is string => typeof item === 'string' && item.trim() !== '' && item !== 'other');
         }
       } catch {
-        // Not JSON, treat as custom status (stored as 'other' but display the actual text)
-        return ['custom'];
+        // Plain string — return as-is (custom text)
+        return statusData.trim() ? [statusData.trim()] : [];
       }
-      
-      // Custom status - not a predefined option
-      return ['custom'];
+      return statusData.trim() ? [statusData.trim()] : [];
     }
-    
-    // If it's already an array
+
     if (Array.isArray(statusData)) {
-      const validStatuses = ['considering', 'new', 'experienced', 'connecting'];
-      const validItems = statusData.filter(item => 
-        typeof item === 'string' && validStatuses.includes(item)
-      );
-      return validItems.length > 0 ? validItems : ['custom'];
+      return statusData.filter((item): item is string => typeof item === 'string' && item.trim() !== '' && item !== 'other');
     }
-    
-    return ['custom'];
+
+    return [];
   };
 
   const getStatusInfo = (status: string) => {
@@ -332,28 +324,9 @@ export default function ProfilePage() {
       'experienced': 'Extracurricular',
       'connecting': 'Just Checking It Out',
     };
-    
-    // If it's a predefined status, use the mapped label
-    if (statusMap[status]) {
-      return {
-        label: statusMap[status],
-        color: 'bg-teal-100 text-teal-700',
-      };
-    }
-    
-    // If it's 'custom', show the actual stored status text
-    if (status === 'custom' && profile?.status) {
-      const actualStatus = typeof profile.status === 'string' ? profile.status : '';
-      return {
-        label: actualStatus || 'Custom Status',
-        color: 'bg-teal-100 text-teal-700',
-      };
-    }
-    
-    // Use teal colors for all statuses to match family connections
     return {
-      label: status,
-      color: 'bg-teal-100 text-teal-700',
+      label: statusMap[status] || status,
+      color: 'bg-emerald-100 text-emerald-700',
     };
   };
 
@@ -397,31 +370,11 @@ export default function ProfilePage() {
       <div className="max-w-md mx-auto px-4 py-8">
         {/* Header with conditional back button */}
         {isEditing ? (
-          <div>
-            <HavenHeader />
-            <div className="mb-6 mt-4">
-              <button
-                onClick={() => setIsEditing(false)}
-                className="text-emerald-600 hover:text-emerald-700 font-medium"
-              >
-                ← Back
-              </button>
-            </div>
-          </div>
+          <HavenHeader onBack={() => setIsEditing(false)} />
+        ) : isViewingOtherUser ? (
+          <HavenHeader onBack={() => router.back()} />
         ) : (
-          <div>
-            <HavenHeader />
-            {isViewingOtherUser && (
-              <div className="mb-6 mt-4">
-                <button
-                  onClick={() => router.back()}
-                  className="text-emerald-600 hover:text-emerald-700 font-medium"
-                >
-                  ← Back
-                </button>
-              </div>
-            )}
-          </div>
+          <HavenHeader />
         )}
 
         {/* Profile Controls */}
@@ -452,7 +405,7 @@ export default function ProfilePage() {
         {/* Profile Card */}
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 mt-12">
           {/* Avatar & Name */}
-          <div className="text-center py-12">
+          <div className="text-center pb-6 pt-2">
             <div className="mb-4 flex justify-center relative">
               <AvatarUpload
                 userId={profile?.id || ''}
@@ -479,16 +432,9 @@ export default function ProfilePage() {
             ) : (
               <div>
                 <h2 className="text-xl font-bold text-emerald-600">{profile.family_name || profile.display_name || 'No name set'}</h2>
-                {profile.user_type && (
-                  <div className="flex justify-center mt-1">
-                    <span className="px-3 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full capitalize">
-                      {profile.user_type === 'family' ? 'Family' : profile.user_type === 'teacher' ? 'Teacher' : profile.user_type === 'business' ? 'Business' : profile.user_type}
-                    </span>
-                  </div>
-                )}
                 {/* Admin Badge */}
                 {profile.admin_level && (
-                  <div className="flex justify-center mt-2">
+                  <div className="flex justify-center mt-6">
                     <AdminBadge adminLevel={profile.admin_level} size="md" showTitle={true} />
                   </div>
                 )}
@@ -502,8 +448,8 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* Status - Show above location for all users */}
-          <div className="mb-4 text-center">
+          {/* Why you're here */}
+          <div className="mb-6 text-center">
             {isEditing ? (
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
@@ -602,7 +548,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Location */}
-          <div className="mb-4 text-center">
+          <div className="mb-6 text-center">
             {isEditing ? (
               <input
                 type="text"
@@ -617,7 +563,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Kids Ages */}
-          <div className="mb-4 text-center">
+          <div className="mb-6 text-center">
             {isEditing ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">Kids Ages</label>
@@ -674,7 +620,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Bio */}
-          <div className="text-center">
+          <div className="mb-6 text-center">
             {isEditing ? (
               <textarea
                 value={editData.bio}
@@ -702,29 +648,27 @@ export default function ProfilePage() {
                     // Handle status - check if it's a predefined value or custom description
                     const predefinedStatuses = ['considering', 'new', 'experienced', 'connecting'];
                     const profileStatus = parseStatus(profile.status);
-                    const statusValue = profileStatus.length > 0 ? profileStatus[0] : 'considering';
-                    
-                    if (predefinedStatuses.includes(statusValue)) {
+                    const predefinedSelected = profileStatus.filter(s => predefinedStatuses.includes(s));
+                    const customSelected = profileStatus.filter(s => !predefinedStatuses.includes(s));
+
+                    if (customSelected.length > 0) {
                       setEditData({
                         name: profile.family_name || profile.display_name || '',
                         location_name: profile.location_name || '',
                         bio: profile.bio || '',
                         kids_ages: profile.kids_ages || [],
-                        status: [statusValue],
+                        status: [...predefinedSelected, 'other'],
+                      });
+                      setCustomDescriptions(customSelected.length > 0 ? customSelected : ['']);
+                    } else {
+                      setEditData({
+                        name: profile.family_name || profile.display_name || '',
+                        location_name: profile.location_name || '',
+                        bio: profile.bio || '',
+                        kids_ages: profile.kids_ages || [],
+                        status: predefinedSelected.length > 0 ? predefinedSelected : ['considering'],
                       });
                       setCustomDescriptions([]);
-                    } else {
-                      // Custom status - treat as "other" with descriptions
-                      setEditData({
-                        name: profile.family_name || profile.display_name || '',
-                        location_name: profile.location_name || '',
-                        bio: profile.bio || '',
-                        kids_ages: profile.kids_ages || [],
-                        status: ['other'],
-                      });
-                      const actualStatus = typeof profile.status === 'string' ? profile.status : '';
-                      const descriptions = actualStatus.split(',').map((desc: string) => desc.trim()).filter(Boolean);
-                      setCustomDescriptions(descriptions.length > 0 ? descriptions : ['']);
                     }
                     
                     // Reset children state

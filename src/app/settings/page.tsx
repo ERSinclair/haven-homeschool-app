@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { deleteMyAccount } from '@/lib/account-deletion';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import HavenHeader from '@/components/HavenHeader';
 import { getStoredSession } from '@/lib/session';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -164,23 +165,7 @@ export default function SettingsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <Link href="/profile" className="text-teal-600 hover:text-teal-700 font-medium">
-              ← Back
-            </Link>
-            <div></div>
-          </div>
-          
-          <div className="text-center mb-12">
-            <div className="flex items-center gap-2 pointer-events-none justify-center">
-              <span className="font-bold text-emerald-600 text-4xl" style={{ fontFamily: 'var(--font-fredoka)' }}>
-                Haven
-              </span>
-            </div>
-          </div>
-        </div>
+        <HavenHeader backHref="/profile" />
       </div>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">

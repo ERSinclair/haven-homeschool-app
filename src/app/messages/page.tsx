@@ -958,7 +958,35 @@ function MessagesContent() {
       );
 
       if (existingConvo) {
-        // Use existing conversation
+        // Send message to existing conversation
+        await fetch(`${supabaseUrl}/rest/v1/messages`, {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({
+            conversation_id: existingConvo.id,
+            sender_id: session.user.id,
+            content: newMessageText.trim(),
+          }),
+        });
+        await fetch(`${supabaseUrl}/rest/v1/conversations?id=eq.${existingConvo.id}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            last_message_text: newMessageText.trim(),
+            last_message_at: new Date().toISOString(),
+            last_message_by: session.user.id,
+          }),
+        });
+        await reloadConversations();
         setSelectedId(existingConvo.id);
         setShowNewMessageModal(false);
         setSelectedContacts(new Set());

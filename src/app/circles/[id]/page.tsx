@@ -56,6 +56,7 @@ export default function CirclePage() {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [invitedUsers, setInvitedUsers] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -292,22 +293,13 @@ export default function CirclePage() {
   const inviteMember = async (userId: string) => {
     try {
       setInviteLoading(true);
-      
-      // Get the connection details for the invited user
-      const connection = connections.find((conn: any) => conn.user.id === userId);
-      const userName = connection?.user.display_name || connection?.user.family_name || 'this user';
-      
-      // In a real implementation, this would create an invitation in the database
-      // For now, show a success message
-      alert(`Invitation sent to ${userName}! They will receive a notification to join "${circle?.name}".`);
-      
-      // Close the invite modal
-      setShowInviteModal(false);
-      
-      // In a real implementation, you would:
-      /*
       const session = getStoredSession();
-      const response = await fetch(`${supabaseUrl}/rest/v1/circle_invitations`, {
+      if (!session) return;
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      await fetch(`${supabaseUrl}/rest/v1/circle_invitations`, {
         method: 'POST',
         headers: {
           'apikey': supabaseKey!,
@@ -315,17 +307,48 @@ export default function CirclePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          circle_id: circle.id,
+          circle_id: circleId,
           invitee_id: userId,
           inviter_id: session.user.id,
-          status: 'pending'
+          status: 'pending',
         }),
       });
-      */
-      
+
+      setInvitedUsers(prev => new Set([...prev, userId]));
     } catch (error) {
       console.error('Error sending invitation:', error);
-      alert('Failed to send invitation. Please try again.');
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const unrequestMember = async (userId: string) => {
+    try {
+      setInviteLoading(true);
+      const session = getStoredSession();
+      if (!session) return;
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      await fetch(
+        `${supabaseUrl}/rest/v1/circle_invitations?circle_id=eq.${circleId}&invitee_id=eq.${userId}&status=eq.pending`,
+        {
+          method: 'DELETE',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      setInvitedUsers(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+    } catch (error) {
+      console.error('Error cancelling invitation:', error);
     } finally {
       setInviteLoading(false);
     }
@@ -578,17 +601,7 @@ export default function CirclePage() {
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-md mx-auto px-4 py-4">
-          <HavenHeader />
-          
-          {/* Back Link */}
-          <div className="mb-6 mt-4">
-            <Link 
-              href="/circles"
-              className="text-emerald-600 hover:text-emerald-700 font-medium"
-            >
-              ← Back
-            </Link>
-          </div>
+          <HavenHeader backHref="/circles" />
           
           {/* Circle Info */}
           <div className="flex items-center justify-between">
@@ -801,6 +814,7 @@ export default function CirclePage() {
                   onClick={() => {
                     setShowInviteModal(false);
                     setSearchTerm('');
+                    setInvitedUsers(new Set());
                   }}
                   className="text-gray-400 hover:text-gray-600 text-xl"
                 >
@@ -865,11 +879,19 @@ export default function CirclePage() {
                           </div>
                         </div>
                         <button
-                          onClick={() => inviteMember(connection.user.id)}
+                          onClick={() =>
+                            invitedUsers.has(connection.user.id)
+                              ? unrequestMember(connection.user.id)
+                              : inviteMember(connection.user.id)
+                          }
                           disabled={inviteLoading}
-                          className="px-3 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:bg-gray-300 text-sm"
+                          className={`px-3 py-2 rounded-lg font-medium text-sm transition-all ${
+                            invitedUsers.has(connection.user.id)
+                              ? 'bg-gray-200 text-gray-600 hover:bg-red-100 hover:text-red-600'
+                              : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300'
+                          }`}
                         >
-                          {inviteLoading ? '...' : 'Invite'}
+                          {inviteLoading ? '...' : invitedUsers.has(connection.user.id) ? 'Requested' : 'Invite'}
                         </button>
                       </div>
                     </div>

@@ -60,27 +60,7 @@ export default function EventInvitationsPage() {
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-        // For now, show a mock invitation since the feature is in development
-        // In a real implementation, this would fetch from event_invitations table
-        const mockInvitations: EventInvitation[] = [
-          {
-            id: 'mock-event-1',
-            event_id: 'mock-event-1',
-            event_title: 'Beach Nature Study',
-            event_description: 'Exploring marine life and coastal ecosystems at Jan Juc Beach',
-            event_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 3 days from now
-            event_time: '10:00 AM',
-            event_category: 'Educational',
-            event_location_name: 'Jan Juc Beach',
-            host_id: 'mock-host-1',
-            host_name: 'Emma Wilson',
-            host_avatar_url: undefined,
-            created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-            status: 'pending'
-          }
-        ];
-
-        setInvitations(mockInvitations);
+        setInvitations([]);
       } catch (err) {
         console.error('Error loading event invitations:', err);
         setError('Failed to load invitations. Please try again.');
@@ -200,22 +180,11 @@ export default function EventInvitationsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader />
-
-        {/* Navigation */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide justify-center">
-          <Link 
-            href="/events"
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-teal-50 hover:text-teal-700 border border-gray-200 hover:border-teal-200 hover:shadow-md hover:scale-105"
-          >
-            ← Events
-          </Link>
-        </div>
+        <HavenHeader backHref="/events" />
 
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Event Invitations</h1>
-          <p className="text-gray-600">Private event invitations from other families</p>
         </div>
 
         {/* Pending Invitations */}
@@ -293,9 +262,6 @@ export default function EventInvitationsPage() {
         {/* No Pending Invitations */}
         {pendingInvitations.length === 0 && (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <span className="text-2xl">🎫</span>
-            </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Invitations</h3>
             <p className="text-gray-600 mb-4">
               You don't have any pending event invitations right now.

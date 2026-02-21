@@ -886,27 +886,38 @@ export default function EventsPage() {
 
               {/* Distance Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Max Distance (km)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={searchRadius}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === '') {
-                      setSearchRadius(15); // Set to default when empty
-                      return;
-                    }
-                    const newRadius = parseInt(value);
-                    if (!isNaN(newRadius)) {
-                      setSearchRadius(Math.max(1, Math.min(100, newRadius)));
-                    }
-                  }}
-                  onFocus={(e) => e.target.select()}
-                  className="w-20 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-center"
-                  placeholder="15"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">Max Distance (km)</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSearchRadius(r => Math.max(1, r - 1))}
+                    className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold"
+                  >
+                    -
+                  </button>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={searchRadius}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '') { setSearchRadius(15); return; }
+                        const n = parseInt(value);
+                        if (!isNaN(n)) setSearchRadius(Math.max(1, Math.min(100, n)));
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-16 px-2 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-center"
+                    />
+                    <span className="text-sm text-gray-600 font-medium">km</span>
+                  </div>
+                  <button
+                    onClick={() => setSearchRadius(r => Math.min(100, r + 1))}
+                    className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             </div>
           </div>

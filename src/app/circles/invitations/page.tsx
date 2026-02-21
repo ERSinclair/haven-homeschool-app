@@ -150,17 +150,7 @@ export default function CircleInvitationsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader />
-
-        {/* Back Link */}
-        <div className="mb-6 mt-4">
-          <Link
-            href="/circles"
-            className="text-emerald-600 hover:text-emerald-700 font-medium"
-          >
-            ← Back
-          </Link>
-        </div>
+        <HavenHeader backHref="/circles" />
 
         {/* Header */}
         <div className="text-center mb-8">
