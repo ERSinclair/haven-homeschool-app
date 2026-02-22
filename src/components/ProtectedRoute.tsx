@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, ReactNode } from 'react';
 import { updateLastActive } from '@/lib/activity';
+import { registerServiceWorker } from '@/lib/push';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -51,6 +52,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
           router.push('/');
         } else if (isAuthenticated) {
           updateLastActive();
+          registerServiceWorker(); // Silently register SW for push notifications
         }
       }, 1000); // 1 second delay to allow auth state to fully settle
 

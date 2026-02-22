@@ -3,27 +3,25 @@
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { toast } from '@/lib/toast';
 
-// Aggressive telemetry blocking - intercept fetch
+// Block Mapbox telemetry
 if (typeof window !== 'undefined') {
   const originalFetch = window.fetch;
   window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
     const url = typeof input === 'string' ? input : input.toString();
-    
-    // Block all Mapbox telemetry endpoints
-    if (url.includes('events.mapbox.com') || 
-        url.includes('/events/v2') ||
-        url.includes('api.mapbox.com/events') ||
-        url.includes('mapbox-turnstile')) {
-      // Return a fake successful response
+    if (
+      url.includes('events.mapbox.com') ||
+      url.includes('/events/v2') ||
+      url.includes('api.mapbox.com/events') ||
+      url.includes('mapbox-turnstile')
+    ) {
       return Promise.resolve(new Response('{}', { status: 200 }));
     }
-    
     return originalFetch.call(this, input, init);
   };
 }
 
-// Mapbox access token - configured via environment variable
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 type Family = {
@@ -47,434 +45,414 @@ interface FamilyMapProps {
   userLocation?: { lat: number; lng: number } | null;
   searchRadius?: number;
   showRadius?: boolean;
-  userProfileLocation?: string; // User's location from their profile
+  userProfileLocation?: string;
 }
 
-// Predefined coordinates for common locations around Torquay/Geelong area
-const LOCATION_COORDS: { [key: string]: [number, number] } = {
-  'Torquay': [144.3256, -38.3305],
-  'Geelong': [144.3580, -38.1499],
-  'Surf Coast': [144.2500, -38.3000],
+// In-memory geocoding cache — persists for the session
+const geocodeCache = new Map<string, [number, number]>();
+
+// Known locations (fallbacks before hitting the API)
+const KNOWN_COORDS: { [key: string]: [number, number] } = {
+  'Torquay':             [144.3256, -38.3305],
+  'Geelong':             [144.3580, -38.1499],
+  'Surf Coast':          [144.2500, -38.3000],
   'Bellarine Peninsula': [144.5000, -38.2500],
-  'Ocean Grove': [144.5208, -38.2575],
-  'Barwon Heads': [144.4958, -38.2683],
-  'Anglesea': [144.1856, -38.4089],
-  'Lorne': [143.9781, -38.5433],
-  'Winchelsea': [143.9856, -38.2475],
-  'Colac': [143.5856, -38.3422],
-  'Portarlington': [144.6550, -38.0833],
-  'Queenscliff': [144.6658, -38.2650],
-  'Point Lonsdale': [144.6161, -38.2917],
-  'Drysdale': [144.5775, -38.1689],
-  'Leopold': [144.4489, -38.1856],
-  'Melbourne': [144.9631, -37.8136], // In case some families are from Melbourne
+  'Ocean Grove':         [144.5208, -38.2575],
+  'Barwon Heads':        [144.4958, -38.2683],
+  'Anglesea':            [144.1856, -38.4089],
+  'Lorne':               [143.9781, -38.5433],
+  'Winchelsea':          [143.9856, -38.2475],
+  'Colac':               [143.5856, -38.3422],
+  'Portarlington':       [144.6550, -38.0833],
+  'Queenscliff':         [144.6658, -38.2650],
+  'Point Lonsdale':      [144.6161, -38.2917],
+  'Drysdale':            [144.5775, -38.1689],
+  'Leopold':             [144.4489, -38.1856],
+  'Melbourne':           [144.9631, -37.8136],
+  'Ballarat':            [143.8503, -37.5622],
+  'Bendigo':             [144.2822, -36.7570],
+  'Warrnambool':         [142.4806, -38.3835],
+  'Hamilton':            [142.0217, -37.7395],
+  'Shepparton':          [145.3989, -36.3807],
+  'Wodonga':             [146.8880, -36.1219],
+  'Wangaratta':          [146.3120, -36.3582],
+  'Mildura':             [142.1520, -34.2358],
+  'Swan Hill':           [143.5544, -35.3380],
+  'Echuca':              [144.7570, -36.1326],
+  'Sale':                [147.0659, -38.1042],
+  'Bairnsdale':          [147.6082, -37.8333],
+  'Traralgon':           [146.5400, -38.1953],
+  'Moe':                 [146.2680, -38.1725],
+  'Morwell':             [146.3950, -38.2328],
+  'Frankston':           [145.1278, -38.1440],
+  'Mornington':          [145.0370, -38.2187],
+  'Rosebud':             [144.9097, -38.3620],
+  'Sorrento':            [144.7410, -38.3455],
+  'Portsea':             [144.7107, -38.3161],
+  'Rye':                 [144.8333, -38.3667],
+  'Dromana':             [144.9697, -38.3357],
+  'Flinders':            [144.9896, -38.4739],
+  'Hastings':            [145.1919, -38.2994],
+  'Cranbourne':          [145.2830, -38.1028],
+  'Pakenham':            [145.4873, -38.0718],
+  'Drouin':              [145.8569, -38.1367],
+  'Warragul':            [145.9309, -38.1586],
 };
 
-// Function to get coordinates for a location
-const getLocationCoords = (locationName: string): [number, number] => {
-  // Try exact match first
-  if (LOCATION_COORDS[locationName]) {
-    return LOCATION_COORDS[locationName];
-  }
-  
-  // Try partial match
-  const partialMatch = Object.keys(LOCATION_COORDS).find(key =>
-    locationName.toLowerCase().includes(key.toLowerCase()) ||
-    key.toLowerCase().includes(locationName.toLowerCase())
+const DEFAULT_COORDS: [number, number] = [144.3256, -38.3305]; // Torquay
+
+async function geocodeLocation(locationName: string): Promise<[number, number]> {
+  if (!locationName?.trim()) return DEFAULT_COORDS;
+
+  const key = locationName.toLowerCase().trim();
+
+  // 1. Check session cache
+  if (geocodeCache.has(key)) return geocodeCache.get(key)!;
+
+  // 2. Check known list (partial match)
+  const knownKey = Object.keys(KNOWN_COORDS).find(
+    k => key.includes(k.toLowerCase()) || k.toLowerCase().includes(key)
   );
-  
-  if (partialMatch) {
-    return LOCATION_COORDS[partialMatch];
+  if (knownKey) {
+    geocodeCache.set(key, KNOWN_COORDS[knownKey]);
+    return KNOWN_COORDS[knownKey];
   }
-  
-  // Default to Torquay if no match
-  return LOCATION_COORDS['Torquay'];
-};
 
-// Function to generate random coordinates within 3km radius for privacy
-const getRandomizedCoords = (baseLng: number, baseLat: number, familyId: string): [number, number] => {
-  // Use family ID as seed for consistent positioning (same family always appears in same spot)
+  // 3. Hit Mapbox Geocoding API
+  if (MAPBOX_TOKEN) {
+    try {
+      const encoded = encodeURIComponent(`${locationName}, Australia`);
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?country=AU&types=locality,place,neighborhood,region&limit=1&access_token=${MAPBOX_TOKEN}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.features?.length > 0) {
+        const [lng, lat] = data.features[0].center;
+        const coords: [number, number] = [lng, lat];
+        geocodeCache.set(key, coords);
+        return coords;
+      }
+    } catch {
+      // Fall through to default
+    }
+  }
+
+  return DEFAULT_COORDS;
+}
+
+// Randomise coords within ~3km using family ID as a stable seed
+function randomiseCoords(lng: number, lat: number, familyId: string): [number, number] {
   const seed = familyId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-  
-  // Simple seeded random number generator
-  const random = (seed: number) => {
-    const x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
-  };
-  
-  // Generate random angle and distance
-  const angle = random(seed) * 2 * Math.PI;
-  const distance = random(seed + 1) * 3; // Random distance up to 3km
-  
-  // Convert distance to degrees (approximate)
-  const kmPerDegreeLat = 110.574;
-  const kmPerDegreeLng = 111.320 * Math.cos(baseLat * Math.PI / 180);
-  
-  const deltaLat = (distance * Math.cos(angle)) / kmPerDegreeLat;
-  const deltaLng = (distance * Math.sin(angle)) / kmPerDegreeLng;
-  
-  return [baseLng + deltaLng, baseLat + deltaLat];
-};
+  const rng = (s: number) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
+  const angle = rng(seed) * 2 * Math.PI;
+  const distance = rng(seed + 1) * 3; // up to 3km
+  const kmPerLat = 110.574;
+  const kmPerLng = 111.320 * Math.cos(lat * Math.PI / 180);
+  return [lng + (distance * Math.sin(angle)) / kmPerLng, lat + (distance * Math.cos(angle)) / kmPerLat];
+}
 
-// Function to calculate distance between two points in km
-const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
-  const R = 6371; // Earth's radius in km
+function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng/2) * Math.sin(dLng/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-};
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
-// Create a circle polygon for the radius visualization
-function createCircle(center: { lat: number; lng: number }, radiusKm: number, points: number = 64) {
+function buildRadiusCircle(center: { lat: number; lng: number }, radiusKm: number, points = 64) {
+  const kmPerLat = 110.574;
+  const kmPerLng = 111.320 * Math.cos(center.lat * Math.PI / 180);
   const coords: number[][] = [];
-  // More accurate conversion for Australia (lat around -38)
-  const kmPerDegreeLat = 110.574; // More accurate for latitude
-  const kmPerDegreeLng = 111.320 * Math.cos(center.lat * Math.PI / 180);
-  
-  const deltaLat = radiusKm / kmPerDegreeLat;
-  const deltaLng = radiusKm / kmPerDegreeLng;
-
   for (let i = 0; i <= points; i++) {
     const angle = (i * 2 * Math.PI) / points;
-    const x = deltaLng * Math.cos(angle);
-    const y = deltaLat * Math.sin(angle);
-    coords.push([center.lng + x, center.lat + y]);
+    coords.push([
+      center.lng + (radiusKm / kmPerLng) * Math.cos(angle),
+      center.lat + (radiusKm / kmPerLat) * Math.sin(angle),
+    ]);
   }
-
   return {
     type: 'Feature' as const,
-    geometry: {
-      type: 'Polygon' as const,
-      coordinates: [coords]
-    },
-    properties: {}
+    geometry: { type: 'Polygon' as const, coordinates: [coords] },
+    properties: {},
   };
-};
+}
 
-export default function FamilyMap({ families, onFamilyClick, className = '', userLocation, searchRadius = 10, showRadius = false, userProfileLocation }: FamilyMapProps) {
+export default function FamilyMap({
+  families,
+  onFamilyClick,
+  className = '',
+  userLocation,
+  searchRadius = 10,
+  showRadius = false,
+  userProfileLocation,
+}: FamilyMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const familiesRef = useRef<Family[]>(families);
 
-  // Function to center map on user's profile location
+  // Keep ref in sync so click handlers always have latest families list
+  useEffect(() => { familiesRef.current = families; }, [families]);
+
   const locateUser = async () => {
     setIsLocating(true);
-    
     try {
       if (!userProfileLocation) {
-        alert('No location found in your profile. Please update your profile with your location.');
-        setIsLocating(false);
+        toast('No location set on your profile. Update your profile first.', 'error');
         return;
       }
-
-      // Use profile location instead of GPS
-      const coords = getLocationCoords(userProfileLocation);
-      const userCoords: [number, number] = coords; // coords is already [lng, lat]
-      
-      if (map.current) {
-        // Fly to user's profile location
-        map.current.flyTo({
-          center: userCoords,
-          zoom: 13,
-          duration: 2000
-        });
-      }
-    } catch (error) {
-      console.error('Error getting profile location:', error);
-      alert('Unable to find your location. Please check your profile location.');
+      const coords = await geocodeLocation(userProfileLocation);
+      map.current?.flyTo({ center: coords, zoom: 13, duration: 2000 });
+    } catch {
+      toast('Could not find your location. Check your profile suburb.', 'error');
     } finally {
       setIsLocating(false);
     }
   };
 
+  // Initialise map once
   useEffect(() => {
-    if (!mapContainer.current) return;
+    if (!mapContainer.current || !MAPBOX_TOKEN) return;
 
-    // Set mapbox access token
     mapboxgl.accessToken = MAPBOX_TOKEN;
 
-    // Disable telemetry completely
-    if (typeof window !== 'undefined') {
-      // Disable Mapbox telemetry globally
-      (window as any).MapboxGLAccessToken = MAPBOX_TOKEN;
-      // Nuclear option: disable all telemetry
-      if (mapboxgl && (mapboxgl as any).disable) {
-        try {
-          (mapboxgl as any).disable = true;
-        } catch (e) {}
-      }
-    }
-
-    // Disable telemetry before map creation
-    mapboxgl.accessToken = MAPBOX_TOKEN;
-    
-    // Initialize map with telemetry disabled
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: [144.3256, -38.3305], // Torquay center
+      style: 'mapbox://styles/mapbox/light-v11',
+      center: [144.3256, -38.3305],
       zoom: 10,
-      collectResourceTiming: false, // Disable telemetry
-      // Block telemetry requests to prevent ad blocker errors
-      transformRequest: (url: string, resourceType: string | undefined) => {
-        // Block all telemetry/analytics/tracking requests
-        if (url.includes('events.mapbox.com') || 
-            url.includes('api.mapbox.com/events') ||
-            url.includes('/events/v2') ||
-            url.includes('mapbox-turnstile') ||
-            url.includes('telemetry') ||
-            url.includes('analytics')) {
-          return { url: '', headers: {} }; // Return empty request to block
+      collectResourceTiming: false,
+      attributionControl: false,
+      transformRequest: (url: string) => {
+        if (
+          url.includes('events.mapbox.com') ||
+          url.includes('api.mapbox.com/events') ||
+          url.includes('/events/v2') ||
+          url.includes('mapbox-turnstile')
+        ) {
+          return { url: '', headers: {} };
         }
         return { url };
       },
-      attributionControl: false
     });
 
-    // Add navigation controls
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
     map.current.on('load', () => {
-      // Add radius circle source and layer
-      if (map.current) {
-        map.current.addSource('radius-circle', {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: []
-          }
-        });
+      if (!map.current) return;
 
-        map.current.addLayer({
-          id: 'radius-circle-fill',
-          type: 'fill',
-          source: 'radius-circle',
-          paint: {
-            'fill-color': '#14b8a6', // Teal to match app theme
-            'fill-opacity': 0.2 // Visible but not overwhelming
-          }
-        });
+      // --- Radius circle ---
+      map.current.addSource('radius-circle', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.current.addLayer({
+        id: 'radius-circle-fill',
+        type: 'fill',
+        source: 'radius-circle',
+        paint: { 'fill-color': '#059669', 'fill-opacity': 0.08 },
+      });
+      map.current.addLayer({
+        id: 'radius-circle-stroke',
+        type: 'line',
+        source: 'radius-circle',
+        paint: { 'line-color': '#047857', 'line-width': 2, 'line-opacity': 0.7 },
+      });
 
-        map.current.addLayer({
-          id: 'radius-circle-stroke',
-          type: 'line',
-          source: 'radius-circle',
-          paint: {
-            'line-color': '#0d9488', // Darker teal border
-            'line-width': 3, // Prominent but not too thick
-            'line-opacity': 0.9 // Almost fully opaque
-          }
-        });
-      }
+      // --- Clustered family source ---
+      map.current.addSource('families', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        cluster: true,
+        clusterMaxZoom: 13,
+        clusterRadius: 45,
+      });
+
+      // Cluster bubble
+      map.current.addLayer({
+        id: 'clusters',
+        type: 'circle',
+        source: 'families',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': '#059669',
+          'circle-radius': ['step', ['get', 'point_count'], 20, 5, 28, 15, 36],
+          'circle-opacity': 0.9,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#fff',
+        },
+      });
+
+      // Cluster count label
+      map.current.addLayer({
+        id: 'cluster-count',
+        type: 'symbol',
+        source: 'families',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': '{point_count_abbreviated}',
+          'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+          'text-size': 13,
+        },
+        paint: { 'text-color': '#fff' },
+      });
+
+      // Individual pin
+      map.current.addLayer({
+        id: 'unclustered-point',
+        type: 'circle',
+        source: 'families',
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': '#059669',
+          'circle-radius': 12,
+          'circle-opacity': 0.9,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#fff',
+        },
+      });
+
+      // Click cluster → zoom in
+      map.current.on('click', 'clusters', (e) => {
+        if (!map.current) return;
+        const features = map.current.queryRenderedFeatures(e.point, { layers: ['clusters'] });
+        if (!features.length) return;
+        const clusterId = features[0].properties?.cluster_id;
+        (map.current.getSource('families') as mapboxgl.GeoJSONSource)
+          .getClusterExpansionZoom(clusterId, (err, zoom) => {
+            if (err || !map.current) return;
+            map.current.easeTo({
+              center: (features[0].geometry as GeoJSON.Point).coordinates as [number, number],
+              zoom: zoom ?? 14,
+            });
+          });
+      });
+
+      // Click individual pin → popup (works on mobile tap too)
+      map.current.on('click', 'unclustered-point', (e) => {
+        if (!map.current || !e.features?.length) return;
+        const props = e.features[0].properties!;
+        const coords = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
+        const family = familiesRef.current.find(f => f.id === props.id);
+        const displayName = props.display_name || (props.family_name as string)?.split(' ')[0] || 'Family';
+
+        const popupEl = document.createElement('div');
+        popupEl.className = 'p-3 text-center min-w-[150px]';
+        popupEl.innerHTML = `
+          <div class="font-semibold text-gray-900 text-sm">${displayName}</div>
+          <div class="text-xs text-gray-500 mt-0.5">${props.location_name} area</div>
+          ${props.is_verified ? '<div class="text-emerald-600 text-xs mt-1">Verified</div>' : ''}
+        `;
+
+        if (family && onFamilyClick) {
+          const btn = document.createElement('button');
+          btn.className = 'mt-2 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors w-full';
+          btn.textContent = 'View Profile';
+          btn.onclick = () => onFamilyClick(family);
+          popupEl.appendChild(btn);
+        }
+
+        new mapboxgl.Popup({ offset: 15, closeButton: true, closeOnClick: true })
+          .setLngLat(coords)
+          .setDOMContent(popupEl)
+          .addTo(map.current);
+      });
+
+      // Cursor changes
+      ['clusters', 'unclustered-point'].forEach(layer => {
+        map.current!.on('mouseenter', layer, () => { map.current!.getCanvas().style.cursor = 'pointer'; });
+        map.current!.on('mouseleave', layer, () => { map.current!.getCanvas().style.cursor = ''; });
+      });
+
       setIsLoaded(true);
     });
 
-    return () => {
-      if (map.current) {
-        map.current.remove();
-      }
-    };
+    return () => { map.current?.remove(); };
   }, []);
 
-  // Update markers when families change
+  // Update family pins whenever families list changes
   useEffect(() => {
     if (!map.current || !isLoaded) return;
 
-    // Clear existing markers
-    const existingMarkers = document.querySelectorAll('.family-marker');
-    existingMarkers.forEach(marker => marker.remove());
+    const update = async () => {
+      const geocoded = await Promise.all(
+        families.map(async (family) => {
+          const base = await geocodeLocation(family.location_name);
+          const coords = randomiseCoords(base[0], base[1], family.id);
+          return { family, coords };
+        })
+      );
 
-    // Add family markers with privacy protection and radius filtering
-    const filteredFamilies = families.filter(family => {
-      // If radius filter is active, only show families within radius
-      if (showRadius && userLocation && searchRadius) {
-        const familyCoords = getLocationCoords(family.location_name);
-        const distance = calculateDistance(
-          userLocation.lat, userLocation.lng,
-          familyCoords[1], familyCoords[0]
-        );
-        return distance <= searchRadius;
-      }
-      return true; // Show all families if no radius filter
-    });
-
-    filteredFamilies.forEach(family => {
-      const baseCoords = getLocationCoords(family.location_name);
-      // Use randomized coordinates within 3km for privacy protection
-      const coords = getRandomizedCoords(baseCoords[0], baseCoords[1], family.id);
-      
-      // Create marker element with smaller size for better visibility
-      const markerElement = document.createElement('div');
-      const displayName = family.display_name || family.family_name?.split(' ')[0] || 'Family';
-      
-      // Different colors for admin users
-      let markerColor = 'bg-emerald-600 hover:bg-emerald-700';
-      if (family.admin_level === 'gold') markerColor = 'bg-yellow-500 hover:bg-yellow-600';
-      else if (family.admin_level === 'silver') markerColor = 'bg-gray-400 hover:bg-gray-500';
-      else if (family.admin_level === 'bronze') markerColor = 'bg-amber-600 hover:bg-amber-700';
-      
-      markerElement.className = `family-marker w-8 h-8 ${markerColor} rounded-full border-2 border-white shadow-lg cursor-pointer flex items-center justify-center text-white font-semibold text-xs transition-colors`;
-      markerElement.innerHTML = displayName.charAt(0).toUpperCase();
-      
-      // Add click handler
-      markerElement.addEventListener('click', () => {
-        if (onFamilyClick) {
-          onFamilyClick(family);
+      // Apply radius filter if active
+      const filtered = geocoded.filter(({ coords }) => {
+        if (showRadius && userLocation && searchRadius) {
+          return calculateDistance(userLocation.lat, userLocation.lng, coords[1], coords[0]) <= searchRadius;
         }
+        return true;
       });
 
-      // Create popup with username display and view profile button
-      const popupElement = document.createElement('div');
-      popupElement.className = 'p-3 text-center';
-      popupElement.innerHTML = `
-        <div class="font-semibold text-gray-900">${displayName}</div>
-        <div class="text-xs text-gray-500">${family.location_name} area</div>
-        ${family.admin_level ? `<div class="text-xs text-amber-600 mt-1">${family.admin_level} admin</div>` : ''}
-        ${family.is_verified ? '<div class="text-green-600 text-xs">✓ Verified</div>' : ''}
-      `;
-      
-      // Add View Profile button
-      const viewButton = document.createElement('button');
-      viewButton.className = 'mt-2 px-3 py-1 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors';
-      viewButton.textContent = 'View Profile';
-      viewButton.onclick = (e) => {
-        e.stopPropagation();
-        if (onFamilyClick) {
-          onFamilyClick(family);
-        }
+      const geojson: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: filtered.map(({ family, coords }) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: coords },
+          properties: {
+            id: family.id,
+            family_name: family.family_name,
+            display_name: family.display_name ?? null,
+            location_name: family.location_name,
+            is_verified: family.is_verified,
+            admin_level: family.admin_level ?? null,
+          },
+        })),
       };
-      popupElement.appendChild(viewButton);
 
-      const popup = new mapboxgl.Popup({
-        offset: 15,
-        closeButton: false,
-        closeOnClick: false
-      }).setDOMContent(popupElement);
+      (map.current?.getSource('families') as mapboxgl.GeoJSONSource)?.setData(geojson);
 
-      // Create marker
-      const marker = new mapboxgl.Marker(markerElement)
-        .setLngLat(coords)
-        .setPopup(popup)
-        .addTo(map.current!);
+      // Fit map to visible families
+      if (filtered.length > 0) {
+        const bounds = new mapboxgl.LngLatBounds();
+        filtered.forEach(({ coords }) => bounds.extend(coords));
+        map.current?.fitBounds(bounds, { padding: 60, maxZoom: 13, duration: 800 });
+      }
+    };
 
-      // Show popup on hover
-      markerElement.addEventListener('mouseenter', () => {
-        popup.addTo(map.current!);
-      });
-      
-      markerElement.addEventListener('mouseleave', () => {
-        popup.remove();
-      });
-    });
+    update();
+  }, [families, isLoaded, showRadius, userLocation, searchRadius]);
 
-    // Fit map to show filtered families if there are any
-    if (filteredFamilies.length > 0) {
-      const coords = filteredFamilies.map(family => {
-        const baseCoords = getLocationCoords(family.location_name);
-        return getRandomizedCoords(baseCoords[0], baseCoords[1], family.id);
-      });
-      const bounds = new mapboxgl.LngLatBounds();
-      coords.forEach(coord => bounds.extend(coord));
-      
-      map.current.fitBounds(bounds, {
-        padding: 50,
-        maxZoom: 12
-      });
-    }
-  }, [families, isLoaded, onFamilyClick]);
-
-  // Update radius circle when location or radius changes
+  // Update radius circle
   useEffect(() => {
     if (!map.current || !isLoaded) return;
-
     const source = map.current.getSource('radius-circle') as mapboxgl.GeoJSONSource;
-    if (!source) {
-      console.log('Radius circle source not found');
-      return;
-    }
+    if (!source) return;
 
     if (showRadius && userLocation) {
-      // Show the radius circle
-      const circle = createCircle(userLocation, searchRadius);
-      
       source.setData({
         type: 'FeatureCollection',
-        features: [circle]
+        features: [buildRadiusCircle(userLocation, searchRadius)],
       });
-      
-      // Ensure layers are visible
-      if (map.current.getLayer('radius-circle-fill')) {
-        map.current.setLayoutProperty('radius-circle-fill', 'visibility', 'visible');
-      }
-      if (map.current.getLayer('radius-circle-stroke')) {
-        map.current.setLayoutProperty('radius-circle-stroke', 'visibility', 'visible');
-      }
 
-      // Ensure the map shows the circle area
-      const radiusInDegrees = searchRadius / 111; // Rough conversion km to degrees
-      const bounds = new mapboxgl.LngLatBounds()
-        .extend([userLocation.lng - radiusInDegrees, userLocation.lat - radiusInDegrees])
-        .extend([userLocation.lng + radiusInDegrees, userLocation.lat + radiusInDegrees]);
-      
-      map.current.fitBounds(bounds, {
-        padding: 50,
-        maxZoom: 12
-      });
-      console.log('🔵 Map centered on radius area');
-
-      // Add a test marker at user location for debugging
-      if (userMarkerRef.current) {
-        userMarkerRef.current.remove();
-      }
-      
-      // Show user location marker at center of radius
-      const markerEl = document.createElement('div');
-      markerEl.className = 'w-4 h-4 bg-emerald-600 rounded-full border-2 border-white shadow-lg';
-      markerEl.title = 'Your location (center of search radius)';
-      userMarkerRef.current = new mapboxgl.Marker(markerEl)
+      if (userMarkerRef.current) userMarkerRef.current.remove();
+      const el = document.createElement('div');
+      el.className = 'w-3.5 h-3.5 bg-emerald-600 rounded-full border-2 border-white shadow-md';
+      el.title = 'Your location';
+      userMarkerRef.current = new mapboxgl.Marker(el)
         .setLngLat([userLocation.lng, userLocation.lat])
-        .addTo(map.current!);
-      
+        .addTo(map.current);
     } else {
-      console.log('🔴 HIDING RADIUS CIRCLE (showRadius:', showRadius, ', userLocation:', userLocation, ')');
-      
-      // Remove debug marker
-      if (userMarkerRef.current) {
-        userMarkerRef.current.remove();
-        userMarkerRef.current = null;
-      }
-      
-      // Hide the radius circle
-      source.setData({
-        type: 'FeatureCollection',
-        features: []
-      });
+      source.setData({ type: 'FeatureCollection', features: [] });
+      userMarkerRef.current?.remove();
+      userMarkerRef.current = null;
     }
   }, [userLocation, searchRadius, showRadius, isLoaded]);
 
-  // Early return after all hooks to satisfy Rules of Hooks
   if (!MAPBOX_TOKEN) {
     return (
       <div className={`relative ${className}`}>
-        <div className="w-full h-[600px] rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-50 border-2 border-dashed border-emerald-200 flex items-center justify-center">
-          <div className="text-center max-w-md px-6">
-            <div className="w-16 h-16 bg-emerald-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <span className="text-3xl">🗺️</span>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Map Token Missing</h3>
-            <p className="text-gray-600 text-sm mb-4">
-              The Mapbox token seems to be missing. This shouldn't happen with the demo token!
-            </p>
-            <p className="text-xs text-gray-500">
-              Showing {families.length} families that would appear on the map
-            </p>
-          </div>
+        <div className="w-full h-[600px] rounded-xl bg-emerald-50 border-2 border-dashed border-emerald-200 flex items-center justify-center">
+          <p className="text-gray-500 text-sm">Map token missing</p>
         </div>
       </div>
     );
@@ -482,35 +460,28 @@ export default function FamilyMap({ families, onFamilyClick, className = '', use
 
   return (
     <div className={`relative ${className}`}>
-      <div 
-        ref={mapContainer} 
-        className="w-full h-[600px] rounded-xl overflow-hidden shadow-lg"
-      />
-      
-      {/* Locate Me Button */}
+      <div ref={mapContainer} className="w-full h-[600px] rounded-xl overflow-hidden shadow-lg" />
+
+      {/* Locate Me button */}
       <button
         onClick={locateUser}
         disabled={isLocating}
         className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-3 hover:bg-gray-50 transition-colors disabled:opacity-50 z-10"
-        title={`Go to my location (${userProfileLocation || 'Not set'})`}
+        title={`Centre on my location${userProfileLocation ? ` (${userProfileLocation})` : ''}`}
       >
         {isLocating ? (
-          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
         ) : (
-          <div className="w-5 h-5 text-emerald-600">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
-            </svg>
-          </div>
+          <svg className="w-5 h-5 text-emerald-600" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+          </svg>
         )}
       </button>
-
-      {/* Debug section removed */}
 
       {!isLoaded && (
         <div className="absolute inset-0 bg-gray-100 rounded-xl flex items-center justify-center">
           <div className="text-center">
-            <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+            <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             <p className="text-gray-600 text-sm">Loading map...</p>
           </div>
         </div>

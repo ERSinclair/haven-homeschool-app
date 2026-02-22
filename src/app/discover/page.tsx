@@ -14,6 +14,7 @@ import HavenHeader from '@/components/HavenHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AdminBadge from '@/components/AdminBadge';
 import { createNotification } from '@/lib/notifications';
+import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 
 type Family = {
   id: string;
@@ -34,6 +35,13 @@ type Family = {
   last_active_at?: string;
   updated_at?: string;
   user_type?: 'family' | 'teacher' | 'business' | 'event' | 'facility' | 'other';
+  homeschool_approaches?: string[];
+  subjects?: string[];
+  age_groups_taught?: string[];
+  services?: string;
+  contact_info?: string;
+  location_lat?: number;
+  location_lng?: number;
 };
 
 type Profile = {
@@ -150,21 +158,21 @@ export default function EnhancedDiscoverPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [activeSection, setActiveSection] = useState<Section>('families');
   const [showFilters, setShowFilters] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
   const [maxDistance, setMaxDistance] = useState(15);
   const [ageRange, setAgeRange] = useState({ min: 1, max: 10 });
-  const [filterTypes, setFilterTypes] = useState<string[]>(['all']);
-  const [familySubFilters, setFamilySubFilters] = useState<string[]>(['all']);
+  const [activeTab, setActiveTab] = useState<'all' | 'family' | 'teacher' | 'business'>('all');
+  const [familyStatusFilter, setFamilyStatusFilter] = useState<string>('all');
+  const [familyCustomFilter, setFamilyCustomFilter] = useState<string>('');
+  const [approachFilter, setApproachFilter] = useState<string>('all');
+  const [teacherTypeFilter, setTeacherTypeFilter] = useState<'all' | 'extracurricular' | 'primary' | 'high' | 'other'>('all');
+  const [teacherTypeCustom, setTeacherTypeCustom] = useState('');
+  const [teacherSubFilter, setTeacherSubFilter] = useState<string>('all');
+  const [teacherSubCustom, setTeacherSubCustom] = useState('');
+  const [businessTypeFilter, setBusinessTypeFilter] = useState<string>('all');
+  const [businessCustomFilter, setBusinessCustomFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   
-  // Other filter text input
-  const [showOtherInput, setShowOtherInput] = useState(false);
-  const [otherSearchTerm, setOtherSearchTerm] = useState('');
-  
-  // Family other filter text input
-  const [showFamilyOtherInput, setShowFamilyOtherInput] = useState(false);
-  const [familyOtherSearchTerm, setFamilyOtherSearchTerm] = useState('');
+
   
   // Radius search - with localStorage persistence for testing
   const [radiusSearch, setRadiusSearch] = useState(() => {
@@ -187,27 +195,11 @@ export default function EnhancedDiscoverPage() {
     return null;
   });
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
   
   const router = useRouter();
 
-  // Handle filter type selection (multiple selection)
-  const toggleFilterType = (type: string) => {
-    if (type === 'all') {
-      setFilterTypes(['all']);
-    } else {
-      setFilterTypes(prev => {
-        let newTypes = prev.filter(t => t !== 'all'); // Remove 'all' when selecting specific types
-        if (newTypes.includes(type)) {
-          // Remove the type
-          const filtered = newTypes.filter(t => t !== type);
-          return filtered.length === 0 ? ['all'] : filtered;
-        } else {
-          // Add the type
-          return [...newTypes, type];
-        }
-      });
-    }
-  };
+
 
   // Simplified location and radius management - no more complex localStorage persistence
 
@@ -293,7 +285,6 @@ export default function EnhancedDiscoverPage() {
         const profileArr = await profileRes.json();
         const profileData = profileArr[0] || null;
         
-        console.log('Enhanced Discover: Profile result:', profileData);
         
         if (profileData) {
           // Check if this is a newly completed signup (bypass profile check)
@@ -304,23 +295,11 @@ export default function EnhancedDiscoverPage() {
           if (signupComplete && signupTime > fiveMinutesAgo) {
             // Clear the flag after using it
             localStorage.removeItem('haven-signup-complete');
-            console.log('Enhanced Discover: Bypassing profile check for newly created profile');
           } else {
             // Check if profile is complete
             const completionStep = checkProfileCompletion(profileData);
             
             if (completionStep !== 'complete') {
-              console.log('Enhanced Discover: Profile incomplete, but allowing access');
-              console.log('Profile data:', {
-                name: profileData.family_name || profileData.display_name,
-                username: profileData.username,
-                location_name: profileData.location_name,
-                status: profileData.status,
-                bio: profileData.bio,
-                kids_ages: profileData.kids_ages,
-                user_type: profileData.user_type,
-                completionStep: completionStep
-              });
               // Allow access to discover regardless of completion status
               // This prevents redirect loops and lets users use the app
             }
@@ -362,14 +341,12 @@ export default function EnhancedDiscoverPage() {
           }
         } else {
           // No profile found, redirect to complete signup
-          console.log('Enhanced Discover: No profile found, redirecting to resume signup');
           router.push('/signup/resume?step=2');
           return;
         }
 
         // Skip welcome flow - go directly to discover page
         
-        console.log('Enhanced Discover: Fetching families...');
         
         // Get other families via direct fetch
         const familiesRes = await fetch(
@@ -391,7 +368,6 @@ export default function EnhancedDiscoverPage() {
         }
         
         const familiesData = await familiesRes.json();
-        console.log('Enhanced Discover: Families result:', familiesData);
         
         // Use real last_active_at for presence indicators
         const familiesWithStatus = familiesData.map((family: Family) => {
@@ -407,7 +383,6 @@ export default function EnhancedDiscoverPage() {
         
         setFamilies(familiesWithStatus);
         
-        console.log('Enhanced Discover: Done loading');
         
         // Load user's circles for invitations
         await loadUserCircles();
@@ -444,39 +419,18 @@ export default function EnhancedDiscoverPage() {
       return true;
     });
 
-    // Search term
-    if (searchTerm) {
-      filtered = filtered.filter(family =>
-        (family.family_name || family.display_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        family.location_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        family.bio?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Other search filter
-    if (showOtherInput && otherSearchTerm) {
-      const otherSearchLower = otherSearchTerm.toLowerCase();
+    // Radius search — use browse override if set, otherwise profile location
+    const activeLocation = browseLocation ?? userLocation;
+    if (activeLocation) {
       filtered = filtered.filter(family => {
-        const bio = (family.bio || '').toLowerCase();
-        const interests = (family.interests || []).map(i => i.toLowerCase()).join(' ');
-        const userType = (family.user_type || '').toLowerCase();
-        
-        return (
-          bio.includes(otherSearchLower) ||
-          interests.includes(otherSearchLower) ||
-          userType.includes(otherSearchLower)
-        );
-      });
-    }
-
-    // Radius search (always enabled when user location is available)
-    if (userLocation) {
-      filtered = filtered.filter(family => {
-        const familyCoords = getLocationCoords(family.location_name);
+        // Prefer stored coords; fall back to hardcoded lookup
+        const familyCoords = (family.location_lat && family.location_lng)
+          ? { lat: family.location_lat, lng: family.location_lng }
+          : getLocationCoords(family.location_name);
         const distance = calculateDistance(
-          userLocation.lat, 
-          userLocation.lng,
-          familyCoords.lat, 
+          activeLocation.lat,
+          activeLocation.lng,
+          familyCoords.lat,
           familyCoords.lng
         );
         return distance <= searchRadius;
@@ -495,33 +449,129 @@ export default function EnhancedDiscoverPage() {
       );
     }
 
-    // User type filter
-    if (!filterTypes.includes('all')) {
+    // Account type tab filter
+    if (activeTab !== 'all') {
       filtered = filtered.filter(family => {
         const userType = family.user_type || 'family';
-        
-        // If family is selected and we have sub-filters, apply them
-        if (filterTypes.includes('family') && userType === 'family' && !familySubFilters.includes('all')) {
-          // Map family profiles to family sub-types based on their bio/interests
-          const familySubType = getFamilySubType(family);
-          return familySubFilters.includes(familySubType);
-        }
-        
-        // If family other search is active, apply that filter
-        if (filterTypes.includes('family') && userType === 'family' && showFamilyOtherInput && familyOtherSearchTerm) {
-          const familyOtherSearchLower = familyOtherSearchTerm.toLowerCase();
-          const bio = (family.bio || '').toLowerCase();
-          const interests = (family.interests || []).map(i => i.toLowerCase()).join(' ');
-          
-          return (
-            bio.includes(familyOtherSearchLower) ||
-            interests.includes(familyOtherSearchLower)
+        const effectiveType = userType === 'facility' ? 'business' : userType;
+        return effectiveType === activeTab;
+      });
+    }
+
+    // Family status sub-filter (only when Families tab is active)
+    if (activeTab === 'family' && familyStatusFilter !== 'all') {
+      const knownStatuses = ['new', 'considering', 'experienced'];
+      if (familyStatusFilter === 'other') {
+        // Show families whose status doesn't match any known value
+        filtered = filtered.filter(family => {
+          const statuses = Array.isArray(family.status)
+            ? family.status
+            : typeof family.status === 'string'
+              ? family.status.split(',').map((s: string) => s.trim())
+              : [];
+          return !statuses.some((s: string) => knownStatuses.includes(s));
+        });
+        // Further narrow by custom text if provided
+        if (familyCustomFilter.trim()) {
+          const q = familyCustomFilter.toLowerCase();
+          filtered = filtered.filter(f =>
+            (f.family_name || '').toLowerCase().includes(q) ||
+            (f.bio || '').toLowerCase().includes(q)
           );
         }
-        
-        // Treat facilities as businesses for filtering
-        const effectiveType = userType === 'facility' ? 'business' : userType;
-        return filterTypes.includes(effectiveType);
+      } else {
+        filtered = filtered.filter(family => {
+          const statuses = Array.isArray(family.status)
+            ? family.status
+            : typeof family.status === 'string'
+              ? family.status.split(',').map((s: string) => s.trim())
+              : [];
+          return statuses.includes(familyStatusFilter);
+        });
+      }
+    }
+
+    // Homeschool approach filter (only when Families tab is active)
+    if ((activeTab === 'all' || activeTab === 'family') && approachFilter !== 'all') {
+      filtered = filtered.filter(family => {
+        const approaches = family.homeschool_approaches || [];
+        return approaches.includes(approachFilter);
+      });
+    }
+
+    // Teacher type sub-filter
+    if (activeTab === 'teacher' && teacherTypeFilter !== 'all') {
+      const primaryAges = ['5–7', '8–10', '11–13'];
+      const highAges = ['14–16', '17–18'];
+
+      filtered = filtered.filter(family => {
+        const ages = family.age_groups_taught || [];
+        const subjects = (family.subjects || []).map((s: string) => s.toLowerCase());
+
+        if (teacherTypeFilter === 'primary') return ages.some((a: string) => primaryAges.includes(a));
+        if (teacherTypeFilter === 'high') return ages.some((a: string) => highAges.includes(a));
+        if (teacherTypeFilter === 'extracurricular') {
+          // Extracurricular = teaches music/sport/arts OR doesn't fit primary/high pattern
+          return true; // show all teachers, sub-filter handles specifics
+        }
+        if (teacherTypeFilter === 'other') {
+          const notOther = !ages.some((a: string) => [...primaryAges, ...highAges].includes(a));
+          if (!notOther) return false;
+          // Custom text search for 'other' teacher type
+          if (teacherTypeCustom.trim()) {
+            const q = teacherTypeCustom.toLowerCase();
+            return (family.bio || '').toLowerCase().includes(q) ||
+              (family.subjects || []).some((s: string) => s.toLowerCase().includes(q));
+          }
+          return true;
+        }
+        return true;
+      });
+
+      // Teacher subject sub-filter
+      if (teacherSubFilter !== 'all') {
+        filtered = filtered.filter(family => {
+          const subjects = (family.subjects || []).map((s: string) => s.toLowerCase());
+          if (teacherSubFilter === 'Music') return subjects.some((s: string) => s.includes('music'));
+          if (teacherSubFilter === 'Sport') return subjects.some((s: string) => s.includes('sport') || s.includes('pe') || s.includes('physical'));
+          if (teacherSubFilter === 'Arts') return subjects.some((s: string) => s.includes('art') || s.includes('drama') || s.includes('creative'));
+          if (teacherSubFilter === 'Math') return subjects.some((s: string) => s.includes('math'));
+          if (teacherSubFilter === 'English') return subjects.some((s: string) => s.includes('english'));
+          if (teacherSubFilter === 'Other') {
+            const knownSubjects = ['music', 'sport', 'pe', 'physical', 'art', 'drama', 'creative', 'math', 'english'];
+            const notKnown = !subjects.some((s: string) => knownSubjects.some(k => s.includes(k)));
+            if (!notKnown) return false;
+            if (teacherSubCustom.trim()) {
+              const q = teacherSubCustom.toLowerCase();
+              return subjects.some((s: string) => s.includes(q)) || (family.bio || '').toLowerCase().includes(q);
+            }
+            return true;
+          }
+          return true;
+        });
+      }
+    }
+
+    // Business type sub-filter
+    if (activeTab === 'business' && businessTypeFilter !== 'all') {
+      const typeMap: Record<string, string[]> = {
+        'playspace':  ['play space', 'playspace', 'indoor play', 'playground', 'play centre'],
+        'learning':   ['learning space', 'learning centre', 'tutoring', 'education centre'],
+        'resources':  ['resource', 'curriculum', 'supply', 'books', 'materials'],
+      };
+      filtered = filtered.filter(family => {
+        const text = ((family.services || '') + ' ' + (family.bio || '')).toLowerCase();
+        if (businessTypeFilter === 'other') {
+          const knownTerms = Object.values(typeMap).flat();
+          const notKnown = !knownTerms.some(t => text.includes(t));
+          if (!notKnown) return false;
+          if (businessCustomFilter.trim()) {
+            return text.includes(businessCustomFilter.toLowerCase());
+          }
+          return true;
+        }
+        const terms = typeMap[businessTypeFilter] || [];
+        return terms.some(t => text.includes(t));
       });
     }
 
@@ -539,7 +589,40 @@ export default function EnhancedDiscoverPage() {
     });
 
     setFilteredFamilies(sortedFamilies);
-  }, [families, searchTerm, locationFilter, ageRange, filterTypes, familySubFilters, hiddenFamilies, profile, userLocation, searchRadius, connectionRequests, showOtherInput, otherSearchTerm, showFamilyOtherInput, familyOtherSearchTerm]);
+  }, [families, locationFilter, ageRange, activeTab, familyStatusFilter, familyCustomFilter, approachFilter, teacherTypeFilter, teacherTypeCustom, teacherSubFilter, teacherSubCustom, businessTypeFilter, businessCustomFilter, hiddenFamilies, profile, userLocation, browseLocation, searchRadius, connectionRequests]);
+
+  // Log 'other' box entries to search_insights table (debounced 1.5s)
+  useEffect(() => {
+    const entries: [string, string][] = [
+      ['family-other', familyCustomFilter],
+      ['teacher-type-other', teacherTypeCustom],
+      ['teacher-sub-other', teacherSubCustom],
+      ['business-other', businessCustomFilter],
+    ].filter(([, v]) => v.trim().length > 2) as [string, string][];
+
+    if (entries.length === 0) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const sUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const sKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const session = JSON.parse(localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token') || '{}');
+        if (!session.access_token) return;
+        for (const [context, term] of entries) {
+          await fetch(`${sUrl}/rest/v1/search_insights`, {
+            method: 'POST',
+            headers: {
+              'apikey': sKey!, 'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates',
+            },
+            body: JSON.stringify({ context, term: term.trim().toLowerCase(), count: 1, last_seen_at: new Date().toISOString() }),
+          });
+        }
+      } catch { /* table may not exist yet */ }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [familyCustomFilter, teacherTypeCustom, teacherSubCustom, businessCustomFilter]);
 
   // Family selection handlers
   const toggleFamilySelection = (familyId: string) => {
@@ -585,7 +668,6 @@ export default function EnhancedDiscoverPage() {
       toggleFamilySelection(familyId);
     } else {
       // Normal mode - could open family details (future feature)
-      console.log('Open family details:', familyId);
     }
   };
 
@@ -614,88 +696,18 @@ export default function EnhancedDiscoverPage() {
     }
   };
 
+  const hideSingleFamily = (familyId: string) => {
+    const newHidden = [...hiddenFamilies, familyId];
+    setHiddenFamilies(newHidden);
+    localStorage.setItem('haven-hidden-families', JSON.stringify(newHidden));
+  };
+
   const getHiddenFamiliesDetails = () => {
     return families.filter(family => hiddenFamilies.includes(family.id));
   };
 
   const [selectedFamilyDetails, setSelectedFamilyDetails] = useState<Family | null>(null);
 
-  // Get filter options based on current user's account type
-  const getContextualFilterOptions = (): FilterOption[] => {
-    const userType = profile?.user_type || 'family';
-    
-    switch (userType) {
-      case 'business':
-      case 'facility':
-        return [
-          { value: 'all', label: 'All' },
-          { value: 'teacher', label: 'Teachers' },
-          { value: 'empty1', label: '', disabled: true }, // Placeholder for grid spacing
-          { value: 'family', label: 'Families' },
-          { value: 'other', label: 'Other', isOther: true },
-          { value: 'business', label: 'Businesses' },
-        ];
-      
-      case 'teacher':
-        return [
-          { value: 'all', label: 'All' },
-          { value: 'teacher', label: 'Teachers' },
-          { value: 'business', label: 'Businesses' },
-          { value: 'family', label: 'Families' },
-          { value: 'other', label: 'Other', isOther: true },
-          { value: 'empty2', label: '', disabled: true }, // Placeholder for grid spacing
-        ];
-        
-      case 'family':
-      default:
-        return [
-          { value: 'all', label: 'All' },
-          { value: 'teacher', label: 'Teachers' },
-          { value: 'business', label: 'Businesses' },
-          { value: 'family', label: 'Families' },
-          { value: 'other', label: 'Other', isOther: true },
-          { value: 'empty3', label: '', disabled: true }, // Placeholder for grid spacing
-        ];
-    }
-  };
-
-  // Get family sub-filter options based on current user type
-  const getFamilySubFilterOptions = (): FilterOption[] => {
-    const userType = profile?.user_type || 'family';
-    
-    if (userType === 'family') {
-      return [
-        { value: 'all', label: 'All Families' },
-        { value: 'homeschool', label: 'Homeschool' },
-        { value: 'community', label: 'Family Community' },
-        { value: 'other', label: 'Other', isOther: true },
-      ];
-    }
-    
-    // For non-family accounts, don't show family sub-filters
-    return [];
-  };
-
-  // Determine family sub-type based on profile data
-  const getFamilySubType = (family: Family): string => {
-    const bio = (family.bio || '').toLowerCase();
-    const interests = (family.interests || []).map(i => i.toLowerCase());
-    
-    // Check for homeschool indicators
-    if (bio.includes('homeschool') || bio.includes('home school') || 
-        interests.some(i => i.includes('homeschool') || i.includes('home school'))) {
-      return 'homeschool';
-    }
-    
-    // Check for community indicators
-    if (bio.includes('community') || bio.includes('playgroup') || bio.includes('meetup') ||
-        interests.some(i => i.includes('community') || i.includes('playgroup'))) {
-      return 'community';
-    }
-    
-    // Default to other for families that don't match specific categories
-    return 'other';
-  };
 
   // Helper function to get connection button state
   const getConnectionButtonState = (familyId: string) => {
@@ -763,7 +775,6 @@ export default function EnhancedDiscoverPage() {
           return newMap;
         });
         
-        console.log('Connection request removed for family:', familyId);
         return;
       }
 
@@ -911,7 +922,6 @@ export default function EnhancedDiscoverPage() {
         setUserCircles(circles);
       } else if (response.status === 400) {
         // Table might not exist - circles feature not set up
-        console.log('Circles table not found - feature disabled');
         setUserCircles([]);
       }
     } catch (error) {
@@ -921,7 +931,6 @@ export default function EnhancedDiscoverPage() {
 
   const inviteToCircle = async (circleId: string, memberId: string) => {
     // Circles feature not implemented yet
-    console.log('Circle invitations disabled - feature not ready');
     return false;
   };
 
@@ -939,7 +948,6 @@ export default function EnhancedDiscoverPage() {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ryvecaicjhzfsikfedkp.supabase.co';
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_HqXqQ5cjrg1CJIFIyL2QnA_WlwZ4AjB';
 
-      console.log('Attempting to send message from', user.id, 'to', recipientId);
 
       // Create conversation
       const conversationData = {
@@ -992,7 +1000,6 @@ export default function EnhancedDiscoverPage() {
         return false;
       }
 
-      console.log('Message sent successfully');
       return true;
     } catch (err) {
       console.error('Error sending message:', err);
@@ -1015,47 +1022,14 @@ export default function EnhancedDiscoverPage() {
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
         <HavenHeader />
-        
-        {/* Section Navigation */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-          <button
-            onClick={() => window.location.href = '/events'}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
-          >
-            Events
-          </button>
-          <button
-            onClick={() => window.location.href = '/circles/discover'}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
-          >
-            Circles
-          </button>
-          <button
-            onClick={() => window.location.href = '/education'}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
-          >
-            Education
-          </button>
-        </div>
-        </div>
 
-        {/* Search & Filter Controls */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-          <button
-            onClick={() => setShowSearch(!showSearch)}
-            className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
-              showSearch || searchTerm
-                ? 'bg-emerald-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
-            }`}
-          >
-            Search
-          </button>
+        {/* Filter Controls */}
+        <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide justify-center">
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
               showFilters
-                ? 'bg-emerald-600 text-white shadow-md scale-105'
+                ? 'bg-emerald-600 text-white border border-emerald-600'
                 : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
             }`}
           >
@@ -1079,26 +1053,8 @@ export default function EnhancedDiscoverPage() {
           )}
         </div>
 
-        {/* Expandable Search Bar */}
-        {showSearch && (
-          <div className="mb-6 px-6">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                placeholder="Search families by name, location, or interests..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                autoFocus
-              />
-            </div>
-          </div>
-        )}
+        {/* Browse location */}
+        <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
 
         {/* Filters Panel */}
         {showFilters && (
@@ -1206,126 +1162,6 @@ export default function EnhancedDiscoverPage() {
                   </div>
                 </div>
 
-                {/* User Type Filter */}
-                <div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {getContextualFilterOptions().map((type) => (
-                      <button
-                        key={type.value}
-                        onClick={() => {
-                          if (type.disabled) return; // Don't do anything for placeholders
-                          if (type.isOther) {
-                            setShowOtherInput(!showOtherInput);
-                          } else {
-                            toggleFilterType(type.value);
-                          }
-                        }}
-                        disabled={type.disabled}
-                        className={`px-3 py-2 text-sm font-medium rounded-xl border-2 transition-colors ${
-                          type.disabled
-                            ? 'invisible' // Hide placeholder buttons
-                            : (filterTypes.includes(type.value) || (type.isOther && showOtherInput))
-                              ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                        }`}
-                      >
-                        {type.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Other Filter Text Input */}
-                {showOtherInput && (
-                  <div className="mt-4">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="e.g., tutor, support group, co-op, consultant..."
-                        value={otherSearchTerm}
-                        onChange={(e) => setOtherSearchTerm(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-                        autoFocus
-                      />
-                      {otherSearchTerm && (
-                        <button
-                          onClick={() => {
-                            setOtherSearchTerm('');
-                          }}
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Family Sub-Filters */}
-                {filterTypes.includes('family') && getFamilySubFilterOptions().length > 0 && (
-                  <div className="mt-4">
-                    <div className="grid grid-cols-2 gap-2">
-                      {getFamilySubFilterOptions().map((subType) => (
-                        <button
-                          key={subType.value}
-                          onClick={() => {
-                            if (subType.isOther) {
-                              setShowFamilyOtherInput(!showFamilyOtherInput);
-                            } else if (subType.value === 'all') {
-                              setFamilySubFilters(['all']);
-                              setShowFamilyOtherInput(false);
-                            } else {
-                              setFamilySubFilters(prev => {
-                                const newFilters = prev.filter(f => f !== 'all');
-                                if (newFilters.includes(subType.value)) {
-                                  const filtered = newFilters.filter(f => f !== subType.value);
-                                  return filtered.length === 0 ? ['all'] : filtered;
-                                } else {
-                                  return [...newFilters, subType.value];
-                                }
-                              });
-                              setShowFamilyOtherInput(false);
-                            }
-                          }}
-                          className={`px-3 py-2 text-sm font-medium rounded-xl border-2 transition-colors ${
-                            (familySubFilters.includes(subType.value) || (subType.isOther && showFamilyOtherInput))
-                              ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                          }`}
-                        >
-                          {subType.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Family Other Filter Text Input */}
-                {filterTypes.includes('family') && showFamilyOtherInput && (
-                  <div className="mt-4">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="e.g., Charlotte Mason, Montessori, unschooling, special needs..."
-                        value={familyOtherSearchTerm}
-                        onChange={(e) => setFamilyOtherSearchTerm(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-                        autoFocus
-                      />
-                      {familyOtherSearchTerm && (
-                        <button
-                          onClick={() => {
-                            setFamilyOtherSearchTerm('');
-                          }}
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 {/* Hidden Families */}
                 {hiddenFamilies.length > 0 && (
                   <div>
@@ -1338,6 +1174,316 @@ export default function EnhancedDiscoverPage() {
                   </div>
                 )}
             </div>
+          </div>
+        )}
+
+        {/* New families near you banner */}
+        {(() => {
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+          const userSuburb = profile?.location_name?.split(',')[0]?.trim().toLowerCase() || '';
+          const newNearby = families.filter(f => {
+            if (!f.created_at || f.created_at < sevenDaysAgo) return false;
+            if (!userSuburb) return false;
+            const theirSuburb = (f.location_name || '').split(',')[0].trim().toLowerCase();
+            return theirSuburb === userSuburb;
+          });
+          const dismissKey = `haven-new-families-banner-${new Date().toISOString().slice(0, 10)}`;
+          const dismissed = typeof window !== 'undefined' && localStorage.getItem(dismissKey) === 'true';
+          if (newNearby.length === 0 || dismissed) return null;
+          return (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-4 flex items-center justify-between gap-3">
+              <p className="text-sm text-emerald-800 font-medium">
+                {newNearby.length === 1
+                  ? `1 new family joined near ${profile?.location_name?.split(',')[0] || 'you'} this week`
+                  : `${newNearby.length} new families joined near ${profile?.location_name?.split(',')[0] || 'you'} this week`}
+              </p>
+              <button
+                onClick={() => {
+                  localStorage.setItem(dismissKey, 'true');
+                  // Force re-render by toggling a dummy state
+                  setApproachFilter(prev => prev);
+                }}
+                className="text-emerald-600 hover:text-emerald-800 text-lg flex-shrink-0 font-bold"
+              >
+                ×
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Getting Started — shown until user has at least one accepted connection */}
+        {(() => {
+          const acceptedCount = [...connectionRequests.values()].filter(c => c.status === 'accepted').length;
+          if (acceptedCount > 0) return null;
+          const steps = [
+            { done: !!(profile?.bio?.trim()), label: 'Complete your profile', href: '/profile' },
+            { done: false, label: 'Connect with a family below', href: null },
+            { done: false, label: 'Join or create a circle', href: '/circles' },
+            { done: false, label: 'Browse upcoming events', href: '/events' },
+          ];
+          const doneCount = steps.filter(s => s.done).length;
+          return (
+            <div className="bg-white rounded-xl p-4 shadow-sm mb-4 border border-emerald-100">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-900 text-sm">Getting started</h3>
+                <span className="text-xs text-gray-400">{doneCount}/{steps.length}</span>
+              </div>
+              <div className="space-y-2">
+                {steps.map((step, i) => (
+                  <div
+                    key={i}
+                    onClick={() => step.href && router.push(step.href)}
+                    className={`flex items-center gap-2.5 ${step.href ? 'cursor-pointer group' : ''}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                      step.done ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
+                    }`}>
+                      {step.done && (
+                        <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
+                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className={`text-xs ${step.done ? 'text-gray-400 line-through' : 'text-gray-700 group-hover:text-emerald-600'}`}>
+                      {step.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Account type tab bar — always visible */}
+        <div className="flex gap-1 mb-3 bg-gray-100 rounded-xl p-1">
+          {([
+            { value: 'all',      label: 'All' },
+            { value: 'family',   label: 'Families' },
+            { value: 'teacher',  label: 'Teachers' },
+            { value: 'business', label: 'Businesses' },
+          ] as const).map(tab => (
+            <button
+              key={tab.value}
+              onClick={() => {
+                setActiveTab(tab.value);
+                setFamilyStatusFilter('all');
+                setFamilyCustomFilter('');
+                setApproachFilter('all');
+                setTeacherTypeFilter('all');
+                setTeacherTypeCustom('');
+                setTeacherSubFilter('all');
+                setTeacherSubCustom('');
+                setBusinessTypeFilter('all');
+                setBusinessCustomFilter('');
+              }}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === tab.value
+                  ? 'bg-white text-emerald-700 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Family status chips — shown when Families tab active */}
+        {activeTab === 'family' && (
+          <>
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+              {([
+                { value: 'all',         label: 'All' },
+                { value: 'new',         label: 'Home Ed' },
+                { value: 'considering', label: 'Community' },
+                { value: 'other',       label: 'Other' },
+              ] as const).map(chip => (
+                <button
+                  key={chip.value}
+                  onClick={() => {
+                    setFamilyStatusFilter(chip.value);
+                    setFamilyCustomFilter('');
+                    if (chip.value !== 'new') setApproachFilter('all');
+                  }}
+                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                    familyStatusFilter === chip.value
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            {/* Custom description input — shown when Other is selected */}
+            {familyStatusFilter === 'other' && (
+              <div className="mb-3">
+                <input
+                  type="text"
+                  value={familyCustomFilter}
+                  onChange={e => setFamilyCustomFilter(e.target.value)}
+                  placeholder="Describe what you're looking for..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Education approach chips — only shown when Home Ed filter is active */}
+        {activeTab === 'family' && familyStatusFilter === 'new' && (
+          <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+            {(['all', 'Classical', 'Charlotte Mason', 'Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Faith-based', 'Online/Virtual', 'Unit Study'] as const).map(approach => (
+              <button
+                key={approach}
+                onClick={() => setApproachFilter(approach)}
+                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                  approachFilter === approach
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                }`}
+              >
+                {approach === 'all' ? 'Any approach' : approach}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Teacher type chips — shown when Teachers tab is active */}
+        {activeTab === 'teacher' && (
+          <>
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+              {([
+                { value: 'all',             label: 'All' },
+                { value: 'extracurricular', label: 'Extracurricular' },
+                { value: 'primary',         label: 'Primary School' },
+                { value: 'high',            label: 'High School' },
+                { value: 'other',           label: 'Other' },
+              ] as const).map(chip => (
+                <button
+                  key={chip.value}
+                  onClick={() => { setTeacherTypeFilter(chip.value); setTeacherTypeCustom(''); setTeacherSubFilter('all'); setTeacherSubCustom(''); }}
+                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                    teacherTypeFilter === chip.value
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            {teacherTypeFilter === 'other' && (
+              <div className="mb-3">
+                <input type="text" value={teacherTypeCustom} onChange={e => setTeacherTypeCustom(e.target.value)}
+                  placeholder="Describe what you're looking for..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+              </div>
+            )}
+
+            {/* Extracurricular sub-filter */}
+            {teacherTypeFilter === 'extracurricular' && (
+              <>
+                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+                  {(['all', 'Music', 'Sport', 'Arts', 'Other'] as const).map(sub => (
+                    <button
+                      key={sub}
+                      onClick={() => { setTeacherSubFilter(sub); setTeacherSubCustom(''); }}
+                      className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                        teacherSubFilter === sub
+                          ? 'bg-emerald-500 text-white border-emerald-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                      }`}
+                    >
+                      {sub === 'all' ? 'All' : sub}
+                    </button>
+                  ))}
+                </div>
+                {teacherSubFilter === 'Other' && (
+                  <div className="mb-3">
+                    <input type="text" value={teacherSubCustom} onChange={e => setTeacherSubCustom(e.target.value)}
+                      placeholder="Describe what you're looking for..."
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* High School sub-filter */}
+            {teacherTypeFilter === 'high' && (
+              <>
+                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+                  {(['all', 'Math', 'English', 'Other'] as const).map(sub => (
+                    <button
+                      key={sub}
+                      onClick={() => { setTeacherSubFilter(sub); setTeacherSubCustom(''); }}
+                      className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                        teacherSubFilter === sub
+                          ? 'bg-emerald-500 text-white border-emerald-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                      }`}
+                    >
+                      {sub === 'all' ? 'All' : sub}
+                    </button>
+                  ))}
+                </div>
+                {teacherSubFilter === 'Other' && (
+                  <div className="mb-3">
+                    <input type="text" value={teacherSubCustom} onChange={e => setTeacherSubCustom(e.target.value)}
+                      placeholder="Describe what you're looking for..."
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* Business type chips — shown when Business tab is active */}
+        {activeTab === 'business' && (
+          <>
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+              {([
+                { value: 'all',       label: 'All' },
+                { value: 'playspace', label: 'Play' },
+                { value: 'learning',  label: 'Learning' },
+                { value: 'resources', label: 'Resources' },
+                { value: 'other',     label: 'Other' },
+              ] as const).map(chip => (
+                <button
+                  key={chip.value}
+                  onClick={() => { setBusinessTypeFilter(chip.value); setBusinessCustomFilter(''); }}
+                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                    businessTypeFilter === chip.value
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            {businessTypeFilter === 'other' && (
+              <div className="mb-3">
+                <input type="text" value={businessCustomFilter} onChange={e => setBusinessCustomFilter(e.target.value)}
+                  placeholder="Describe what you're looking for..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Hidden families hint — always visible when families are hidden */}
+        {hiddenFamilies.length > 0 && (
+          <div className="flex items-center justify-between mb-3 px-1">
+            <span className="text-xs text-gray-400">
+              {hiddenFamilies.length} {hiddenFamilies.length === 1 ? 'family' : 'families'} hidden
+            </span>
+            <button
+              onClick={() => setShowHiddenModal(true)}
+              className="text-xs text-emerald-600 font-medium hover:text-emerald-700"
+            >
+              Manage hidden
+            </button>
           </div>
         )}
 
@@ -1431,9 +1577,11 @@ export default function EnhancedDiscoverPage() {
                     />
                   </svg>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No families found</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  {activeTab === 'teacher' ? 'No teachers found' : activeTab === 'business' ? 'No businesses found' : 'No families found'}
+                </h3>
                 <p className="text-gray-600">
-                  Try adjusting your search filters or check back later for new families!
+                  Try adjusting your filters or check back later!
                 </p>
               </div>
             ) : (
@@ -1489,12 +1637,18 @@ export default function EnhancedDiscoverPage() {
                         />
                         <div className="flex-1">
                           {/* Name and Username */}
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h3 className="font-semibold text-emerald-600">
                               {family.display_name || family.family_name.split(' ')[0] || family.family_name}{family.username && ` (${family.username})`}
                             </h3>
                             <AdminBadge adminLevel={family.admin_level || null} />
                             {family.is_verified && <span className="text-green-500">✓</span>}
+                            {(family.user_type === 'teacher') && (
+                              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">Teacher</span>
+                            )}
+                            {(family.user_type === 'business' || family.user_type === 'facility') && (
+                              <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded">Business</span>
+                            )}
                           </div>
                           
                           {/* Location with Online Status */}
@@ -1510,8 +1664,8 @@ export default function EnhancedDiscoverPage() {
                             )}
                           </div>
                           
-                          {/* Children dots with ages */}
-                          {family.kids_ages && family.kids_ages.length > 0 && (
+                          {/* Children dots with ages (families) */}
+                          {(!family.user_type || family.user_type === 'family') && family.kids_ages && family.kids_ages.length > 0 && (
                             <div className="flex items-center gap-1">
                               {family.kids_ages.map((age, index) => (
                                 <div key={index} className="flex items-center">
@@ -1523,13 +1677,44 @@ export default function EnhancedDiscoverPage() {
                               ))}
                             </div>
                           )}
+                          {/* Approach chips (families) */}
+                          {(!family.user_type || family.user_type === 'family') && family.homeschool_approaches && family.homeschool_approaches.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {family.homeschool_approaches.slice(0, 2).map((a, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs rounded-full border border-emerald-200">{a}</span>
+                              ))}
+                              {family.homeschool_approaches.length > 2 && (
+                                <span className="text-xs text-gray-400">+{family.homeschool_approaches.length - 2}</span>
+                              )}
+                            </div>
+                          )}
+                          {/* Subjects preview (teachers) */}
+                          {family.user_type === 'teacher' && (
+                            <div className="flex flex-wrap gap-1">
+                              {family.subjects && family.subjects.length > 0
+                                ? family.subjects.slice(0, 3).map((s, i) => (
+                                    <span key={i} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">{s}</span>
+                                  ))
+                                : <span className="text-xs text-gray-400">No subjects listed</span>
+                              }
+                              {family.subjects && family.subjects.length > 3 && (
+                                <span className="text-xs text-gray-400">+{family.subjects.length - 3} more</span>
+                              )}
+                            </div>
+                          )}
+                          {/* Services preview (businesses) */}
+                          {(family.user_type === 'business' || family.user_type === 'facility') && (
+                            <p className="text-xs text-gray-500 line-clamp-1">
+                              {family.services || 'No services listed'}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     {/* Actions */}
                     {!selectionMode && (
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-2 items-end">
                         <button
                           onClick={() => sendConnectionRequest(family.id)}
                           disabled={getConnectionButtonState(family.id).disabled}
@@ -1542,6 +1727,15 @@ export default function EnhancedDiscoverPage() {
                           className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors text-sm min-w-[85px]"
                         >
                           Message
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            hideSingleFamily(family.id);
+                          }}
+                          className="text-xs text-gray-300 hover:text-red-400 transition-colors px-1"
+                        >
+                          Hide
                         </button>
                       </div>
                     )}
@@ -1838,6 +2032,18 @@ export default function EnhancedDiscoverPage() {
                 </div>
               )}
 
+              {/* Homeschool approach */}
+              {(!selectedFamilyDetails.user_type || selectedFamilyDetails.user_type === 'family') && selectedFamilyDetails.homeschool_approaches && selectedFamilyDetails.homeschool_approaches.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="font-semibold text-gray-900 mb-3">Approach</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedFamilyDetails.homeschool_approaches.map((a, i) => (
+                      <span key={i} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-200">{a}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* About Us */}
               {selectedFamilyDetails.bio && (
                 <div className="mb-6">
@@ -1858,6 +2064,50 @@ export default function EnhancedDiscoverPage() {
                     ))}
                   </div>
                 </div>
+              )}
+
+              {/* Teacher: Subjects + Age Groups */}
+              {selectedFamilyDetails.user_type === 'teacher' && (
+                <>
+                  {selectedFamilyDetails.subjects && selectedFamilyDetails.subjects.length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="font-semibold text-gray-900 mb-2">Subjects</h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedFamilyDetails.subjects.map((s, i) => (
+                          <span key={i} className="px-2.5 py-1 bg-blue-100 text-blue-700 text-sm rounded-full">{s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {selectedFamilyDetails.age_groups_taught && selectedFamilyDetails.age_groups_taught.length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="font-semibold text-gray-900 mb-2">Age Groups</h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedFamilyDetails.age_groups_taught.map((ag, i) => (
+                          <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-600 text-sm rounded-full border border-blue-200">{ag}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Business/Facility: Services + Contact */}
+              {(selectedFamilyDetails.user_type === 'business' || selectedFamilyDetails.user_type === 'facility') && (
+                <>
+                  {selectedFamilyDetails.services && (
+                    <div className="mb-4">
+                      <h4 className="font-semibold text-gray-900 mb-2">Services</h4>
+                      <p className="text-gray-700 text-sm leading-relaxed">{selectedFamilyDetails.services}</p>
+                    </div>
+                  )}
+                  {selectedFamilyDetails.contact_info && (
+                    <div className="mb-6">
+                      <h4 className="font-semibold text-gray-900 mb-2">Contact</h4>
+                      <p className="text-gray-700 text-sm">{selectedFamilyDetails.contact_info}</p>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Action Buttons */}
@@ -1994,6 +2244,7 @@ export default function EnhancedDiscoverPage() {
       
       {/* Bottom spacing for mobile nav */}
       <div className="h-20"></div>
+    </div>
     </div>
     </ProtectedRoute>
   );

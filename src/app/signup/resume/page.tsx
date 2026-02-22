@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import { checkProfileCompletion, getProfileCompletionMessage, ProfileData } from '@/lib/profileCompletion';
+import { geocodeSuburb } from '@/lib/geocode';
 
 function ResumeSignupContent() {
   const router = useRouter();
@@ -167,10 +168,14 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
   };
 
   const handleStep2Continue = async () => {
+    // Geocode the suburb to get lat/lng for radius search
+    const coords = await geocodeSuburb(location);
+
     const success = await saveProfile({
       family_name: `${firstName} ${lastName}`.trim(),
       display_name: firstName,
       location_name: location,
+      ...(coords ? { location_lat: coords.lat, location_lng: coords.lng } : {}),
       status: status.includes('other') && customDescriptions.some(desc => desc.trim()) 
         ? customDescriptions.filter(desc => desc.trim()).join(', ')
         : (status.filter(s => s !== 'other').length > 0 ? status.filter(s => s !== 'other')[0] : 'considering'),
@@ -313,7 +318,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                   <label className="block text-sm font-medium text-gray-700 mb-3">Select all that apply</label>
                   <div className="space-y-2">
                     {[
-                      { value: 'considering', label: 'Family Community', icon: '' },
+                      { value: 'considering', label: 'Community', icon: '' },
                       { value: 'new', label: 'Homeschool', icon: '' },
                       { value: 'experienced', label: 'Extracurricular', icon: '' },
                       { value: 'connecting', label: 'Just Checking It Out', icon: '' },

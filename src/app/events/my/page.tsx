@@ -10,6 +10,8 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+const SHOW_LIMIT = 3;
+
 type Event = {
   id: string;
   title: string;
@@ -21,14 +23,22 @@ type Event = {
   host_id: string;
   rsvp_count?: number;
   is_cancelled?: boolean;
+  is_private?: boolean;
   host?: { name: string };
 };
 
 export default function MyEventsPage() {
   const [hosting, setHosting] = useState<Event[]>([]);
-  const [attending, setAttending] = useState<Event[]>([]);
+  const [publicAttending, setPublicAttending] = useState<Event[]>([]);
+  const [privateAttending, setPrivateAttending] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+
+  // Show all toggles per section
+  const [showAllHosting, setShowAllHosting] = useState(false);
+  const [showAllPublic, setShowAllPublic] = useState(false);
+  const [showAllPrivate, setShowAllPrivate] = useState(false);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -51,7 +61,6 @@ export default function MyEventsPage() {
       );
       const hosted: Event[] = hostRes.ok ? await hostRes.json() : [];
 
-      // Get RSVP counts for hosted events
       const hostedWithCount = await Promise.all(hosted.map(async event => {
         const countRes = await fetch(
           `${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${event.id}&status=eq.going&select=id`,
@@ -71,9 +80,10 @@ export default function MyEventsPage() {
       const rsvpData = rsvpRes.ok ? await rsvpRes.json() : [];
       const rsvpEvents: Event[] = rsvpData
         .map((r: any) => r.events)
-        .filter((e: any) => e && e.host_id !== session.user.id && !e.is_cancelled && e.event_date >= today);
+        .filter((e: any) => e && e.host_id !== session.user.id && !e.is_cancelled && e.event_date >= today)
+        .sort((a: Event, b: Event) => a.event_date.localeCompare(b.event_date));
 
-      // Get host names for attending events
+      // Get host names
       const hostIds = [...new Set(rsvpEvents.map((e: Event) => e.host_id))];
       let hostMap: Record<string, string> = {};
       if (hostIds.length > 0) {
@@ -87,7 +97,10 @@ export default function MyEventsPage() {
         });
       }
 
-      setAttending(rsvpEvents.map(e => ({ ...e, host: { name: hostMap[e.host_id] || 'Someone' } })));
+      const enriched = rsvpEvents.map(e => ({ ...e, host: { name: hostMap[e.host_id] || 'Someone' } }));
+      setPublicAttending(enriched.filter(e => !e.is_private));
+      setPrivateAttending(enriched.filter(e => e.is_private));
+
     } catch {
       toast('Failed to load events', 'error');
     } finally {
@@ -106,7 +119,8 @@ export default function MyEventsPage() {
           headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
         }
       );
-      setAttending(prev => prev.filter(e => e.id !== eventId));
+      setPublicAttending(prev => prev.filter(e => e.id !== eventId));
+      setPrivateAttending(prev => prev.filter(e => e.id !== eventId));
       toast('RSVP cancelled', 'info');
     } catch {
       toast('Failed to cancel RSVP', 'error');
@@ -161,7 +175,7 @@ export default function MyEventsPage() {
           {isHosting ? (
             <button
               onClick={() => router.push(`/events?manage=${event.id}`)}
-              className="px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-full hover:bg-emerald-700"
+              className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-full hover:bg-emerald-700"
             >
               Manage
             </button>
@@ -178,7 +192,41 @@ export default function MyEventsPage() {
     </div>
   );
 
-  const isEmpty = hosting.length === 0 && attending.length === 0;
+  const Section = ({
+    title,
+    events,
+    isHosting,
+    showAll,
+    onToggle,
+  }: {
+    title: string;
+    events: Event[];
+    isHosting: boolean;
+    showAll: boolean;
+    onToggle: () => void;
+  }) => {
+    if (events.length === 0) return null;
+    const visible = showAll ? events : events.slice(0, SHOW_LIMIT);
+    const hasMore = events.length > SHOW_LIMIT;
+    return (
+      <div className="mb-6">
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{title}</h2>
+        <div className="space-y-3">
+          {visible.map(e => <EventCard key={e.id} event={e} isHosting={isHosting} />)}
+        </div>
+        {hasMore && (
+          <button
+            onClick={onToggle}
+            className="mt-3 w-full py-2 text-sm font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 rounded-xl hover:bg-emerald-50 transition-colors"
+          >
+            {showAll ? 'Show less' : `Show all ${events.length}`}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const isEmpty = hosting.length === 0 && publicAttending.length === 0 && privateAttending.length === 0;
 
   return (
     <ProtectedRoute>
@@ -192,7 +240,7 @@ export default function MyEventsPage() {
               onClick={() => router.push('/events')}
               className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200"
             >
-              Discover Events
+              Find Events
             </button>
             <button
               onClick={() => router.push('/events/invitations')}
@@ -210,14 +258,19 @@ export default function MyEventsPage() {
 
           {isEmpty ? (
             <div className="text-center py-16">
+              <div className="w-16 h-16 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
               <h3 className="font-semibold text-gray-900 mb-2">No upcoming events</h3>
-              <p className="text-gray-500 text-sm mb-6">Create an event or discover ones near you</p>
+              <p className="text-gray-500 text-sm mb-6">Create an event or find ones near you</p>
               <div className="flex gap-3 justify-center">
                 <button
                   onClick={() => router.push('/events')}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium"
                 >
-                  Discover Events
+                  Find Events
                 </button>
                 <button
                   onClick={() => router.push('/events?create=1')}
@@ -229,22 +282,27 @@ export default function MyEventsPage() {
             </div>
           ) : (
             <>
-              {hosting.length > 0 && (
-                <div className="mb-6">
-                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Hosting</h2>
-                  <div className="space-y-3">
-                    {hosting.map(e => <EventCard key={e.id} event={e} isHosting={true} />)}
-                  </div>
-                </div>
-              )}
-              {attending.length > 0 && (
-                <div className="mb-6">
-                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Going to</h2>
-                  <div className="space-y-3">
-                    {attending.map(e => <EventCard key={e.id} event={e} isHosting={false} />)}
-                  </div>
-                </div>
-              )}
+              <Section
+                title="Hosting"
+                events={hosting}
+                isHosting={true}
+                showAll={showAllHosting}
+                onToggle={() => setShowAllHosting(v => !v)}
+              />
+              <Section
+                title="Attending · Public"
+                events={publicAttending}
+                isHosting={false}
+                showAll={showAllPublic}
+                onToggle={() => setShowAllPublic(v => !v)}
+              />
+              <Section
+                title="Attending · Private"
+                events={privateAttending}
+                isHosting={false}
+                showAll={showAllPrivate}
+                onToggle={() => setShowAllPrivate(v => !v)}
+              />
             </>
           )}
         </div>

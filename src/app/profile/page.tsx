@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { getStoredSession, clearStoredSession } from '@/lib/session';
 import { getAvatarColor, statusColors } from '@/lib/colors';
+import { geocodeSuburb } from '@/lib/geocode';
 import AvatarUpload from '@/components/AvatarUpload';
 import PhotoGallery from '@/components/PhotoGallery';
 import HavenHeader from '@/components/HavenHeader';
@@ -26,6 +27,14 @@ type Profile = {
   is_verified: boolean;
   admin_level?: 'gold' | 'silver' | 'bronze' | null;
   user_type?: 'family' | 'teacher' | 'business' | string;
+  // Homeschool approach
+  homeschool_approaches?: string[];
+  // Teacher-specific
+  subjects?: string[];
+  age_groups_taught?: string[];
+  // Business-specific
+  services?: string;
+  contact_info?: string;
 };
 
 export default function ProfilePage() {
@@ -42,6 +51,15 @@ export default function ProfilePage() {
     status: [] as string[],
   });
   const [customDescriptions, setCustomDescriptions] = useState<string[]>([]);
+  // Homeschool approach (families)
+  const [homeschoolApproaches, setHomeschoolApproaches] = useState<string[]>([]);
+  // Teacher-specific fields
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [ageGroupsTaught, setAgeGroupsTaught] = useState<string[]>([]);
+  const [subjectInput, setSubjectInput] = useState('');
+  // Business-specific fields
+  const [services, setServices] = useState('');
+  const [contactInfo, setContactInfo] = useState('');
   const [children, setChildren] = useState<{ id: number; age: string }[]>([{ id: 1, age: '' }]);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [showBugReportModal, setShowBugReportModal] = useState(false);
@@ -117,6 +135,13 @@ export default function ProfilePage() {
             kids_ages: profileData.kids_ages || [],
             status: hasValidPredefinedStatus ? cleanedStatus.filter(s => predefinedStatuses.includes(s)) : ['other'],
           });
+
+          // Load type-specific fields
+          setHomeschoolApproaches(profileData.homeschool_approaches || []);
+          setSubjects(profileData.subjects || []);
+          setAgeGroupsTaught(profileData.age_groups_taught || []);
+          setServices(profileData.services || '');
+          setContactInfo(profileData.contact_info || '');
           
           // If no predefined status, set up custom descriptions
           if (!hasValidPredefinedStatus && profileData.status) {
@@ -175,7 +200,10 @@ export default function ProfilePage() {
       
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      
+
+      // Geocode location if it changed
+      const coords = editData.location_name ? await geocodeSuburb(editData.location_name) : null;
+
       const res = await fetch(
         `${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`,
         {
@@ -190,6 +218,7 @@ export default function ProfilePage() {
             family_name: editData.name,
             display_name: editData.name,
             location_name: editData.location_name,
+            ...(coords ? { location_lat: coords.lat, location_lng: coords.lng } : {}),
             bio: editData.bio,
             kids_ages: children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18),
             status: (() => {
@@ -198,6 +227,12 @@ export default function ProfilePage() {
               const combined = [...predefined, ...custom];
               return combined.length > 0 ? combined : ['considering'];
             })(),
+            // Type-specific fields
+            homeschool_approaches: homeschoolApproaches.length > 0 ? homeschoolApproaches : null,
+            subjects: subjects.length > 0 ? subjects : null,
+            age_groups_taught: ageGroupsTaught.length > 0 ? ageGroupsTaught : null,
+            services: services.trim() || null,
+            contact_info: contactInfo.trim() || null,
             updated_at: new Date().toISOString(),
           }),
         }
@@ -233,6 +268,42 @@ export default function ProfilePage() {
 
   const handleLogout = () => {
     setShowSignOutModal(true);
+  };
+
+  const handleShare = async () => {
+    const shareData = {
+      title: 'Join me on Haven',
+      text: 'Haven is an app for homeschool families to find and connect with each other locally. Come find us!',
+      url: 'https://familyhaven.app',
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // User cancelled — no-op
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
+        toast('Link copied to clipboard', 'success');
+      } catch {
+        toast('Could not copy — visit familyhaven.app', 'error');
+      }
+    }
+  };
+
+  const getProfileCompleteness = () => {
+    if (!profile) return { score: 0, missing: [] as string[] };
+    const checks = [
+      { label: 'Profile photo',  done: !!profile.avatar_url },
+      { label: 'Bio',            done: !!(profile.bio?.trim()) },
+      { label: 'Suburb',         done: !!(profile.location_name?.trim()) },
+      { label: 'Kids ages',      done: !!(profile.kids_ages?.length > 0) },
+      { label: 'Status',         done: profileStatus.length > 0 },
+    ];
+    const done = checks.filter(c => c.done).length;
+    const missing = checks.filter(c => !c.done).map(c => c.label);
+    return { score: Math.round((done / checks.length) * 100), missing };
   };
 
   const confirmSignOut = async () => {
@@ -320,7 +391,7 @@ export default function ProfilePage() {
 
   const getStatusInfo = (status: string) => {
     const statusMap: Record<string, string> = {
-      'considering': 'Family Community',
+      'considering': 'Community',
       'new': 'Homeschool',
       'experienced': 'Extracurricular',
       'connecting': 'Just Checking It Out',
@@ -380,20 +451,33 @@ export default function ProfilePage() {
 
         {/* Profile Controls */}
         {!isEditing && !isViewingOtherUser && (
-          <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-            <Link href="/connections" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
-              Connections
-            </Link>
-            <Link href="/settings" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
-              Settings
-            </Link>
-            <button
-              onClick={() => setIsEditing(true)}
-              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
-            >
-              Edit
-            </button>
-          </div>
+          <>
+            <div className="flex gap-2 mb-2 justify-center">
+              <Link href="/connections" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
+                Connections
+              </Link>
+              <Link href="/settings" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
+                Settings
+              </Link>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+              >
+                Edit
+              </button>
+            </div>
+            <div className="flex gap-2 mb-4 justify-center">
+              <Link href="/notifications" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
+                Notifications
+              </Link>
+              <Link href="/education" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
+                Education
+              </Link>
+              <Link href="/board" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
+                Board
+              </Link>
+            </div>
+          </>
         )}
 
         {/* Profile Card */}
@@ -426,6 +510,13 @@ export default function ProfilePage() {
             ) : (
               <div>
                 <h2 className="text-xl font-bold text-emerald-600">{profile.family_name || profile.display_name || 'No name set'}</h2>
+                {/* Account type badge */}
+                {profile.user_type === 'teacher' && (
+                  <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">Teacher</span>
+                )}
+                {(profile.user_type === 'business' || profile.user_type === 'facility') && (
+                  <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded">Business</span>
+                )}
                 {/* Admin Badge */}
                 {profile.admin_level && (
                   <div className="flex justify-center mt-6">
@@ -448,7 +539,7 @@ export default function ProfilePage() {
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { value: 'considering', label: 'Family Community', icon: '' },
+                    { value: 'considering', label: 'Community', icon: '' },
                     { value: 'new', label: 'Homeschool', icon: '' },
                     { value: 'experienced', label: 'Extracurricular', icon: '' },
                     { value: 'connecting', label: 'Just Checking It Out', icon: '' },
@@ -632,6 +723,149 @@ export default function ProfilePage() {
             )}
           </div>
 
+          {/* Homeschool approach (families) */}
+          {(!profile.user_type || profile.user_type === 'family') && (
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Education approach</h3>
+              {isEditing ? (
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {['Classical', 'Charlotte Mason', 'Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Faith-based', 'Online/Virtual', 'Unit Study'].map(approach => (
+                    <button
+                      key={approach}
+                      onClick={() => setHomeschoolApproaches(prev =>
+                        prev.includes(approach) ? prev.filter(a => a !== approach) : [...prev, approach]
+                      )}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-colors ${
+                        homeschoolApproaches.includes(approach)
+                          ? 'bg-emerald-100 border-emerald-400 text-emerald-700'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300'
+                      }`}
+                    >
+                      {approach}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 justify-center">
+                  {homeschoolApproaches.length > 0
+                    ? homeschoolApproaches.map((a, i) => (
+                        <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs rounded-full border border-emerald-200">{a}</span>
+                      ))
+                    : <p className="text-sm text-gray-400">No approach selected yet.</p>
+                  }
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Teacher-specific fields */}
+          {profile.user_type === 'teacher' && (
+            <div className="mb-6">
+              {/* Subjects */}
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Subjects</h3>
+                {isEditing ? (
+                  <div>
+                    <div className="flex flex-wrap gap-1.5 mb-2 justify-center">
+                      {subjects.map((s, i) => (
+                        <span key={i} className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                          {s}
+                          <button onClick={() => setSubjects(prev => prev.filter((_, idx) => idx !== i))} className="text-blue-500 hover:text-blue-700">×</button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={subjectInput}
+                        onChange={e => setSubjectInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && subjectInput.trim()) {
+                            setSubjects(prev => [...prev, subjectInput.trim()]);
+                            setSubjectInput('');
+                          }
+                        }}
+                        placeholder="e.g. Maths, Science… press Enter"
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <button
+                        onClick={() => { if (subjectInput.trim()) { setSubjects(prev => [...prev, subjectInput.trim()]); setSubjectInput(''); } }}
+                        className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium"
+                      >Add</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5 justify-center">
+                    {subjects.length > 0
+                      ? subjects.map((s, i) => <span key={i} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">{s}</span>)
+                      : <p className="text-sm text-gray-400">No subjects listed yet.</p>
+                    }
+                  </div>
+                )}
+              </div>
+              {/* Age groups taught */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Age groups</h3>
+                {isEditing ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {['0–4', '5–7', '8–10', '11–13', '14–16', '17–18'].map(ag => (
+                      <button
+                        key={ag}
+                        onClick={() => setAgeGroupsTaught(prev =>
+                          prev.includes(ag) ? prev.filter(x => x !== ag) : [...prev, ag]
+                        )}
+                        className={`py-1.5 rounded-lg text-xs font-medium border-2 transition-colors ${
+                          ageGroupsTaught.includes(ag)
+                            ? 'bg-blue-100 border-blue-400 text-blue-700'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300'
+                        }`}
+                      >{ag}</button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5 justify-center">
+                    {ageGroupsTaught.length > 0
+                      ? ageGroupsTaught.map((ag, i) => <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">{ag}</span>)
+                      : <p className="text-sm text-gray-400">No age groups listed yet.</p>
+                    }
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Business-specific fields */}
+          {(profile.user_type === 'business' || profile.user_type === 'facility') && (
+            <div className="mb-6">
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Services</h3>
+                {isEditing ? (
+                  <textarea
+                    value={services}
+                    onChange={e => setServices(e.target.value)}
+                    placeholder="Describe what you offer to homeschool families…"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                    rows={3}
+                  />
+                ) : (
+                  <p className="text-sm text-gray-600 text-center">{services || 'No services listed yet.'}</p>
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Contact</h3>
+                {isEditing ? (
+                  <input
+                    value={contactInfo}
+                    onChange={e => setContactInfo(e.target.value)}
+                    placeholder="Website, phone, email…"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                  />
+                ) : (
+                  <p className="text-sm text-gray-600 text-center">{contactInfo || 'No contact info listed yet.'}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Save/Cancel Buttons - Only shown when editing */}
           {isEditing && (
             <div className="flex gap-3 justify-center mt-6 px-6 pb-4">
@@ -691,6 +925,35 @@ export default function ProfilePage() {
           )}
         </div>
 
+        {/* Profile completeness nudge — own profile only, not editing */}
+        {!isEditing && !isViewingOtherUser && (() => {
+          const { score, missing } = getProfileCompleteness();
+          if (score === 100) return null;
+          return (
+            <div className="bg-white rounded-2xl shadow-sm p-5 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-gray-800">Profile completeness</span>
+                <span className="text-sm font-bold text-emerald-600">{score}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
+                <div
+                  className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${score}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Still missing: {missing.join(', ')}. A complete profile gets more connections.
+              </p>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
+              >
+                Complete profile
+              </button>
+            </div>
+          );
+        })()}
+
         {/* Photo Gallery */}
         <div className="mb-6" data-gallery>
           <PhotoGallery 
@@ -700,6 +963,22 @@ export default function ProfilePage() {
             viewingUserId={user?.id}
           />
         </div>
+
+        {/* Invite card — own profile only */}
+        {!isViewingOtherUser && (
+          <div className="bg-emerald-600 rounded-2xl p-5 mb-6 text-white">
+            <h3 className="font-bold text-lg mb-1">Know a homeschool family?</h3>
+            <p className="text-emerald-100 text-sm mb-4">
+              Invite them to Haven and grow your local community.
+            </p>
+            <button
+              onClick={handleShare}
+              className="w-full py-2.5 bg-white text-emerald-700 font-semibold rounded-xl hover:bg-emerald-50 transition-colors text-sm"
+            >
+              Share Haven
+            </button>
+          </div>
+        )}
 
         {/* Feedback buttons */}
         <div className="flex gap-3 mb-4">

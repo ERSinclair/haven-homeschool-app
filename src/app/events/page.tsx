@@ -9,6 +9,7 @@ import SimpleLocationPicker from '@/components/SimpleLocationPicker';
 import HavenHeader from '@/components/HavenHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { createNotification } from '@/lib/notifications';
+import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 
 type Event = {
   id: string;
@@ -90,7 +91,19 @@ export default function EventsPage() {
   // Removed radiusFilter - now always active when location available
   const [searchRadius, setSearchRadius] = useState(15);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
   const router = useRouter();
+
+  // Auto-open create modal if ?create=1 is in the URL
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('create') === '1') {
+        setShowCreateModal(true);
+        window.history.replaceState({}, '', '/events');
+      }
+    }
+  }, []);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -114,7 +127,7 @@ export default function EventsPage() {
 
     try {
       const res = await fetch(
-        `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=location_name`,
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=location_lat,location_lng`,
         {
           headers: {
             'apikey': supabaseKey!,
@@ -123,18 +136,9 @@ export default function EventsPage() {
         }
       );
       const profiles = await res.json();
-      if (profiles?.[0]?.location_name) {
-        // Simple coordinate mapping for common locations
-        const locationCoords: { [key: string]: [number, number] } = {
-          'Torquay': [-38.3305, 144.3256],
-          'Geelong': [-38.1499, 144.3580],
-          'Ocean Grove': [-38.2575, 144.5208],
-          'Surf Coast': [-38.3000, 144.2500],
-        };
-        
-        const location = profiles[0].location_name;
-        const coords = locationCoords[location] || locationCoords['Torquay']; // Default to Torquay
-        setUserLocation({ lat: coords[0], lng: coords[1] });
+      const p = profiles?.[0];
+      if (p?.location_lat && p?.location_lng) {
+        setUserLocation({ lat: p.location_lat, lng: p.location_lng });
       }
     } catch (err) {
       console.error('Error loading user location:', err);
@@ -157,9 +161,9 @@ export default function EventsPage() {
       setUserId(session.user.id);
 
       try {
-        // Get all events (public and user's private events through connections)
+        // Public events only — private events and attended events are in My Events
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/events?is_cancelled=eq.false&select=*&order=event_date.asc`,
+          `${supabaseUrl}/rest/v1/events?is_cancelled=eq.false&is_private=eq.false&select=*&order=event_date.asc`,
           {
             headers: {
               'apikey': supabaseKey!,
@@ -167,82 +171,30 @@ export default function EventsPage() {
             },
           }
         );
-        const allEvents = await res.json();
-        
-        // Get user's connections for private events filtering
-        const connectionsRes = await fetch(
-          `${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&status=eq.accepted&select=requester_id,receiver_id`,
-          {
-            headers: {
-              'apikey': supabaseKey!,
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-          }
-        );
-        const connections = connectionsRes.ok ? await connectionsRes.json() : [];
-        
-        // Get connected user IDs
-        const connectedUserIds = new Set(connections.map((conn: any) => 
-          conn.requester_id === session.user.id ? conn.receiver_id : conn.requester_id
-        ));
-        
-        // Filter events based on privacy and connections
-        const eventsData = allEvents.filter((event: any) => {
-          // Show public events to everyone
-          if (!event.is_private) return true;
-          
-          // Show private events if user is the host
-          if (event.host_id === session.user.id) return true;
-          
-          // Show private events if user is connected to the host
-          if (connectedUserIds.has(event.host_id)) return true;
-          
-          // Hide other private events
-          return false;
-        });
+        const eventsData = await res.json();
 
         // Get host names and RSVP counts
+        const safeFetch = async (url: string, headers: Record<string, string>) => {
+          try {
+            const r = await fetch(url, { headers });
+            if (!r.ok) return [];
+            return await r.json();
+          } catch { return []; }
+        };
+
         const enriched = await Promise.all(eventsData.map(async (event: Event) => {
-          // Get host profile
-          const hostRes = await fetch(
-            `${supabaseUrl}/rest/v1/profiles?id=eq.${event.host_id}&select=family_name,display_name`,
-            {
-              headers: {
-                'apikey': supabaseKey!,
-                'Authorization': `Bearer ${session.access_token}`,
-              },
-            }
-          );
-          const hosts = await hostRes.json();
+          const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
 
-          // Get RSVP count
-          const rsvpRes = await fetch(
-            `${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${event.id}&status=eq.going&select=id`,
-            {
-              headers: {
-                'apikey': supabaseKey!,
-                'Authorization': `Bearer ${session.access_token}`,
-              },
-            }
-          );
-          const rsvps = await rsvpRes.json();
-
-          // Check if user has RSVP'd
-          const userRsvpRes = await fetch(
-            `${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${event.id}&profile_id=eq.${session.user.id}&status=eq.going&select=id`,
-            {
-              headers: {
-                'apikey': supabaseKey!,
-                'Authorization': `Bearer ${session.access_token}`,
-              },
-            }
-          );
-          const userRsvp = await userRsvpRes.json();
+          const [hosts, rsvps, userRsvp] = await Promise.all([
+            safeFetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${event.host_id}&select=family_name,display_name`, h),
+            safeFetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${event.id}&status=eq.going&select=id`, h),
+            safeFetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${event.id}&profile_id=eq.${session.user.id}&status=eq.going&select=id`, h),
+          ]);
 
           return {
             ...event,
-            host: hosts[0] ? { 
-              name: hosts[0].display_name || hosts[0].family_name || 'Unknown' 
+            host: hosts[0] ? {
+              name: hosts[0].display_name || hosts[0].family_name || 'Unknown'
             } : { name: 'Unknown' },
             rsvp_count: rsvps.length,
             user_rsvp: userRsvp.length > 0,
@@ -677,10 +629,11 @@ export default function EventsPage() {
       if (mappedCategory !== categoryFilter) return false;
     }
 
-    // Radius filtering
-    if (userLocation && e.latitude && e.longitude) {
+    // Radius filtering — use browse location override if set
+    const activeLocation = browseLocation ?? userLocation;
+    if (activeLocation && e.latitude && e.longitude) {
       const distance = calculateDistance(
-        userLocation.lat, userLocation.lng,
+        activeLocation.lat, activeLocation.lng,
         e.latitude, e.longitude
       );
       if (distance > searchRadius) return false;
@@ -727,7 +680,7 @@ export default function EventsPage() {
             {(selectedEvent as Event).host_id === userId && (
               <button 
                 onClick={() => setShowEventSettingsModal(true)}
-                className="text-gray-400 hover:text-gray-600 text-sm font-medium"
+                className="px-3 py-1.5 text-sm font-semibold bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-colors"
               >
                 Settings
               </button>
@@ -854,34 +807,36 @@ export default function EventsPage() {
           </button>
         </div>
 
+        {/* Category quick-filter chips */}
+        <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-hide">
+          {[
+            { value: 'all',         label: 'All' },
+            { value: 'Play',        label: 'Play' },
+            { value: 'Educational', label: 'Educational' },
+            { value: 'Other',       label: 'Other' },
+          ].map(cat => (
+            <button
+              key={cat.value}
+              onClick={() => setCategoryFilter(cat.value)}
+              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-all border ${
+                categoryFilter === cat.value
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Browse location */}
+        <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
+
         {/* Filters Panel */}
         {showFilters && (
           <div className="bg-gray-50 rounded-xl p-4 mb-6">
             <div className="space-y-4">
-              {/* Category Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Categories</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { value: 'all', label: 'All Events' },
-                    { value: 'Play', label: 'Play' },
-                    { value: 'Educational', label: 'Educational' },
-                    { value: 'Other', label: 'Other' },
-                  ].map(cat => (
-                    <button
-                      key={cat.value}
-                      onClick={() => setCategoryFilter(cat.value)}
-                      className={`px-2 py-1.5 text-sm font-medium rounded-xl border-2 transition-colors ${
-                        categoryFilter === cat.value
-                          ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Category removed from here — now always-visible chips above */}
 
               {/* Distance Filter */}
               <div>
@@ -1049,9 +1004,6 @@ export default function EventsPage() {
                 <div className="flex justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <span className="text-gray-500">By {event.host?.name}</span>
-                    {event.is_private && (
-                      <span className="text-amber-600 text-xs">🔒</span>
-                    )}
                   </div>
                   <span className="text-gray-500">{event.rsvp_count} going</span>
                 </div>
@@ -1613,7 +1565,6 @@ function CreateEventModal({
         longitude: exactLocation ? exactLocation.lng : null,
       };
 
-      console.log('Creating event with data:', eventData);
       
       const res = await fetch(
         `${supabaseUrl}/rest/v1/events`,
@@ -1665,9 +1616,9 @@ function CreateEventModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
+    <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50">
+      <div className="bg-white rounded-t-2xl w-full max-w-md max-h-[92vh] overflow-y-auto">
+        <div className="p-6 pb-28">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">Create Event</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>

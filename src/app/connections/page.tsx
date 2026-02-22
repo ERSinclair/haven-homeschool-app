@@ -3,6 +3,7 @@ import { toast } from '@/lib/toast';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import AvatarUpload from '@/components/AvatarUpload';
 import HavenHeader from '@/components/HavenHeader';
@@ -530,16 +531,30 @@ export default function ConnectionsPage() {
           <div className="space-y-4">
             {filteredConnections.length === 0 ? (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <span className="text-2xl font-bold text-emerald-600">C</span>
+                <div className="w-16 h-16 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   {searchTerm ? 'No Results Found' : 'No Connections Yet'}
                 </h3>
-                {searchTerm && (
-                  <p className="text-gray-600 mb-4">
+                {searchTerm ? (
+                  <p className="text-gray-500 text-sm mb-4">
                     No connections match "{searchTerm}". Try a different search term.
                   </p>
+                ) : (
+                  <>
+                    <p className="text-gray-500 text-sm mb-6">
+                      Find families near you and send a connection request to get started.
+                    </p>
+                    <Link
+                      href="/discover"
+                      className="inline-block px-5 py-2.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors text-sm"
+                    >
+                      Find Families
+                    </Link>
+                  </>
                 )}
               </div>
             ) : (

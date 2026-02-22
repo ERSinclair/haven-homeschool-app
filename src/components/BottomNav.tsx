@@ -59,12 +59,16 @@ export default function BottomNav() {
         }
 
         // Unread notifications (connections, events, etc — excludes messages)
-        const notifRes = await fetch(
-          `${supabaseUrl}/rest/v1/notifications?user_id=eq.${session.user.id}&read=eq.false&type=not.eq.message&select=id`,
-          { headers: { ...headers, 'Prefer': 'count=exact', 'Range': '0-0' } }
-        );
-        const cr = notifRes.headers.get('Content-Range');
-        setNotifBadge(cr ? parseInt(cr.split('/')[1]) || 0 : 0);
+        try {
+          const notifRes = await fetch(
+            `${supabaseUrl}/rest/v1/notifications?user_id=eq.${session.user.id}&read=eq.false&type=not.eq.message&select=id`,
+            { headers: { ...headers, 'Prefer': 'count=exact', 'Range': '0-0' } }
+          );
+          if (notifRes.ok) {
+            const cr = notifRes.headers.get('Content-Range');
+            setNotifBadge(cr ? parseInt(cr.split('/')[1]) || 0 : 0);
+          }
+        } catch { /* notifications table may not exist yet */ }
 
       } catch {
         // Silent
@@ -76,18 +80,18 @@ export default function BottomNav() {
     return () => clearInterval(interval);
   }, [isLoggedIn, pathname]);
 
-  const authPages = ['/', '/signup', '/login', '/welcome', '/forgot-password', '/reset-password', '/dashboard'];
+  const authPages = ['/', '/signup', '/login', '/welcome', '/forgot-password', '/reset-password'];
   if (authPages.includes(pathname) || !isLoggedIn) return null;
 
-  // Profile goes straight to notifications if there's something unread
-  const profileHref = notifBadge > 0 ? '/notifications' : '/profile';
+  // Circles goes to invitations when there are pending invites
+  const circlesHref = circlesBadge > 0 ? '/circles/invitations' : '/circles';
 
   const navItems = [
     { href: '/discover',    label: 'Discover', badge: 0 },
-    { href: '/circles',     label: 'Circles',  badge: circlesBadge },
+    { href: circlesHref,    label: 'Circles',  badge: circlesBadge, rootHref: '/circles' },
     { href: '/events/my',   label: 'Events',   badge: 0 },
     { href: '/messages',    label: 'Message',  badge: messagesBadge },
-    { href: profileHref,    label: 'Profile',  badge: notifBadge, rootHref: '/profile' },
+    { href: '/profile',     label: 'Profile',  badge: notifBadge },
   ];
 
   const handleNavClick = (href: string) => {

@@ -1,3 +1,5 @@
+import { sendPushNotification } from './push';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -39,6 +41,15 @@ export async function createNotification(params: CreateNotifParams): Promise<voi
         reference_id: params.referenceId,
         read: false,
       }),
+    });
+
+    // Fire push notification — non-blocking, silent failure
+    sendPushNotification({
+      recipientId: params.userId,
+      title: params.title,
+      body: params.body ?? '',
+      url: params.link ?? '/notifications',
+      accessToken: params.accessToken,
     });
   } catch {
     // Non-critical — never let notification failure break the main action

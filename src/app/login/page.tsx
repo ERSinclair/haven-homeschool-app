@@ -90,8 +90,7 @@ export default function LoginPage() {
           const profile = profiles[0];
           const completionStep = checkProfileCompletion(profile);
           
-          // Always go to welcome screen - let users choose their own flow
-          window.location.href = '/welcome';
+          window.location.href = '/discover';
         } else {
           window.location.href = '/signup/resume?step=2';
         }

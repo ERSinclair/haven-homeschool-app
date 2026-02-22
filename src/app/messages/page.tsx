@@ -1,7 +1,7 @@
 'use client';
 import { toast } from '@/lib/toast';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
@@ -37,6 +37,7 @@ function MessagesContent() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -57,6 +58,7 @@ function MessagesContent() {
   const [showMessageContextMenu, setShowMessageContextMenu] = useState(false);
   const [contextMenuMessage, setContextMenuMessage] = useState<Message | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxMsgId, setLightboxMsgId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -203,12 +205,6 @@ function MessagesContent() {
         const msgs = await res.json();
         setMessages(msgs);
 
-        // Scroll to bottom after messages load
-        setTimeout(() => {
-          const container = document.querySelector('.messages-container');
-          if (container) container.scrollTop = container.scrollHeight;
-        }, 80);
-
         // Mark conversation as read by clearing unread status
         // This happens when user opens a conversation
         await fetch(
@@ -298,6 +294,13 @@ function MessagesContent() {
     return () => clearInterval(interval);
   }, [userId]);
 
+  // Scroll to bottom whenever messages load or a new message arrives
+  useEffect(() => {
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
+    }
+  }, [messages]);
+
   const sendMessageHandler = async () => {
     if ((!newMessage.trim() && !selectedFile) || !selectedId || !userId) return;
     
@@ -346,22 +349,11 @@ function MessagesContent() {
           // Get public URL
           fileUrl = `${supabaseUrl}/storage/v1/object/public/message-files/${filePath}`;
           fileType = selectedFile.type.startsWith('image/') ? 'image' : 'file';
-
-          console.log('File uploaded successfully:', fileUrl);
         } catch (fileError) {
           console.error('File upload error:', fileError);
-          // For now, fall back to placeholder until storage bucket is set up
-          const sizeDisplay = selectedFile.size > 1024 * 1024 
-            ? `${(selectedFile.size / 1024 / 1024).toFixed(1)}MB`
-            : `${Math.round(selectedFile.size / 1024)}KB`;
-          
-          // Show user-friendly error
-          setSuccessMessage(`File sharing not set up yet. File "${selectedFile.name}" (${sizeDisplay}) will be shared as text placeholder.`);
-          setShowSuccessNotification(true);
-          setTimeout(() => setShowSuccessNotification(false), 4000);
-          
-          fileUrl = `📎 File: ${selectedFile.name} (${sizeDisplay}) - File sharing coming soon!`;
-          fileType = 'file';
+          toast('Failed to upload file. Please try again.', 'error');
+          setSelectedFile(null);
+          return;
         }
       }
 
@@ -411,16 +403,7 @@ function MessagesContent() {
           textarea.style.height = '48px';
         }
         
-        // Auto-scroll to bottom to show the new message
-        setTimeout(() => {
-          const messagesContainer = document.querySelector('.messages-container');
-          if (messagesContainer) {
-            messagesContainer.scrollTo({
-              top: messagesContainer.scrollHeight,
-              behavior: 'smooth'
-            });
-          }
-        }, 100);
+        // Scroll handled by useEffect on messages state change
         
         await fetch(
           `${supabaseUrl}/rest/v1/conversations?id=eq.${selectedId}`,
@@ -787,7 +770,6 @@ function MessagesContent() {
           return newMap;
         });
         
-        console.log('Connection request removed for user:', userId);
         return;
       }
 
@@ -829,7 +811,6 @@ function MessagesContent() {
           return newMap;
         });
         
-        console.log('Connection request sent to user:', userId);
       }
       
     } catch (error) {
@@ -1290,7 +1271,8 @@ function MessagesContent() {
                               src={file.fileUrl}
                               alt="Attachment"
                               className="max-w-[220px] max-h-[220px] rounded-2xl object-cover"
-                              onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); } }}
+                              onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
+                              onTouchEnd={(e) => { if (!selectionMode) { e.stopPropagation(); e.preventDefault(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
                             />
                             <p className="text-xs text-gray-400 mt-1">{formatTime(msg.created_at)}</p>
                           </div>
@@ -1310,7 +1292,8 @@ function MessagesContent() {
                                   src={file.fileUrl}
                                   alt="Attachment"
                                   className="max-w-[200px] max-h-[200px] rounded-xl object-cover cursor-pointer"
-                                  onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); } }}
+                                  onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
+                                  onTouchEnd={(e) => { if (!selectionMode) { e.stopPropagation(); e.preventDefault(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
                                 />
                               </div>
                             )}
@@ -1340,6 +1323,7 @@ function MessagesContent() {
               </div>
             ))
           )}
+          <div ref={messagesEndRef} />
         </div>
 
         {!selectionMode && (
@@ -1393,7 +1377,6 @@ function MessagesContent() {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    console.log('File selected:', file.name, file.size, 'bytes');
                     setSelectedFile(file);
                   }
                 }}
@@ -1814,7 +1797,7 @@ function MessagesContent() {
       {lightboxUrl && (
         <div
           className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 p-4"
-          onClick={() => setLightboxUrl(null)}
+          onClick={() => { setLightboxUrl(null); setLightboxMsgId(null); }}
         >
           <img
             src={lightboxUrl}
@@ -1832,8 +1815,21 @@ function MessagesContent() {
             >
               Download
             </a>
+            {lightboxMsgId && (
+              <button
+                onClick={() => {
+                  const msg = messages.find(m => m.id === lightboxMsgId);
+                  if (msg) saveMessageToSaved(msg);
+                  setLightboxUrl(null);
+                  setLightboxMsgId(null);
+                }}
+                className="px-5 py-2 bg-white/20 text-white rounded-xl font-medium hover:bg-white/30 text-sm"
+              >
+                Save
+              </button>
+            )}
             <button
-              onClick={() => setLightboxUrl(null)}
+              onClick={() => { setLightboxUrl(null); setLightboxMsgId(null); }}
               className="px-5 py-2 bg-white/20 text-white rounded-xl font-medium hover:bg-white/30 text-sm"
             >
               Close

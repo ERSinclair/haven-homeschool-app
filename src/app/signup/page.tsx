@@ -50,6 +50,14 @@ export default function SignupPage() {
   // Step 4: Contact
   const [contactMethods, setContactMethods] = useState<string[]>(['app']);
 
+  // Teacher-specific
+  const [teacherSubjects, setTeacherSubjects] = useState<string[]>([]);
+  const [teacherSubjectInput, setTeacherSubjectInput] = useState('');
+  const [teacherAgeGroups, setTeacherAgeGroups] = useState<string[]>([]);
+
+  // Business-specific
+  const [businessContact, setBusinessContact] = useState('');
+
   const [userId, setUserId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
@@ -303,6 +311,11 @@ export default function SignupPage() {
               ? customDescriptions.filter(desc => desc.trim()).join(', ')
               : (status.filter(s => s !== 'other').length > 0 ? status.filter(s => s !== 'other')[0] : 'considering')),
         contact_methods: contactMethods,
+        // Type-specific fields
+        subjects: teacherSubjects.length > 0 ? teacherSubjects : null,
+        age_groups_taught: teacherAgeGroups.length > 0 ? teacherAgeGroups : null,
+        services: null, // businesses use bio for services during signup
+        contact_info: businessContact.trim() || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -817,7 +830,7 @@ export default function SignupPage() {
                   <div className="space-y-2">
                     {[
                       { value: 'considering', label: 'Community', icon: '' },
-                      { value: 'new', label: 'Homeschool', icon: '' },
+                      { value: 'new', label: 'Home Ed', icon: '' },
                       { value: 'experienced', label: 'Extracurricular', icon: '' },
                       { value: 'connecting', label: 'Just Checking It Out', icon: '' },
                       { value: 'other', label: 'Other', icon: '' }
@@ -1546,7 +1559,7 @@ export default function SignupPage() {
                     onChange={(e) => setBio(e.target.value)}
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
                     rows={6}
-                    placeholder="Share what makes your family unique. Tell other families about your homeschool journey, interests, values, what you're looking for in a community, or anything else you'd like them to know..."
+                    placeholder="Share what makes your family unique. Your interests, values, what you're looking for in a community, or anything else you'd like other families to know..."
                   />
                 </div>
               </div>
@@ -1662,9 +1675,61 @@ export default function SignupPage() {
                   />
                 </div>
 
+                {/* Subjects */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Subjects you teach</label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {teacherSubjects.map((s, i) => (
+                      <span key={i} className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                        {s}
+                        <button onClick={() => setTeacherSubjects(prev => prev.filter((_, idx) => idx !== i))} className="text-blue-500 hover:text-blue-700">×</button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={teacherSubjectInput}
+                      onChange={e => setTeacherSubjectInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && teacherSubjectInput.trim()) {
+                          e.preventDefault();
+                          setTeacherSubjects(prev => [...prev, teacherSubjectInput.trim()]);
+                          setTeacherSubjectInput('');
+                        }
+                      }}
+                      placeholder="e.g. Maths, Science… press Enter"
+                      className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { if (teacherSubjectInput.trim()) { setTeacherSubjects(prev => [...prev, teacherSubjectInput.trim()]); setTeacherSubjectInput(''); } }}
+                      className="px-4 py-2 bg-blue-100 text-blue-700 rounded-xl text-sm font-medium"
+                    >Add</button>
+                  </div>
+                </div>
+
+                {/* Age groups */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Age groups you teach</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['0–4', '5–7', '8–10', '11–13', '14–16', '17–18'].map(ag => (
+                      <button
+                        key={ag}
+                        type="button"
+                        onClick={() => setTeacherAgeGroups(prev => prev.includes(ag) ? prev.filter(x => x !== ag) : [...prev, ag])}
+                        className={`py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
+                          teacherAgeGroups.includes(ag)
+                            ? 'bg-blue-100 border-blue-400 text-blue-700'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300'
+                        }`}
+                      >{ag}</button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* What I Have To Offer */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">What I Have To Offer</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">What I have to offer</label>
                   <textarea
                     value={customDescriptions.filter(desc => desc.trim()).join('\n\n')}
                     onChange={(e) => {
@@ -1672,12 +1737,9 @@ export default function SignupPage() {
                       setCustomDescriptions(lines.length > 0 ? lines : ['']);
                     }}
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
-                    rows={6}
-                    placeholder="Describe the services you offer, your expertise, qualifications, and what makes you unique as an educator..."
+                    rows={4}
+                    placeholder="Qualifications, experience, teaching style, what makes you unique…"
                   />
-                  <p className="text-xs text-gray-500 mt-2">
-                    Separate different services or qualifications with double line breaks
-                  </p>
                 </div>
               </div>
 
@@ -1750,14 +1812,26 @@ export default function SignupPage() {
               <div className="space-y-6 mb-6">
                 {/* Tell us about your business */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Tell us about your business and what you have to offer</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">Tell us about your business</label>
                   <textarea
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
-                    rows={8}
-                    placeholder="Describe your business, the services or spaces you provide, your location details, pricing, availability, and what makes you unique for homeschool families..."
+                    rows={5}
+                    placeholder="What you offer, who you serve, what makes you unique for homeschool families…"
                   />
+                </div>
+
+                {/* Contact info */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Contact info</label>
+                  <input
+                    value={businessContact}
+                    onChange={e => setBusinessContact(e.target.value)}
+                    placeholder="Website, phone, email…"
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Optional — you can add this later in your profile</p>
                 </div>
               </div>
 

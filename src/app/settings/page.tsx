@@ -7,6 +7,7 @@ import { deleteMyAccount } from '@/lib/account-deletion';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import HavenHeader from '@/components/HavenHeader';
 import { getStoredSession } from '@/lib/session';
+import { toast } from '@/lib/toast';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -93,7 +94,7 @@ export default function SettingsPage() {
       router.push('/');
     } catch (error) {
       console.error('Failed to delete account:', error);
-      alert('Failed to delete account. Please try again or contact support.');
+      toast('Failed to delete account. Please try again or contact support.', 'error');
       setDeleteLoading(false);
     }
   };

@@ -124,49 +124,48 @@ export const getAdminStats = async () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   
-  // Skip admin_stats view check and go directly to profile-based calculation
-  // This avoids 404 console errors until admin sets up the database views
-  console.log('Using profile-based admin stats calculation');
+  // Stats calculated directly from profile/content tables
   
-  try {
-    const profilesRes = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?select=id,is_active,is_banned,created_at`,
-      {
-        headers: {
-          'apikey': supabaseKey!,
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      }
-    );
-    
-    if (profilesRes.ok) {
-      const profiles = await profilesRes.json();
-      const now = new Date();
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      
-      return {
-        total_active_users: profiles.filter((p: any) => p.is_active !== false && p.is_banned !== true).length,
-        new_users_this_week: profiles.filter((p: any) => new Date(p.created_at) >= weekAgo).length,
-        conversations_today: 0, // Would need conversations table
-        messages_today: 0, // Would need messages table  
-        banned_users: profiles.filter((p: any) => p.is_banned === true).length,
-        announcements_this_month: 0 // Would need notifications table
-      };
-    } else {
-      console.log('Could not fetch profiles for admin stats');
-    }
-  } catch (err) {
-    console.error('Error calculating admin stats from profiles:', err);
-  }
-  
-  // Ultimate fallback with placeholder data
+  const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const todayStr = now.toISOString().split('T')[0];
+
+  const safe = async (url: string) => {
+    try {
+      const r = await fetch(url, { headers });
+      return r.ok ? await r.json() : [];
+    } catch { return []; }
+  };
+
+  const [profiles, events, circles, boardPosts, messages] = await Promise.all([
+    safe(`${supabaseUrl}/rest/v1/profiles?select=id,is_active,is_banned,created_at,user_type`),
+    safe(`${supabaseUrl}/rest/v1/events?select=id,created_at,is_cancelled`),
+    safe(`${supabaseUrl}/rest/v1/circles?select=id,created_at,is_public`),
+    safe(`${supabaseUrl}/rest/v1/community_posts?select=id,created_at`),
+    safe(`${supabaseUrl}/rest/v1/messages?select=id,created_at&created_at=gte.${todayStr}`),
+  ]);
+
+  const active = profiles.filter((p: any) => p.is_active !== false && p.is_banned !== true);
   return {
-    total_active_users: 1, // At least the admin
-    new_users_this_week: 0,
+    total_active_users: active.length,
+    total_users: profiles.length,
+    new_users_this_week: profiles.filter((p: any) => new Date(p.created_at) >= weekAgo).length,
+    new_users_this_month: profiles.filter((p: any) => new Date(p.created_at) >= monthAgo).length,
+    families: active.filter((p: any) => !p.user_type || p.user_type === 'family').length,
+    teachers: active.filter((p: any) => p.user_type === 'teacher').length,
+    businesses: active.filter((p: any) => p.user_type === 'business').length,
+    banned_users: profiles.filter((p: any) => p.is_banned === true).length,
+    total_events: events.length,
+    active_events: events.filter((e: any) => !e.is_cancelled).length,
+    total_circles: circles.length,
+    public_circles: circles.filter((c: any) => c.is_public).length,
+    board_posts: boardPosts.length,
+    board_posts_this_week: boardPosts.filter((p: any) => new Date(p.created_at) >= weekAgo).length,
+    messages_today: messages.length,
     conversations_today: 0,
-    messages_today: 0,
-    banned_users: 0,
-    announcements_this_month: 0
+    announcements_this_month: 0,
   };
 };
 

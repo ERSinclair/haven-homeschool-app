@@ -97,6 +97,12 @@ export default function WelcomePage() {
     const fromSignup = new URLSearchParams(window.location.search).get('fromSignup') === 'true';
     setIsFromSignup(fromSignup);
 
+    // Returning users who land here directly go to discover
+    if (!fromSignup) {
+      router.replace('/discover');
+      return;
+    }
+
     // Animate in steps
     const timers = [
       setTimeout(() => setStep(1), 300),

@@ -6,6 +6,8 @@ import { getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
 import HavenHeader from '@/components/HavenHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { distanceKm } from '@/lib/geocode';
+import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -21,6 +23,7 @@ type Circle = {
   last_activity_at: string;
   created_at: string;
   created_by: string;
+  creator?: { location_lat?: number; location_lng?: number };
   isMember?: boolean;
   isJoining?: boolean;
 };
@@ -30,6 +33,9 @@ export default function CirclesDiscoverPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
+  const [searchRadius, setSearchRadius] = useState(50);
   const router = useRouter();
 
   useEffect(() => {
@@ -44,9 +50,21 @@ export default function CirclesDiscoverPage() {
 
       const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
 
-      // Load all public circles
+      // Load user's location
+      const profileRes = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=location_lat,location_lng`,
+        { headers }
+      );
+      if (profileRes.ok) {
+        const [p] = await profileRes.json();
+        if (p?.location_lat && p?.location_lng) {
+          setUserLocation({ lat: p.location_lat, lng: p.location_lng });
+        }
+      }
+
+      // Load all public circles with creator location
       const circlesRes = await fetch(
-        `${supabaseUrl}/rest/v1/circles?is_public=eq.true&order=member_count.desc,created_at.desc`,
+        `${supabaseUrl}/rest/v1/circles?is_public=eq.true&select=*,creator:created_by(location_lat,location_lng)&order=member_count.desc,created_at.desc`,
         { headers }
       );
       if (!circlesRes.ok) throw new Error();
@@ -120,11 +138,22 @@ export default function CirclesDiscoverPage() {
     }
   };
 
-  const filtered = circles.filter(c =>
-    !searchTerm ||
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const activeLocation = browseLocation ?? userLocation;
+  const filtered = circles.filter(c => {
+    // Radius filter using creator's location
+    if (activeLocation && c.creator?.location_lat && c.creator?.location_lng) {
+      const d = distanceKm(activeLocation.lat, activeLocation.lng, c.creator.location_lat, c.creator.location_lng);
+      if (d > searchRadius) return false;
+    }
+    // Search filter
+    if (searchTerm) {
+      return (
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    return true;
+  });
 
   const formatTimeAgo = (dateStr: string) => {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -152,6 +181,15 @@ export default function CirclesDiscoverPage() {
           <div className="text-center mb-6">
             <h1 className="text-2xl font-bold text-gray-900 mb-1">Find Circles</h1>
             <p className="text-gray-500 text-sm">Discover public circles and join the ones that fit</p>
+          </div>
+
+          {/* Browse location + radius */}
+          <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-xs text-gray-500 font-medium">Radius</span>
+            <button onClick={() => setSearchRadius(r => Math.max(5, r - 5))} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold text-sm">-</button>
+            <span className="text-sm font-semibold text-gray-700 w-14 text-center">{searchRadius} km</span>
+            <button onClick={() => setSearchRadius(r => Math.min(200, r + 5))} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold text-sm">+</button>
           </div>
 
           {/* Search */}

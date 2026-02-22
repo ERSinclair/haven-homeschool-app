@@ -61,9 +61,7 @@ export default function BroadcastPage() {
       const session = getStoredSession();
       if (!session?.user) return;
 
-      // Skip notifications table check to avoid 404 console errors
-      // Until admin sets up the database, use empty history
-      console.log('Notifications table not yet configured, using empty broadcast history');
+      // History loads from notifications table once it's created via migration
       setHistory([]);
       
       // Future: Uncomment when notifications table is created

@@ -57,7 +57,7 @@ export const statusColors: Record<string, { bg: string; text: string; border: st
 };
 
 export const statusLabels: Record<string, string> = {
-  considering: 'Family Community',
+  considering: 'Community',
   new: 'Homeschool',
   experienced: 'Extracurricular',
   connecting: 'Just Checking It Out',

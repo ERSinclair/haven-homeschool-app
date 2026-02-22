@@ -47,6 +47,15 @@ type Message = {
   };
 };
 
+type Resource = {
+  id: string;
+  title: string;
+  url?: string;
+  description?: string;
+  created_by: string;
+  created_at: string;
+};
+
 export default function CirclePage() {
   const params = useParams();
   const router = useRouter();
@@ -66,7 +75,13 @@ export default function CirclePage() {
   // Chat functionality
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'members'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'members' | 'resources'>('chat');
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [showAddResource, setShowAddResource] = useState(false);
+  const [resourceTitle, setResourceTitle] = useState('');
+  const [resourceUrl, setResourceUrl] = useState('');
+  const [resourceDesc, setResourceDesc] = useState('');
+  const [addingResource, setAddingResource] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // New state for modals
@@ -156,6 +171,15 @@ export default function CirclePage() {
           setMessages(messagesData.reverse()); // Show oldest first
         }
 
+        // Load resources
+        const resourcesRes = await fetch(
+          `${supabaseUrl}/rest/v1/circle_resources?circle_id=eq.${circleId}&select=*&order=created_at.desc`,
+          { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+        );
+        if (resourcesRes.ok) {
+          setResources(await resourcesRes.json());
+        }
+
       } catch (err) {
         console.error('Error loading circle:', err);
         setError('Failed to load circle. Please try again.');
@@ -225,6 +249,69 @@ export default function CirclePage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const addResource = async () => {
+    if (!resourceTitle.trim() || addingResource) return;
+    setAddingResource(true);
+    try {
+      const session = getStoredSession();
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/rest/v1/circle_resources`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session!.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({
+          circle_id: circleId,
+          created_by: currentUserId,
+          title: resourceTitle.trim(),
+          url: resourceUrl.trim() || null,
+          description: resourceDesc.trim() || null,
+        }),
+      });
+      if (res.ok) {
+        const [newResource] = await res.json();
+        setResources(prev => [newResource, ...prev]);
+        setResourceTitle('');
+        setResourceUrl('');
+        setResourceDesc('');
+        setShowAddResource(false);
+        toast('Resource added', 'success');
+      } else {
+        toast('Failed to add resource', 'error');
+      }
+    } catch {
+      toast('Failed to add resource', 'error');
+    } finally {
+      setAddingResource(false);
+    }
+  };
+
+  const deleteResource = async (resourceId: string) => {
+    try {
+      const session = getStoredSession();
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/rest/v1/circle_resources?id=eq.${resourceId}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session!.access_token}`,
+        },
+      });
+      if (res.ok) {
+        setResources(prev => prev.filter(r => r.id !== resourceId));
+      } else {
+        toast('Failed to delete resource', 'error');
+      }
+    } catch {
+      toast('Failed to delete resource', 'error');
+    }
+  };
 
   const sendMessage = async () => {
     if (!newMessage.trim() || sendingMessage) return;
@@ -662,6 +749,16 @@ export default function CirclePage() {
             >
               Members
             </button>
+            <button
+              onClick={() => setActiveTab('resources')}
+              className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
+                activeTab === 'resources'
+                  ? 'border-emerald-500 text-emerald-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Resources
+            </button>
           </div>
         </div>
       </div>
@@ -748,7 +845,7 @@ export default function CirclePage() {
               </div>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'members' ? (
           // Members View
           <div className="p-4">
             <div className="space-y-4">
@@ -814,7 +911,96 @@ export default function CirclePage() {
               </div>
             )}
           </div>
-        )}
+        ) : activeTab === 'resources' ? (
+          // Resources View
+          <div className="p-4">
+            {/* Add resource button */}
+            <button
+              onClick={() => setShowAddResource(v => !v)}
+              className="w-full mb-4 py-2.5 px-4 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors"
+            >
+              {showAddResource ? 'Cancel' : '+ Add Resource'}
+            </button>
+
+            {/* Add resource form */}
+            {showAddResource && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4 space-y-3">
+                <input
+                  value={resourceTitle}
+                  onChange={e => setResourceTitle(e.target.value)}
+                  placeholder="Title (e.g. Khan Academy, Co-op schedule)"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 bg-white"
+                />
+                <input
+                  value={resourceUrl}
+                  onChange={e => setResourceUrl(e.target.value)}
+                  placeholder="Link (optional)"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 bg-white"
+                  type="url"
+                />
+                <textarea
+                  value={resourceDesc}
+                  onChange={e => setResourceDesc(e.target.value)}
+                  placeholder="Description (optional)"
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 bg-white resize-none"
+                />
+                <button
+                  onClick={addResource}
+                  disabled={!resourceTitle.trim() || addingResource}
+                  className="w-full py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:bg-gray-300 transition-colors text-sm"
+                >
+                  {addingResource ? 'Adding...' : 'Add Resource'}
+                </button>
+              </div>
+            )}
+
+            {/* Resources list */}
+            {resources.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500 text-sm">No resources yet.</p>
+                <p className="text-gray-400 text-xs mt-1">Share links, documents, or notes with your circle.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {resources.map(resource => (
+                  <div key={resource.id} className="bg-white rounded-xl p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        {resource.url ? (
+                          <a
+                            href={resource.url.startsWith('http') ? resource.url : `https://${resource.url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-emerald-600 hover:text-emerald-700 hover:underline text-sm"
+                          >
+                            {resource.title}
+                          </a>
+                        ) : (
+                          <p className="font-medium text-gray-900 text-sm">{resource.title}</p>
+                        )}
+                        {resource.url && (
+                          <p className="text-xs text-gray-400 truncate mt-0.5">{resource.url}</p>
+                        )}
+                        {resource.description && (
+                          <p className="text-sm text-gray-600 mt-1">{resource.description}</p>
+                        )}
+                      </div>
+                      {(resource.created_by === currentUserId || isAdmin) && (
+                        <button
+                          onClick={() => deleteResource(resource.id)}
+                          className="text-gray-300 hover:text-red-400 transition-colors text-lg flex-shrink-0"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {/* Invite Members Modal */}

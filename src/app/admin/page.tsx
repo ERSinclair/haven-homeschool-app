@@ -3,23 +3,26 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { isAdmin, getAdminStats } from '@/lib/admin';
+import { isAdmin } from '@/lib/admin';
 import { getStoredSession } from '@/lib/session';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
-type AdminStats = {
-  total_active_users: number;
-  new_users_this_week: number;
-  conversations_today: number;
-  messages_today: number;
-  banned_users: number;
-  announcements_this_month: number;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+type FeedItem = {
+  id: string;
+  type: 'signup' | 'connection' | 'post' | 'event' | 'circle';
+  label: string;
+  sub: string;
+  time: string;
 };
 
 export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
-  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showLoginForm, setShowLoginForm] = useState(true);
   const [email, setEmail] = useState('');
@@ -34,8 +37,7 @@ export default function AdminDashboard() {
         if (adminAuth) {
           setAuthorized(true);
           setShowLoginForm(false);
-          const adminStats = await getAdminStats();
-          setStats(adminStats);
+          loadFeed();
         }
       } catch (err) {
         console.log('No existing admin auth found');
@@ -101,10 +103,7 @@ export default function AdminDashboard() {
 
       setAuthorized(true);
       setShowLoginForm(false);
-      
-      // Load admin stats
-      const adminStats = await getAdminStats();
-      setStats(adminStats);
+      loadFeed();
       
     } catch (err: any) {
       console.error('Admin login failed:', err);
@@ -112,6 +111,77 @@ export default function AdminDashboard() {
     } finally {
       setLoginLoading(false);
     }
+  };
+
+  const loadFeed = async () => {
+    setFeedLoading(true);
+    try {
+      const session = JSON.parse(
+        sessionStorage.getItem('supabase-session') ||
+        localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token') || '{}'
+      );
+      const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+      const safe = async (url: string) => {
+        try { const r = await fetch(url, { headers: h }); return r.ok ? await r.json() : []; } catch { return []; }
+      };
+
+      const [profiles, connections, posts, events, circles] = await Promise.all([
+        safe(`${supabaseUrl}/rest/v1/profiles?select=id,family_name,display_name,created_at,user_type&order=created_at.desc&limit=10`),
+        safe(`${supabaseUrl}/rest/v1/connections?select=id,updated_at,requester:profiles!connections_requester_id_fkey(display_name,family_name),receiver:profiles!connections_receiver_id_fkey(display_name,family_name)&status=eq.accepted&order=updated_at.desc&limit=10`),
+        safe(`${supabaseUrl}/rest/v1/community_posts?select=id,title,created_at,author_id&order=created_at.desc&limit=10`),
+        safe(`${supabaseUrl}/rest/v1/events?select=id,title,created_at&order=created_at.desc&limit=10`),
+        safe(`${supabaseUrl}/rest/v1/circles?select=id,name,created_at&order=created_at.desc&limit=10`),
+      ]);
+
+      const items: FeedItem[] = [
+        ...profiles.map((p: any) => ({
+          id: `signup-${p.id}`, type: 'signup' as const,
+          label: `New ${p.user_type || 'family'} joined`,
+          sub: p.display_name || p.family_name || 'Unknown',
+          time: p.created_at,
+        })),
+        ...connections.map((c: any) => ({
+          id: `conn-${c.id}`, type: 'connection' as const,
+          label: 'New connection',
+          sub: `${c.requester?.display_name || c.requester?.family_name || '?'} & ${c.receiver?.display_name || c.receiver?.family_name || '?'}`,
+          time: c.updated_at,
+        })),
+        ...posts.map((p: any) => ({
+          id: `post-${p.id}`, type: 'post' as const,
+          label: 'Board post',
+          sub: p.title,
+          time: p.created_at,
+        })),
+        ...events.map((e: any) => ({
+          id: `event-${e.id}`, type: 'event' as const,
+          label: 'Event created',
+          sub: e.title,
+          time: e.created_at,
+        })),
+        ...circles.map((c: any) => ({
+          id: `circle-${c.id}`, type: 'circle' as const,
+          label: 'Circle created',
+          sub: c.name,
+          time: c.created_at,
+        })),
+      ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 30);
+
+      setFeed(items);
+    } catch { /* silent */ } finally {
+      setFeedLoading(false);
+    }
+  };
+
+  const timeAgo = (dateStr: string) => {
+    const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
+
+  const feedIcon: Record<string, string> = {
+    signup: '👤', connection: '🤝', post: '📝', event: '📅', circle: '⭕',
   };
 
   if (loading) {
@@ -208,41 +278,7 @@ export default function AdminDashboard() {
           </Link>
         </div>
 
-        {/* Stats Grid */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 mb-8">
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h3 className="font-semibold text-gray-700 text-sm mb-2">Active Users</h3>
-              <p className="text-2xl font-bold text-emerald-600">{stats.total_active_users || 0}</p>
-            </div>
-            
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h3 className="font-semibold text-gray-700 text-sm mb-2">New This Week</h3>
-              <p className="text-2xl font-bold text-emerald-600">{stats.new_users_this_week || 0}</p>
-            </div>
-            
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h3 className="font-semibold text-gray-700 text-sm mb-2">Messages Today</h3>
-              <p className="text-2xl font-bold text-emerald-600">{stats.messages_today || 0}</p>
-            </div>
-            
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h3 className="font-semibold text-gray-700 text-sm mb-2">Conversations</h3>
-              <p className="text-2xl font-bold text-purple-600">{stats.conversations_today || 0}</p>
-            </div>
-            
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h3 className="font-semibold text-gray-700 text-sm mb-2">Banned Users</h3>
-              <p className="text-2xl font-bold text-red-600">{stats.banned_users || 0}</p>
-            </div>
-            
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h3 className="font-semibold text-gray-700 text-sm mb-2">Broadcasts</h3>
-              <p className="text-2xl font-bold text-orange-600">{stats.announcements_this_month || 0}</p>
-            </div>
-          </div>
-        )}
-
+        {/* Stats moved to /admin/stats */}
         {/* Quick Actions */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           <Link 
@@ -309,6 +345,22 @@ export default function AdminDashboard() {
             <div className="text-yellow-600 font-medium">Moderate Content →</div>
           </Link>
 
+          <Link
+            href="/admin/stats"
+            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
+          >
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+                <span className="text-2xl">📈</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Statistics</h3>
+                <p className="text-sm text-gray-600">Users, content, search insights</p>
+              </div>
+            </div>
+            <div className="text-emerald-600 font-medium">View Stats →</div>
+          </Link>
+
           <Link 
             href="/admin/analytics"
             className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
@@ -358,15 +410,31 @@ export default function AdminDashboard() {
           </Link>
         </div>
 
-        {/* Recent Activity */}
+        {/* Activity Feed */}
         <div className="mt-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-6">Recent Activity</h2>
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="text-center py-8 text-gray-500">
-              <span className="text-4xl mb-4 block">⏱️</span>
-              <p>Activity feed coming soon...</p>
-              <p className="text-sm mt-1">This will show recent signups, reports, and admin actions.</p>
-            </div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-900">Recent Activity</h2>
+            <button onClick={loadFeed} className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">Refresh</button>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm divide-y divide-gray-100">
+            {feedLoading ? (
+              <div className="flex justify-center py-10">
+                <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : feed.length === 0 ? (
+              <div className="text-center py-10 text-gray-400">
+                <p>No recent activity yet</p>
+              </div>
+            ) : feed.map(item => (
+              <div key={item.id} className="flex items-center gap-4 px-5 py-3">
+                <span className="text-xl flex-shrink-0">{feedIcon[item.type]}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{item.label}</p>
+                  <p className="text-xs text-gray-500 truncate">{item.sub}</p>
+                </div>
+                <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo(item.time)}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>

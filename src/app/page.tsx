@@ -147,8 +147,8 @@ export default function Home() {
           
           <div className="space-y-8">
             {[
-              { num: '1', title: 'Create your profile', desc: 'Tell us your location, kids\' ages, and homeschool approach. Takes 30 seconds.' },
-              { num: '2', title: 'Discover nearby families', desc: 'See homeschool families in your area, filtered by distance and age match.' },
+              { num: '1', title: 'Create your profile', desc: 'Tell us your location, kids\' ages, and a bit about your family. Takes 30 seconds.' },
+              { num: '2', title: 'Discover nearby families', desc: 'See families in your area, filtered by distance and kids\' ages.' },
               { num: '3', title: 'Connect directly', desc: 'Message families, arrange meetups, build your community.' },
             ].map((step, i) => (
               <div key={i} className="flex gap-4 items-start">

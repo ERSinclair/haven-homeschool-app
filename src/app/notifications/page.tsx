@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import { markAllNotificationsRead } from '@/lib/notifications';
+import { enablePushNotifications, getNotificationPermission } from '@/lib/push';
+import { toast } from '@/lib/toast';
 import HavenHeader from '@/components/HavenHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
@@ -36,10 +38,31 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [processing, setProcessing] = useState<Set<string>>(new Set());
+  const [pushPermission, setPushPermission] = useState<string>('default');
+  const [enablingPush, setEnablingPush] = useState(false);
 
   useEffect(() => {
     loadNotifications();
+    setPushPermission(getNotificationPermission());
   }, []);
+
+  const handleEnablePush = async () => {
+    setEnablingPush(true);
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+      const ok = await enablePushNotifications(session.user.id, session.access_token);
+      if (ok) {
+        setPushPermission('granted');
+        toast('Push notifications enabled', 'success');
+      } else {
+        setPushPermission(getNotificationPermission());
+        toast('Notifications blocked — check your browser settings', 'error');
+      }
+    } finally {
+      setEnablingPush(false);
+    }
+  };
 
   const loadNotifications = async () => {
     try {
@@ -50,7 +73,7 @@ export default function NotificationsPage() {
 
       // Fetch notifications
       const res = await fetch(
-        `${supabaseUrl}/rest/v1/notifications?user_id=eq.${session.user.id}&order=created_at.desc&limit=50`,
+        `${supabaseUrl}/rest/v1/notifications?profile_id=eq.${session.user.id}&order=created_at.desc&limit=50`,
         { headers }
       );
       if (!res.ok) { setLoading(false); return; }
@@ -85,16 +108,20 @@ export default function NotificationsPage() {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     const session = getStoredSession();
     if (!session) return;
-    await fetch(`${supabaseUrl}/rest/v1/notifications?id=eq.${id}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': supabaseKey!,
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
-      },
-      body: JSON.stringify({ read: true }),
-    });
+    try {
+      await fetch(`${supabaseUrl}/rest/v1/notifications?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({ read: true }),
+      });
+    } catch {
+      // Silent — local state already updated
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -128,7 +155,7 @@ export default function NotificationsPage() {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            user_id: notif.actor_id,
+            profile_id: notif.actor_id,
             actor_id: session.user.id,
             type: 'connection_accepted',
             title: 'Connection accepted',
@@ -190,6 +217,23 @@ export default function NotificationsPage() {
               </button>
             )}
           </div>
+
+          {/* Push notification enable banner */}
+          {pushPermission === 'default' && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-emerald-800">Get notified instantly</p>
+                <p className="text-xs text-emerald-600 mt-0.5">Enable push notifications so you never miss a connection request or message.</p>
+              </div>
+              <button
+                onClick={handleEnablePush}
+                disabled={enablingPush}
+                className="flex-shrink-0 px-3 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60"
+              >
+                {enablingPush ? 'Enabling...' : 'Enable'}
+              </button>
+            </div>
+          )}
 
           {/* Filter tabs */}
           <div className="flex gap-2 mb-6">

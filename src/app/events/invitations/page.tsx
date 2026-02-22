@@ -223,7 +223,7 @@ export default function EventInvitationsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader backHref="/events" />
+        <HavenHeader onBack={() => router.back()} />
 
         {/* Header */}
         <div className="text-center mb-8">
