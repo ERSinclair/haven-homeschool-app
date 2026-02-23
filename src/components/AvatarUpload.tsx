@@ -15,6 +15,7 @@ interface AvatarUploadProps {
   onAvatarChange?: (newAvatarUrl: string | null) => void;
   editable?: boolean;
   showFamilySilhouette?: boolean;
+  viewable?: boolean;
 }
 
 export default function AvatarUpload({
@@ -24,11 +25,13 @@ export default function AvatarUpload({
   size = 'md',
   onAvatarChange,
   editable = false,
-  showFamilySilhouette = true
+  showFamilySilhouette = true,
+  viewable = false,
 }: AvatarUploadProps) {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentAvatarUrl || null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewingFullscreen, setViewingFullscreen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync with prop changes
@@ -189,6 +192,8 @@ export default function AvatarUpload({
   const handleClick = () => {
     if (editable && !uploading) {
       fileInputRef.current?.click();
+    } else if (viewable && avatarUrl && !editable) {
+      setViewingFullscreen(true);
     }
   };
 
@@ -196,6 +201,55 @@ export default function AvatarUpload({
   
   return (
     <div className="relative">
+      {/* Fullscreen photo overlay */}
+      {viewingFullscreen && avatarUrl && (
+        <div
+          onClick={() => setViewingFullscreen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'pointer',
+          }}
+        >
+          <img
+            src={avatarUrl}
+            alt={name}
+            style={{
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              objectFit: 'contain',
+              borderRadius: '12px',
+            }}
+          />
+          <button
+            onClick={() => setViewingFullscreen(false)}
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              background: 'rgba(255,255,255,0.15)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '36px',
+              height: '36px',
+              color: 'white',
+              fontSize: '20px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Avatar Display - Pure CSS, no Tailwind conflicts */}
       <div 
         style={{
@@ -204,7 +258,7 @@ export default function AvatarUpload({
           borderRadius: '50%',
           overflow: 'hidden',
           position: 'relative',
-          cursor: editable ? 'pointer' : 'default',
+          cursor: editable ? 'pointer' : (viewable && avatarUrl) ? 'zoom-in' : 'default',
           backgroundColor: '#f0fdfa',
           display: 'flex',
           alignItems: 'center',

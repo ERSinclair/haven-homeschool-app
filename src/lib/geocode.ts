@@ -1,6 +1,27 @@
-// Geocoding utility using Nominatim (OpenStreetMap) — free, no API key required
+// Geocoding utility using Mapbox — returns road-anchored coordinates (always on land)
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 export async function geocodeSuburb(suburb: string): Promise<{ lat: number; lng: number } | null> {
+  // Try Mapbox first (road-anchored, always on land)
+  if (MAPBOX_TOKEN) {
+    try {
+      const query = encodeURIComponent(`${suburb}, Australia`);
+      const res = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?country=AU&types=locality,place,neighborhood,postcode&limit=1&access_token=${MAPBOX_TOKEN}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.features?.length > 0) {
+          const [lng, lat] = data.features[0].center;
+          return { lat, lng };
+        }
+      }
+    } catch {
+      // Fall through to Nominatim
+    }
+  }
+
+  // Fallback: Nominatim
   try {
     const query = encodeURIComponent(`${suburb}, Australia`);
     const res = await fetch(

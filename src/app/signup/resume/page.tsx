@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import { checkProfileCompletion, getProfileCompletionMessage, ProfileData } from '@/lib/profileCompletion';
 import { geocodeSuburb } from '@/lib/geocode';
+import SimpleLocationPicker from '@/components/SimpleLocationPicker';
 
 function ResumeSignupContent() {
   const router = useRouter();
@@ -26,6 +27,7 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [location, setLocation] = useState('');
+  const [selectedLocationCoords, setSelectedLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [status, setStatus] = useState<string[]>(['considering']);
   const [customDescriptions, setCustomDescriptions] = useState<string[]>([]);
   const [kidsAges, setKidsAges] = useState<number[]>([]);
@@ -168,8 +170,8 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
   };
 
   const handleStep2Continue = async () => {
-    // Geocode the suburb to get lat/lng for radius search
-    const coords = await geocodeSuburb(location);
+    // Use pre-selected coords from picker, fall back to geocoding the text
+    const coords = selectedLocationCoords ?? await geocodeSuburb(location);
 
     const success = await saveProfile({
       family_name: `${firstName} ${lastName}`.trim(),
@@ -306,12 +308,13 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Your suburb</label>
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                    placeholder="Torquay, VIC"
+                  <SimpleLocationPicker
+                    initialLocation={location}
+                    placeholder="Search your suburb..."
+                    onLocationSelect={(loc) => {
+                      setLocation(loc.name);
+                      setSelectedLocationCoords({ lat: loc.lat, lng: loc.lng });
+                    }}
                   />
                 </div>
                 <div>

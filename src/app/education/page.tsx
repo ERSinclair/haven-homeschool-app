@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 type EducationSection = 'resources' | 'circles';
@@ -22,18 +22,18 @@ export default function EducationPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader backHref="/discover" />
+        <AppHeader backHref="/discover" />
 
         {/* Section Navigation */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
+        <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
           {sections.map((section) => (
             <button
               key={section.key}
               onClick={() => setActiveSection(section.key as EducationSection)}
-              className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeSection === section.key
-                  ? 'bg-emerald-600 text-white shadow-md scale-105'
-                  : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {section.label}
@@ -42,13 +42,11 @@ export default function EducationPage() {
         </div>
 
         {/* Search Controls */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
+        <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className={`px-6 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
-              showSearch || searchTerm
-                ? 'bg-emerald-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              showSearch || searchTerm ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             Search

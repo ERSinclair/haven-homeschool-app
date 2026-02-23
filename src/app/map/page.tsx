@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/session';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import FamilyMap from '@/components/FamilyMap';
 
 type Family = {
@@ -71,7 +71,7 @@ export default function MapPage() {
     <ProtectedRoute>
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
         <div className="max-w-2xl mx-auto px-4 py-4">
-          <HavenHeader backHref="/discover" backLabel="Discover" />
+          <AppHeader backHref="/discover" backLabel="Discover" />
 
           <div className="mt-4 mb-4">
             <h1 className="text-xl font-bold text-gray-900">Families Near You</h1>

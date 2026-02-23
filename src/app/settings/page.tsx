@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { deleteMyAccount } from '@/lib/account-deletion';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import { getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
+import { loadSearchRadius, saveSearchRadius, MIN_RADIUS, MAX_RADIUS } from '@/lib/preferences';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -49,6 +50,7 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [searchRadius, setSearchRadius] = useState<number>(() => loadSearchRadius());
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -166,7 +168,7 @@ export default function SettingsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader backHref="/profile" />
+        <AppHeader onBack={() => router.back()} />
       </div>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">
@@ -190,6 +192,36 @@ export default function SettingsPage() {
               <span className="flex-1 text-gray-700">Change Password</span>
               <span className="text-gray-300">→</span>
             </button>
+          </div>
+        </div>
+
+        {/* Search Radius */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+            <h2 className="text-sm font-semibold text-gray-600">SEARCH RADIUS</h2>
+          </div>
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm text-gray-600">How far to show families, events, circles and board posts from your location.</p>
+              <span className="text-lg font-bold text-emerald-600 ml-3 flex-shrink-0">{searchRadius}km</span>
+            </div>
+            <input
+              type="range"
+              min={MIN_RADIUS}
+              max={MAX_RADIUS}
+              step="5"
+              value={searchRadius}
+              onChange={(e) => {
+                const km = parseInt(e.target.value);
+                setSearchRadius(km);
+                saveSearchRadius(km);
+              }}
+              className="w-full accent-emerald-600"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>{MIN_RADIUS}km</span>
+              <span>{MAX_RADIUS}km</span>
+            </div>
           </div>
         </div>
 

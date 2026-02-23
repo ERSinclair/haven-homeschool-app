@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { distanceKm } from '@/lib/geocode';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
+import { loadSearchRadius } from '@/lib/preferences';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -35,7 +36,7 @@ export default function CirclesDiscoverPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
-  const [searchRadius, setSearchRadius] = useState(50);
+  const [searchRadius] = useState(() => loadSearchRadius());
   const router = useRouter();
 
   useEffect(() => {
@@ -176,21 +177,10 @@ export default function CirclesDiscoverPage() {
     <ProtectedRoute>
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
         <div className="max-w-md mx-auto px-4 py-8">
-          <HavenHeader backHref="/circles" />
+          <AppHeader backHref="/circles" />
 
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">Find Circles</h1>
-            <p className="text-gray-500 text-sm">Discover public circles and join the ones that fit</p>
-          </div>
-
-          {/* Browse location + radius */}
+          {/* Browse location */}
           <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-xs text-gray-500 font-medium">Radius</span>
-            <button onClick={() => setSearchRadius(r => Math.max(5, r - 5))} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold text-sm">-</button>
-            <span className="text-sm font-semibold text-gray-700 w-14 text-center">{searchRadius} km</span>
-            <button onClick={() => setSearchRadius(r => Math.min(200, r + 5))} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold text-sm">+</button>
-          </div>
 
           {/* Search */}
           <div className="mb-6">
@@ -247,7 +237,7 @@ export default function CirclesDiscoverPage() {
                           <button
                             onClick={() => joinCircle(circle.id)}
                             disabled={circle.isJoining}
-                            className="px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-full hover:bg-emerald-700 disabled:opacity-50"
+                            className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-full hover:bg-gray-800 disabled:opacity-50"
                           >
                             {circle.isJoining ? 'Joining...' : 'Join'}
                           </button>

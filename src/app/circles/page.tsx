@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 type Circle = {
@@ -226,7 +226,7 @@ export default function CirclesPage() {
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button onClick={() => { setError(''); setLoading(true); loadCircles(); }}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">
+            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm">
             Try Again
           </button>
         </div>
@@ -297,8 +297,8 @@ export default function CirclesPage() {
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
-        <div className="max-w-md mx-auto px-4 py-8">
-          <HavenHeader />
+        <div className="max-w-md mx-auto px-4 pb-8 pt-2">
+          <AppHeader />
 
           {/* Selection toolbar */}
           {selectionMode && (
@@ -318,22 +318,22 @@ export default function CirclesPage() {
           )}
 
           {/* Action row */}
-          {!selectionMode && <div className="flex gap-2 mb-6 justify-center">
+          {!selectionMode && <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
             <button
               onClick={() => router.push('/circles/discover')}
-              className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200"
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
             >
               Find Circles
             </button>
             <button
               onClick={() => router.push('/circles/invitations')}
-              className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200"
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
             >
               Invitations
             </button>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm flex items-center justify-center bg-emerald-600 text-white hover:bg-emerald-700"
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
             >
               + Create
             </button>
@@ -342,29 +342,10 @@ export default function CirclesPage() {
           {/* Empty state */}
           {circles.length === 0 && (
             <div className="text-center py-12">
-              <div className="w-16 h-16 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-                </svg>
-              </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No circles yet</h3>
-              <p className="text-gray-500 text-sm mb-6">
+              <p className="text-gray-500 text-sm">
                 Join a public circle or create your own to connect around shared interests.
               </p>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={() => router.push('/circles/discover')}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700"
-                >
-                  Find Circles
-                </button>
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="px-4 py-2 bg-white text-emerald-600 border border-emerald-200 rounded-xl text-sm font-medium hover:bg-emerald-50"
-                >
-                  Create One
-                </button>
-              </div>
             </div>
           )}
 

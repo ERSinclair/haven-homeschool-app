@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -175,7 +175,7 @@ export default function MyEventsPage() {
           {isHosting ? (
             <button
               onClick={() => router.push(`/events?manage=${event.id}`)}
-              className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-full hover:bg-emerald-700"
+              className="px-3 py-1.5 text-xs font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
             >
               Manage
             </button>
@@ -232,25 +232,25 @@ export default function MyEventsPage() {
     <ProtectedRoute>
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
         <div className="max-w-md mx-auto px-4 py-8">
-          <HavenHeader />
+          <AppHeader />
 
           {/* Action row */}
-          <div className="flex gap-2 mb-6 justify-center">
+          <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
             <button
               onClick={() => router.push('/events')}
-              className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200"
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
             >
               Find Events
             </button>
             <button
               onClick={() => router.push('/events/invitations')}
-              className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200"
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
             >
               Invitations
             </button>
             <button
               onClick={() => router.push('/events?create=1')}
-              className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm flex items-center justify-center bg-emerald-600 text-white hover:bg-emerald-700"
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
             >
               + Create
             </button>
@@ -258,27 +258,8 @@ export default function MyEventsPage() {
 
           {isEmpty ? (
             <div className="text-center py-16">
-              <div className="w-16 h-16 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
               <h3 className="font-semibold text-gray-900 mb-2">No upcoming events</h3>
-              <p className="text-gray-500 text-sm mb-6">Create an event or find ones near you</p>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={() => router.push('/events')}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium"
-                >
-                  Find Events
-                </button>
-                <button
-                  onClick={() => router.push('/events?create=1')}
-                  className="px-4 py-2 border border-emerald-200 text-emerald-600 rounded-xl text-sm font-medium"
-                >
-                  Create One
-                </button>
-              </div>
+              <p className="text-gray-500 text-sm">Events you host or RSVP to will appear here.</p>
             </div>
           ) : (
             <>

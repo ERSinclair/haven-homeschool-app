@@ -617,40 +617,26 @@ export default function SignupPage() {
               <div className="space-y-4">
                 {/* User Type Selection */}
                 <div>
-                  <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setUserType('family')}
-                      className={`px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
-                        userType === 'family'
-                          ? 'bg-emerald-600 text-white shadow-md scale-105'
-                          : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
-                      }`}
-                    >
-                      Family
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setUserType('teacher')}
-                      className={`px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
-                        userType === 'teacher'
-                          ? 'bg-emerald-600 text-white shadow-md scale-105'
-                          : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
-                      }`}
-                    >
-                      Teacher
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setUserType('business')}
-                      className={`px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center ${
-                        userType === 'business'
-                          ? 'bg-emerald-600 text-white shadow-md scale-105'
-                          : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
-                      }`}
-                    >
-                      Business
-                    </button>
+                  <p className="text-sm font-medium text-gray-700 text-center mb-3">
+                    {userType ? 'Joining as' : 'I am joining as a...'}
+                  </p>
+                  <div className="flex gap-2 mb-4 justify-center">
+                    {(['family', 'teacher', 'business'] as const).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setUserType(type)}
+                        className={`px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all min-w-fit flex items-center justify-center ${
+                          userType === type
+                            ? 'bg-emerald-600 text-white shadow-md scale-105'
+                            : !userType
+                              ? 'bg-white text-gray-600 border-2 border-gray-300 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50 shadow-sm'
+                              : 'bg-white text-gray-400 border border-gray-200 hover:border-emerald-300 hover:text-emerald-600 hover:bg-emerald-50'
+                        }`}
+                      >
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -1761,20 +1747,17 @@ export default function SignupPage() {
               <div className="space-y-4 mb-6">
                 {children.map((child, index) => (
                   <div key={child.id} className="flex items-center gap-3">
-                    <label className="text-gray-700 font-medium min-w-[120px]">
-                      Service {index + 1}
-                    </label>
                     <input
                       type="text"
                       value={child.age}
                       onChange={(e) => updateServiceDescription(child.id, e.target.value)}
-                      className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      placeholder="Service or product description"
+                      className="flex-1 min-w-0 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      placeholder={`Service or product ${index + 1}`}
                     />
                     {children.length > 1 && (
                       <button
                         onClick={() => removeChild(child.id)}
-                        className="text-red-600 hover:text-red-700 p-2"
+                        className="text-red-400 hover:text-red-600 p-2 flex-shrink-0"
                         type="button"
                         title="Remove"
                       >

@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import AvatarUpload from '@/components/AvatarUpload';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import { createNotification } from '@/lib/notifications';
 
 type Circle = {
@@ -19,6 +19,10 @@ type Circle = {
   last_activity_at: string;
   created_at: string;
   created_by: string;
+  next_meetup_date?: string | null;
+  next_meetup_time?: string | null;
+  meetup_location?: string | null;
+  meetup_notes?: string | null;
 };
 
 type Member = {
@@ -40,6 +44,8 @@ type Message = {
   sender_id: string;
   created_at: string;
   message_type: string;
+  file_url?: string;
+  file_type?: string;
   sender_profile: {
     family_name: string;
     display_name?: string;
@@ -75,7 +81,14 @@ export default function CirclePage() {
   // Chat functionality
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'members' | 'resources'>('chat');
+  const [uploadingChatFile, setUploadingChatFile] = useState(false);
+  const chatFileRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<'chat' | 'members' | 'resources' | 'meetup'>('chat');
+  const [meetupDate, setMeetupDate] = useState('');
+  const [meetupTime, setMeetupTime] = useState('');
+  const [meetupLocation, setMeetupLocation] = useState('');
+  const [meetupNotes, setMeetupNotes] = useState('');
+  const [savingMeetup, setSavingMeetup] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
   const [showAddResource, setShowAddResource] = useState(false);
   const [resourceTitle, setResourceTitle] = useState('');
@@ -134,6 +147,10 @@ export default function CirclePage() {
         }
 
         setCircle(circleData);
+        if (circleData.next_meetup_date) setMeetupDate(circleData.next_meetup_date);
+        if (circleData.next_meetup_time) setMeetupTime(circleData.next_meetup_time.slice(0, 5));
+        if (circleData.meetup_location) setMeetupLocation(circleData.meetup_location);
+        if (circleData.meetup_notes) setMeetupNotes(circleData.meetup_notes);
 
         // Load members
         const membersRes = await fetch(
@@ -365,6 +382,53 @@ export default function CirclePage() {
     } finally {
       setSendingMessage(false);
     }
+  };
+
+  const sendCircleFile = async (file: File) => {
+    if (!circleId || uploadingChatFile) return;
+    setUploadingChatFile(true);
+    try {
+      const session = getStoredSession();
+      if (!session) return;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `circles/${circleId}/${session.user.id}-${Date.now()}.${ext}`;
+      const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/event-files/${path}`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': file.type || 'application/octet-stream',
+        },
+        body: file,
+      });
+      if (!uploadRes.ok) { return; }
+      const fileUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}`;
+      const res = await fetch(`${supabaseUrl}/rest/v1/circle_messages`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({
+          circle_id: circleId,
+          sender_id: session.user.id,
+          content: file.name,
+          file_url: fileUrl,
+          file_type: file.type,
+          message_type: 'file',
+        }),
+      });
+      if (res.ok) {
+        const [newMsg] = await res.json();
+        const currentMember = members.find(m => m.member_id === session.user.id);
+        setMessages(prev => [...prev, { ...newMsg, sender_profile: currentMember?.profile }]);
+      }
+    } catch { /* silent */ }
+    finally { setUploadingChatFile(false); if (chatFileRef.current) chatFileRef.current.value = ''; }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -670,7 +734,7 @@ export default function CirclePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4">
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white p-4">
         <div className="max-w-md mx-auto animate-pulse">
           <div className="h-20 bg-gray-200 rounded-xl mb-4"></div>
           <div className="h-96 bg-gray-200 rounded-xl"></div>
@@ -681,12 +745,12 @@ export default function CirclePage() {
 
   if (error || !circle) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white p-4 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error || 'Circle not found'}</p>
           <Link
             href="/circles"
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+            className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
           >
             Back to Circles
           </Link>
@@ -698,35 +762,34 @@ export default function CirclePage() {
   const colors = getColorClasses(circle.color);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <HavenHeader backHref="/circles" showWordmark={false} />
-          
-          {/* Circle Info */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {circle.emoji && <span className="text-2xl">{circle.emoji}</span>}
-              <div>
-                <h1 className="font-bold text-gray-900">{circle.name}</h1>
-                <p className="text-sm text-gray-500">{circle.member_count} members</p>
-              </div>
-            </div>
-            {isAdmin && (
-              <button 
+    <div className="h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden">
+      {/* Header — flex-shrink-0, always visible */}
+      <div className="flex-shrink-0 bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-md mx-auto">
+          <AppHeader
+            backHref="/circles"
+            right={isAdmin ? (
+              <button
                 onClick={() => setShowSettingsModal(true)}
-                className="text-gray-400 hover:text-gray-600 text-sm font-medium"
+                className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
               >
                 Settings
               </button>
-            )}
+            ) : undefined}
+          />
+          {/* Circle Info */}
+          <div className="flex items-center gap-3 px-4 pb-3">
+            {circle.emoji && <span className="text-2xl">{circle.emoji}</span>}
+            <div>
+              <h1 className="font-bold text-gray-900">{circle.name}</h1>
+              <p className="text-sm text-gray-500">{circle.member_count} members</p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="bg-white border-b border-gray-200">
+      {/* Tab Navigation — flex-shrink-0 */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200">
         <div className="max-w-md mx-auto px-4">
           <div className="flex">
             <button
@@ -759,14 +822,24 @@ export default function CirclePage() {
             >
               Resources
             </button>
+            <button
+              onClick={() => setActiveTab('meetup')}
+              className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
+                activeTab === 'meetup'
+                  ? 'border-emerald-500 text-emerald-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Meetup
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 max-w-md mx-auto w-full">
+      {/* Content — flex-1, overflow-hidden so chat can control its own scroll */}
+      <div className="flex-1 overflow-hidden max-w-md mx-auto w-full">
         {activeTab === 'chat' ? (
-          // Chat View
+          // Chat View — fills remaining height, messages scroll, input pinned at bottom
           <div className="flex flex-col h-full">
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -794,15 +867,25 @@ export default function CirclePage() {
                         message.sender_id === currentUserId ? 'text-right' : ''
                       }`}
                     >
-                      <div
-                        className={`inline-block px-3 py-2 rounded-lg ${
-                          message.sender_id === currentUserId
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-white border border-gray-200 text-gray-900'
-                        }`}
-                      >
-                        <p>{message.content}</p>
-                      </div>
+                      {message.file_url && message.file_type?.startsWith('image/') ? (
+                        <img
+                          src={message.file_url}
+                          alt={message.content}
+                          className="max-w-[200px] max-h-[200px] object-cover rounded-xl cursor-pointer inline-block"
+                          onClick={() => window.open(message.file_url, '_blank')}
+                        />
+                      ) : message.file_url ? (
+                        <div className={`inline-block px-3 py-2 rounded-lg ${message.sender_id === currentUserId ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-900'}`}>
+                          <a href={message.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm underline">
+                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                            {message.content}
+                          </a>
+                        </div>
+                      ) : (
+                        <div className={`inline-block px-3 py-2 rounded-lg ${message.sender_id === currentUserId ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-900'}`}>
+                          <p>{message.content}</p>
+                        </div>
+                      )}
                       <p className="text-xs text-gray-500 mt-1">
                         {message.sender_id !== currentUserId && (
                           <>
@@ -821,6 +904,27 @@ export default function CirclePage() {
             {/* Message Input */}
             <div className="bg-white border-t border-gray-200 p-4">
               <div className="flex gap-2 items-end">
+                <button
+                  onClick={() => chatFileRef.current?.click()}
+                  disabled={uploadingChatFile}
+                  className="p-2 text-gray-400 hover:text-emerald-600 transition-colors flex-shrink-0"
+                  title="Attach file"
+                >
+                  {uploadingChatFile ? (
+                    <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                  )}
+                </button>
+                <input
+                  ref={chatFileRef}
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx,.txt"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) sendCircleFile(f); }}
+                />
                 <textarea
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
@@ -847,7 +951,7 @@ export default function CirclePage() {
           </div>
         ) : activeTab === 'members' ? (
           // Members View
-          <div className="p-4">
+          <div className="h-full overflow-y-auto p-4">
             <div className="space-y-4">
               {/* Sort members alphabetically by last name */}
               {[...members].sort((a, b) => {
@@ -913,11 +1017,11 @@ export default function CirclePage() {
           </div>
         ) : activeTab === 'resources' ? (
           // Resources View
-          <div className="p-4">
+          <div className="h-full overflow-y-auto p-4">
             {/* Add resource button */}
             <button
               onClick={() => setShowAddResource(v => !v)}
-              className="w-full mb-4 py-2.5 px-4 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors"
+              className={`w-full mb-4 py-2.5 px-4 rounded-xl font-medium transition-colors ${showAddResource ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
             >
               {showAddResource ? 'Cancel' : '+ Add Resource'}
             </button>
@@ -997,6 +1101,144 @@ export default function CirclePage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'meetup' ? (
+          // Meetup Tab
+          <div className="h-full overflow-y-auto p-4 space-y-4">
+            {/* Current meetup display */}
+            {circle?.next_meetup_date && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-2">Next meetup</p>
+                <p className="font-semibold text-emerald-900 text-lg">
+                  {new Date(circle.next_meetup_date + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </p>
+                {circle.next_meetup_time && (
+                  <p className="text-emerald-700 mt-1">
+                    {(() => { const [h, m] = circle.next_meetup_time!.split(':'); const hr = parseInt(h); return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`; })()}
+                  </p>
+                )}
+                {circle.meetup_location && <p className="text-emerald-700 text-sm mt-1">{circle.meetup_location}</p>}
+                {circle.meetup_notes && <p className="text-gray-600 text-sm mt-2">{circle.meetup_notes}</p>}
+                <a
+                  href="/calendar"
+                  className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-emerald-700 hover:text-emerald-800"
+                >
+                  View in my calendar →
+                </a>
+              </div>
+            )}
+
+            {!circle?.next_meetup_date && !isAdmin && (
+              <div className="text-center py-8">
+                <p className="text-gray-400 text-sm">No meetup scheduled yet</p>
+                <p className="text-gray-400 text-xs mt-1">Admins can schedule a meetup here</p>
+              </div>
+            )}
+
+            {/* Admin: schedule / edit meetup */}
+            {isAdmin && (
+              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+                <p className="font-semibold text-gray-900 text-sm">{circle?.next_meetup_date ? 'Update meetup' : 'Schedule a meetup'}</p>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Date</label>
+                  <input
+                    type="date"
+                    value={meetupDate}
+                    onChange={e => setMeetupDate(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Time (optional)</label>
+                  <input
+                    type="time"
+                    value={meetupTime}
+                    onChange={e => setMeetupTime(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Location</label>
+                  <input
+                    type="text"
+                    value={meetupLocation}
+                    onChange={e => setMeetupLocation(e.target.value)}
+                    placeholder="Park, community hall, address..."
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Notes</label>
+                  <textarea
+                    value={meetupNotes}
+                    onChange={e => setMeetupNotes(e.target.value)}
+                    placeholder="What to bring, parking info, etc."
+                    rows={2}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 resize-none"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    disabled={!meetupDate || savingMeetup}
+                    onClick={async () => {
+                      if (!meetupDate) return;
+                      setSavingMeetup(true);
+                      try {
+                        const session = getStoredSession();
+                        if (!session) return;
+                        const sUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+                        const sKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                        const res = await fetch(`${sUrl}/rest/v1/circles?id=eq.${circle?.id}`, {
+                          method: 'PATCH',
+                          headers: {
+                            'apikey': sKey!,
+                            'Authorization': `Bearer ${session.access_token}`,
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            next_meetup_date: meetupDate,
+                            next_meetup_time: meetupTime || null,
+                            meetup_location: meetupLocation || null,
+                            meetup_notes: meetupNotes || null,
+                          }),
+                        });
+                        if (res.ok) {
+                          setCircle(prev => prev ? { ...prev, next_meetup_date: meetupDate, next_meetup_time: meetupTime || null, meetup_location: meetupLocation || null, meetup_notes: meetupNotes || null } : null);
+                        }
+                      } catch { /* silent */ }
+                      finally { setSavingMeetup(false); }
+                    }}
+                    className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold disabled:bg-gray-300 transition-colors"
+                  >
+                    {savingMeetup ? 'Saving...' : 'Save meetup'}
+                  </button>
+                  {circle?.next_meetup_date && (
+                    <button
+                      onClick={async () => {
+                        setSavingMeetup(true);
+                        try {
+                          const session = getStoredSession();
+                          if (!session) return;
+                          const sUrl2 = process.env.NEXT_PUBLIC_SUPABASE_URL;
+                          const sKey2 = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                          await fetch(`${sUrl2}/rest/v1/circles?id=eq.${circle?.id}`, {
+                            method: 'PATCH',
+                            headers: { 'apikey': sKey2!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ next_meetup_date: null, next_meetup_time: null, meetup_location: null, meetup_notes: null }),
+                          });
+                          setCircle(prev => prev ? { ...prev, next_meetup_date: null, next_meetup_time: null, meetup_location: null, meetup_notes: null } : null);
+                          setMeetupDate(''); setMeetupTime(''); setMeetupLocation(''); setMeetupNotes('');
+                        } catch { /* silent */ }
+                        finally { setSavingMeetup(false); }
+                      }}
+                      className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl text-sm font-semibold border border-red-200 hover:bg-red-100"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1370,7 +1612,7 @@ export default function CirclePage() {
                 {selectedMember.member_id !== currentUserId && (
                   <Link
                     href={`/messages?user=${selectedMember.member_id}`}
-                    className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors text-center"
+                    className="flex-1 px-4 py-3 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors text-center"
                     onClick={() => setSelectedMember(null)}
                   >
                     Message

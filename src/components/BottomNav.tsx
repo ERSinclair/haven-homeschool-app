@@ -103,14 +103,44 @@ export default function BottomNav() {
     router.push(href);
   };
 
+  const NAV_ICONS: Record<string, React.ReactNode> = {
+    Discover: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+    Circles: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <circle cx="8.5" cy="12" r="6" strokeWidth={2} />
+        <circle cx="15.5" cy="12" r="6" strokeWidth={2} />
+      </svg>
+    ),
+    Events: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+    Message: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+      </svg>
+    ),
+    Profile: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    ),
+  };
+
   return (
     <div
       id="bottom-navigation-v2"
-      className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50"
-      style={{ height: '80px' }}
+      className="fixed bottom-0 left-0 right-0 z-50"
+      style={{ height: '72px' }}
     >
-      <nav className="h-full bg-white">
-        <div className="max-w-md mx-auto h-full flex justify-around items-center px-2">
+      <div className="h-full bg-white/95 backdrop-blur-sm border-t border-gray-100 shadow-[0_-1px_12px_rgba(0,0,0,0.06)]">
+        <div className="max-w-md mx-auto h-full flex justify-around items-center px-1">
           {navItems.map((item) => {
             const rootHref = (item as any).rootHref || item.href;
             const isActive = pathname === rootHref || pathname.startsWith(rootHref + '/') ||
@@ -119,28 +149,31 @@ export default function BottomNav() {
               <button
                 key={item.href}
                 onClick={() => handleNavClick(item.href)}
-                className={`relative flex flex-col items-center justify-center w-full h-full transition-all duration-200 ${
-                  isActive ? 'text-emerald-600' : 'text-gray-500 hover:text-gray-700'
-                }`}
+                className="relative flex flex-col items-center justify-center flex-1 h-full gap-1 transition-all duration-150"
               >
+                {/* Badge */}
                 {item.badge > 0 && (
-                  <span className="absolute top-2 right-1/2 translate-x-3 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center border-2 border-white shadow-sm z-10">
+                  <span className="absolute top-2 left-[calc(50%+8px)] bg-red-500 text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center border-2 border-white z-10">
                     {item.badge > 9 ? '9+' : item.badge}
                   </span>
                 )}
-                <span className={`text-sm font-semibold transition-all duration-200 ${
-                  isActive ? 'text-emerald-600 scale-105' : 'text-gray-600'
+                {/* Icon with pill background when active */}
+                <div className={`p-1.5 rounded-xl transition-all duration-200 ${
+                  isActive ? 'bg-emerald-100 text-emerald-700' : 'text-gray-400'
+                }`}>
+                  {NAV_ICONS[item.label]}
+                </div>
+                {/* Label */}
+                <span className={`text-[10px] font-semibold leading-none transition-colors duration-200 ${
+                  isActive ? 'text-emerald-700' : 'text-gray-400'
                 }`}>
                   {item.label}
                 </span>
-                {isActive && (
-                  <span className="absolute bottom-0 w-10 h-1 bg-emerald-600 rounded-full shadow-sm"></span>
-                )}
               </button>
             );
           })}
         </div>
-      </nav>
+      </div>
     </div>
   );
 }

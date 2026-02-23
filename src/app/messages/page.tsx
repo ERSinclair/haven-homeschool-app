@@ -5,9 +5,10 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
+import { sendPush } from '@/lib/push';
 import { getAvatarColor } from '@/lib/colors';
 import AvatarUpload from '@/components/AvatarUpload';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 type Conversation = {
@@ -421,6 +422,21 @@ function MessagesContent() {
             }),
           }
         );
+
+        // Push notification to recipient (fire-and-forget)
+        const recipientId = conversations.find(c => c.id === selectedId)?.other_user?.id;
+        if (recipientId) {
+          const senderName = conversations.find(c => c.id === selectedId)
+            ? 'New message'
+            : 'New message';
+          sendPush(
+            session.access_token,
+            recipientId,
+            'New message on Haven',
+            newMessage || 'Sent you a photo',
+            '/messages'
+          );
+        }
       }
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
@@ -525,8 +541,10 @@ function MessagesContent() {
   };
 
   const handleMessageLongPress = (messageId: string) => {
-    setSelectionMode(true);
-    setSelectedMessages(prev => prev.includes(messageId) ? prev : [...prev, messageId]);
+    const msg = messages.find(m => m.id === messageId);
+    if (!msg) return;
+    setContextMenuMessage(msg);
+    setShowMessageContextMenu(true);
   };
 
   const getMessageFileUrl = (msg: Message): { fileUrl: string; isImage: boolean } | null => {
@@ -1117,63 +1135,50 @@ function MessagesContent() {
 
   if (selected) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col">
-        <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
-          <div className="max-w-md mx-auto px-4 py-4">
-            {/* Header with back button */}
-            <HavenHeader onBack={() => setSelectedId(null)} />
+      <div className="h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden">
+        <div className="flex-shrink-0 z-30 bg-white/90 backdrop-blur-sm border-b border-gray-100">
+          <div className="max-w-md mx-auto">
+            <AppHeader onBack={() => setSelectedId(null)} />
 
             {/* Conversation Controls */}
-            <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-              {selectionMode ? (
-                <>
-                  <button
-                    onClick={cancelSelection}
-                    className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
-                  >
-                    Cancel
+            {selectionMode && (
+              <div className="flex gap-1 mb-4 px-4 bg-white rounded-xl p-1 border border-gray-200 mx-4">
+                <button onClick={cancelSelection} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700">
+                  Cancel
+                </button>
+                {selectedMessages.length > 0 && (
+                  <button onClick={saveSelectedMessages} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all bg-emerald-600 text-white shadow-sm">
+                    Save
                   </button>
-                  {selectedMessages.length > 0 && (
-                    <button
-                      onClick={saveSelectedMessages}
-                      className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-emerald-600 text-white hover:bg-emerald-700"
-                    >
-                      Save
-                    </button>
-                  )}
-                  {selectedMessages.length > 0 && selectedMessages.some(id => {
-                    const msg = messages.find(m => m.id === id);
-                    return msg && getMessageFileUrl(msg) !== null;
-                  }) && (
-                    <button
-                      onClick={downloadSelectedFiles}
-                      className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-emerald-600 text-white hover:bg-emerald-700"
-                    >
-                      Download
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setShowDeleteMessageModal(true)}
-                    className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-300"
-                    disabled={selectedMessages.length === 0}
-                  >
-                    Delete
+                )}
+                {selectedMessages.length > 0 && selectedMessages.some(id => {
+                  const msg = messages.find(m => m.id === id);
+                  return msg && getMessageFileUrl(msg) !== null;
+                }) && (
+                  <button onClick={downloadSelectedFiles} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all bg-emerald-600 text-white shadow-sm">
+                    Download
                   </button>
-                </>
-              ) : (
-                <></>
-              )}
-            </div>
+                )}
+                <button
+                  onClick={() => setShowDeleteMessageModal(true)}
+                  disabled={selectedMessages.length === 0}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all bg-red-600 text-white shadow-sm disabled:opacity-40"
+                >
+                  Delete
+                </button>
+              </div>
+            )}
 
             {/* User Info (only show when not in selection mode) */}
             {!selectionMode && (
-              <div className="flex items-center gap-3 mb-4 mt-6">
+              <div className="flex items-center gap-3 mb-3 px-4">
                   <AvatarUpload
                     userId={selected.other_user.id}
                     currentAvatarUrl={selected.other_user.avatar_url}
                     name={selected.other_user.family_name || selected.other_user.display_name || 'Unknown'}
                     size="sm"
                     editable={false}
+                    viewable={true}
                     showFamilySilhouette={true}
                   />
                   <div className="flex-1">
@@ -1216,7 +1221,7 @@ function MessagesContent() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 max-w-md mx-auto w-full messages-container">
+        <div className="flex-1 overflow-y-auto px-4 pt-6 pb-36 space-y-4 max-w-md mx-auto w-full messages-container">
           {messages.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <p>No messages yet.</p>
@@ -1226,7 +1231,7 @@ function MessagesContent() {
             messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex ${msg.sender_id === userId ? 'justify-end' : 'justify-start'}`}
+                className={`flex w-full ${msg.sender_id === userId ? 'justify-end' : 'justify-start'}`}
               >
                 {(() => {
                     const file = getMessageFileUrl(msg);
@@ -1248,7 +1253,7 @@ function MessagesContent() {
                     };
 
                     return (
-                      <div className="relative">
+                      <div className="relative w-full max-w-full">
                         {/* Selection checkbox */}
                         {selectionMode && (
                           <div
@@ -1310,7 +1315,7 @@ function MessagesContent() {
                               </a>
                             )}
                             {textContent && (
-                              <p className="text-sm break-words overflow-wrap-anywhere" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>{textContent}</p>
+                              <p className="text-sm break-words" style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>{textContent}</p>
                             )}
                             <p className={`text-xs mt-1 ${msg.sender_id === userId ? 'text-emerald-200' : 'text-gray-400'}`}>
                               {formatTime(msg.created_at)}
@@ -1400,6 +1405,52 @@ function MessagesContent() {
             </div>
           </div>
         )}
+
+        {/* Lightbox — MUST be inside conversation view return (state-driven, not portal) */}
+        {lightboxUrl && (
+          <div
+            className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-[99999] p-4"
+            onClick={() => { setLightboxUrl(null); setLightboxMsgId(null); }}
+          >
+            <button
+              className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 text-white text-xl flex items-center justify-center hover:bg-white/30"
+              onClick={() => { setLightboxUrl(null); setLightboxMsgId(null); }}
+            >
+              ×
+            </button>
+            <img
+              src={lightboxUrl}
+              alt="Attachment"
+              className="max-w-full max-h-[75vh] rounded-xl object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div className="flex gap-3 mt-4" onClick={(e) => e.stopPropagation()}>
+              <a
+                href={lightboxUrl}
+                download
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-2 bg-white text-gray-900 rounded-xl font-medium hover:bg-gray-100 text-sm"
+              >
+                Download
+              </a>
+              {lightboxMsgId && (
+                <button
+                  onClick={() => {
+                    const msg = messages.find(m => m.id === lightboxMsgId);
+                    if (msg) saveMessageToSaved(msg);
+                    setLightboxUrl(null);
+                    setLightboxMsgId(null);
+                  }}
+                  className="px-5 py-2 bg-white/20 text-white rounded-xl font-medium hover:bg-white/30 text-sm"
+                >
+                  Save
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     );
   }
@@ -1407,17 +1458,17 @@ function MessagesContent() {
   return (
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white pb-24">
-      <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader />
+      <div className="max-w-md mx-auto px-4 pb-8 pt-2">
+        <AppHeader />
 
         {/* Main View Toggle with Search */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide justify-center">
+        <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
           <button
             onClick={() => router.push('/connections')}
-            className="relative px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+            className="relative flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
           >
             {pendingRequestsCount > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center border-2 border-white shadow-sm">
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center border border-white leading-none">
                 {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
               </span>
             )}
@@ -1425,44 +1476,35 @@ function MessagesContent() {
           </button>
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className={`px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
-              showSearch
-                ? 'bg-emerald-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              showSearch ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             Search
           </button>
           <button
             onClick={() => setShowNewMessageModal(true)}
-            className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
           >
             + New
           </button>
         </div>
 
         {/* Messages Controls */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-          {conversationSelectionMode ? (
-            <>
-              <button 
-                onClick={cancelConversationSelection}
-                className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => setShowDeleteConversationModal(true)}
-                className="px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm min-w-fit flex items-center justify-center bg-red-600 text-white shadow-md scale-105 hover:bg-red-700 disabled:bg-gray-300"
-                disabled={selectedConversations.length === 0}
-              >
-                Delete ({selectedConversations.length})
-              </button>
-            </>
-          ) : (
-            <></>
-          )}
-        </div>
+        {conversationSelectionMode && (
+          <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+            <button onClick={cancelConversationSelection} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700">
+              Cancel
+            </button>
+            <button
+              onClick={() => setShowDeleteConversationModal(true)}
+              disabled={selectedConversations.length === 0}
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all bg-red-600 text-white shadow-sm disabled:opacity-40"
+            >
+              Delete ({selectedConversations.length})
+            </button>
+          </div>
+        )}
 
         {/* Expandable Search Bar */}
         {showSearch && (
@@ -1543,6 +1585,7 @@ function MessagesContent() {
                   name=""
                   size="xl"
                   editable={false}
+                    viewable={true}
                   showFamilySilhouette={true}
                 />
               </div>
@@ -1617,6 +1660,7 @@ function MessagesContent() {
                     name={convo.other_user.family_name || convo.other_user.display_name || 'Unknown'}
                     size="md"
                     editable={false}
+                    viewable={true}
                     showFamilySilhouette={true}
                   />
                 </div>
@@ -1749,42 +1793,97 @@ function MessagesContent() {
         </div>
       )}
 
-      {/* Message Context Menu Modal */}
+      {/* Message Context Menu — bottom sheet */}
       {showMessageContextMenu && contextMenuMessage && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6">
-            <div className="text-center mb-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Message Options</h3>
-              <p className="text-gray-600 text-sm">
-                "{contextMenuMessage.content.length > 50 
-                  ? contextMenuMessage.content.substring(0, 50) + '...' 
-                  : contextMenuMessage.content}"
-              </p>
+        <div
+          className="fixed inset-0 z-[9999]"
+          onClick={() => { setShowMessageContextMenu(false); setContextMenuMessage(null); }}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40" />
+          {/* Sheet */}
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl pb-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" />
             </div>
-            <div className="space-y-3">
+            {/* Message preview */}
+            {contextMenuMessage.content && (
+              <p className="text-xs text-gray-400 text-center px-6 pb-4 truncate">
+                {contextMenuMessage.content.length > 60
+                  ? contextMenuMessage.content.substring(0, 60) + '...'
+                  : contextMenuMessage.content}
+              </p>
+            )}
+            {/* Actions */}
+            <div className="divide-y divide-gray-100 border-t border-gray-100">
+              {/* Copy text — only if there's text content */}
+              {contextMenuMessage.content && (() => {
+                const file = getMessageFileUrl(contextMenuMessage);
+                const textContent = file ? contextMenuMessage.content.replace(file.fileUrl, '').trim() : contextMenuMessage.content;
+                if (!textContent) return null;
+                return (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(textContent).catch(() => {});
+                      setShowMessageContextMenu(false);
+                      setContextMenuMessage(null);
+                      setSuccessMessage('Copied!');
+                      setShowSuccessNotification(true);
+                      setTimeout(() => setShowSuccessNotification(false), 2000);
+                    }}
+                    className="w-full px-6 py-4 text-left text-gray-900 font-medium text-sm hover:bg-gray-50 active:bg-gray-100"
+                  >
+                    Copy text
+                  </button>
+                );
+              })()}
               <button
                 onClick={() => saveMessageToSaved(contextMenuMessage)}
-                className="w-full px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 flex items-center justify-center gap-2 text-sm"
+                className="w-full px-6 py-4 text-left text-gray-900 font-medium text-sm hover:bg-gray-50 active:bg-gray-100"
               >
-                Save to Saved Messages
+                Save message
               </button>
+              {/* Delete — only for own messages */}
+              {contextMenuMessage.sender_id === userId && (
+                <button
+                  onClick={async () => {
+                    setShowMessageContextMenu(false);
+                    const msgToDelete = contextMenuMessage;
+                    setContextMenuMessage(null);
+                    const session = getStoredSession();
+                    if (!session) return;
+                    try {
+                      const res = await fetch(
+                        `${supabaseUrl}/rest/v1/messages?id=eq.${msgToDelete.id}`,
+                        {
+                          method: 'DELETE',
+                          headers: {
+                            'apikey': supabaseKey!,
+                            'Authorization': `Bearer ${session.access_token}`,
+                          },
+                        }
+                      );
+                      if (res.ok) {
+                        setMessages(prev => prev.filter(m => m.id !== msgToDelete.id));
+                      } else {
+                        toast('Could not delete message', 'error');
+                      }
+                    } catch {
+                      toast('Could not delete message', 'error');
+                    }
+                  }}
+                  className="w-full px-6 py-4 text-left text-red-600 font-medium text-sm hover:bg-red-50 active:bg-red-100"
+                >
+                  Delete message
+                </button>
+              )}
               <button
-                onClick={() => {
-                  setSelectionMode(true);
-                  setSelectedMessages([contextMenuMessage.id]);
-                  setShowMessageContextMenu(false);
-                  setContextMenuMessage(null);
-                }}
-                className="w-full px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 flex items-center justify-center gap-2 text-sm"
-              >
-                Select Message
-              </button>
-              <button
-                onClick={() => {
-                  setShowMessageContextMenu(false);
-                  setContextMenuMessage(null);
-                }}
-                className="w-full px-2 py-1.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm"
+                onClick={() => { setShowMessageContextMenu(false); setContextMenuMessage(null); }}
+                className="w-full px-6 py-4 text-left text-gray-400 font-medium text-sm hover:bg-gray-50 active:bg-gray-100"
               >
                 Cancel
               </button>
@@ -1796,7 +1895,7 @@ function MessagesContent() {
       {/* Image Lightbox */}
       {lightboxUrl && (
         <div
-          className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-[9999] p-4"
           onClick={() => { setLightboxUrl(null); setLightboxMsgId(null); }}
         >
           <img
@@ -1811,7 +1910,7 @@ function MessagesContent() {
               download
               target="_blank"
               rel="noopener noreferrer"
-              className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 text-sm"
+              className="px-5 py-2 bg-white text-gray-900 rounded-xl font-medium hover:bg-gray-100 text-sm"
             >
               Download
             </a>
@@ -1955,6 +2054,7 @@ function MessagesContent() {
                         name={connection.family_name || connection.display_name || 'Unknown'}
                         size="sm"
                         editable={false}
+                    viewable={true}
                         showFamilySilhouette={true}
                       />
                       <div className="flex-1">

@@ -144,7 +144,7 @@ function randomiseCoords(lng: number, lat: number, familyId: string): [number, n
   const seed = familyId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
   const rng = (s: number) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
   const angle = rng(seed) * 2 * Math.PI;
-  const distance = rng(seed + 1) * 3; // up to 3km
+  const distance = rng(seed + 1) * 1; // up to 1km — keeps pins on land for coastal suburbs
   const kmPerLat = 110.574;
   const kmPerLng = 111.320 * Math.cos(lat * Math.PI / 180);
   return [lng + (distance * Math.sin(angle)) / kmPerLng, lat + (distance * Math.cos(angle)) / kmPerLat];

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/session';
 import Link from 'next/link';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -83,33 +83,41 @@ export default function WelcomePage() {
   };
 
   useEffect(() => {
-    const session = getStoredSession();
-    if (session?.user) {
-      setUserData(session.user);
-      // Fetch profile data separately
-      fetchProfileData(session.user.id, session.access_token);
-    } else {
-      router.push('/signup');
-      return;
-    }
-
-    // Check if coming from signup for celebration mode
     const fromSignup = new URLSearchParams(window.location.search).get('fromSignup') === 'true';
     setIsFromSignup(fromSignup);
 
-    // Returning users who land here directly go to discover
+    // Returning users who land here directly → go to discover
     if (!fromSignup) {
-      router.replace('/discover');
+      const session = getStoredSession();
+      if (session?.user) {
+        router.replace('/discover');
+      } else {
+        router.push('/signup');
+      }
       return;
     }
 
-    // Animate in steps
-    const timers = [
-      setTimeout(() => setStep(1), 300),
-      setTimeout(() => setStep(2), 800),
-      setTimeout(() => setStep(3), 1300),
-    ];
-    return () => timers.forEach(clearTimeout);
+    // Coming from signup — session may take a moment to settle; retry up to 5 times
+    let attempts = 0;
+    const trySession = () => {
+      const session = getStoredSession();
+      if (session?.user) {
+        setUserData(session.user);
+        fetchProfileData(session.user.id, session.access_token);
+        // Animate in steps
+        setTimeout(() => setStep(1), 300);
+        setTimeout(() => setStep(2), 800);
+        setTimeout(() => setStep(3), 1300);
+      } else if (attempts < 5) {
+        attempts++;
+        setTimeout(trySession, 400);
+      } else {
+        // Gave up — send back to signup
+        router.push('/signup');
+      }
+    };
+
+    trySession();
   }, [router]);
 
   if (!userData) {
@@ -150,7 +158,7 @@ export default function WelcomePage() {
 
       <div className="max-w-md mx-auto px-4 py-8">
         {/* Haven header — same position as other pages */}
-        <HavenHeader backHref="/discover" backLabel="Close" wordmarkMargin="mb-4" />
+        <AppHeader backHref="/discover" backLabel="Close" />
 
         {/* Welcome Message — sits where the top button row sits on other pages */}
         <div className={`transition-all duration-500 text-center mb-6 ${step >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
@@ -215,30 +223,20 @@ export default function WelcomePage() {
                     </Link>
                   )}
                   <Link
-                    href="/discover"
+                    href="/onboarding"
                     className="block w-full bg-emerald-600 text-white text-base font-semibold py-3 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm text-center"
-                    onClick={() => {
-                      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fromSignup') === 'true') {
-                        localStorage.setItem('haven-signup-complete', Date.now().toString());
-                      }
-                    }}
                   >
-                    Find Families Near Me
+                    Set up my profile
                   </Link>
                 </>
               )}
               {profileData?.user_type === 'teacher' && (
                 <>
                   <Link
-                    href="/discover"
+                    href="/onboarding"
                     className="block w-full bg-emerald-600 text-white text-base font-semibold py-3 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm text-center"
-                    onClick={() => {
-                      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fromSignup') === 'true') {
-                        localStorage.setItem('haven-signup-complete', Date.now().toString());
-                      }
-                    }}
                   >
-                    Find Families to Help
+                    Set up my profile
                   </Link>
                   <Link
                     href="/profile"
@@ -251,15 +249,10 @@ export default function WelcomePage() {
               {profileData?.user_type === 'business' && (
                 <>
                   <Link
-                    href="/discover"
+                    href="/onboarding"
                     className="block w-full bg-emerald-600 text-white text-base font-semibold py-3 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm text-center"
-                    onClick={() => {
-                      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fromSignup') === 'true') {
-                        localStorage.setItem('haven-signup-complete', Date.now().toString());
-                      }
-                    }}
                   >
-                    Connect with Families
+                    Set up my profile
                   </Link>
                   <Link
                     href="/profile"

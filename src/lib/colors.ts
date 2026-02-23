@@ -69,3 +69,18 @@ export const statusIcons: Record<string, string> = {
   experienced: '',
   connecting: '',
 };
+
+// User type badge styles — consistent across the app
+export function getUserTypeBadge(userType?: string): { style: string; label: string } | null {
+  switch (userType) {
+    case 'teacher':
+      return { style: 'bg-blue-100 text-blue-700', label: 'Teacher' };
+    case 'business':
+    case 'facility':
+      return { style: 'bg-amber-100 text-amber-700', label: 'Business' };
+    case 'family':
+      return { style: 'bg-emerald-100 text-emerald-700', label: 'Family' };
+    default:
+      return null;
+  }
+}

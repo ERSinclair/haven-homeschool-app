@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import AvatarUpload from '@/components/AvatarUpload';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 type EventInvitation = {
@@ -223,7 +223,7 @@ export default function EventInvitationsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader onBack={() => router.back()} />
+        <AppHeader onBack={() => router.back()} />
 
         {/* Header */}
         <div className="text-center mb-8">

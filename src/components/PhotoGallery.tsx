@@ -37,6 +37,7 @@ export default function PhotoGallery({
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [longPressing, setLongPressing] = useState<string | null>(null);
   const [showPrivacySettings, setShowPrivacySettings] = useState(false);
+  const [confirmDeletePhotos, setConfirmDeletePhotos] = useState<Photo[] | null>(null);
   const [galleryPrivacy, setGalleryPrivacy] = useState<'public' | 'private' | 'connections' | 'selected'>('public');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [hasAccess, setHasAccess] = useState(true);
@@ -288,7 +289,35 @@ export default function PhotoGallery({
     }
   };
 
-  // deletePhoto function removed - now using batch selection system
+  const deletePhoto = (photo: Photo) => {
+    setConfirmDeletePhotos([photo]);
+    setShowModal(false);
+  };
+
+  const executeDeletePhotos = async (photosToDelete: Photo[]) => {
+    setConfirmDeletePhotos(null);
+    try {
+      for (const photo of photosToDelete) {
+        const filesToDelete = [photo.file_name];
+        if (photo.thumbnail_url) {
+          filesToDelete.push(photo.file_name.replace('photo_', 'thumb_'));
+        }
+        await supabase.storage
+          .from('profile-photos')
+          .remove(filesToDelete.map(name => `${userId}/${name}`));
+        try {
+          await supabase.from('profile_photos').delete().eq('id', photo.id);
+        } catch (dbError) {
+          console.log('Database delete failed (table may not exist):', dbError);
+        }
+      }
+      setPhotos(prev => prev.filter(p => !photosToDelete.some(d => d.id === p.id)));
+      exitSelectionMode();
+    } catch (err) {
+      console.error('Delete error:', err);
+      setError('Failed to delete photo');
+    }
+  };
 
   const openModal = (photo: Photo) => {
     setSelectedPhoto(photo);
@@ -340,46 +369,10 @@ export default function PhotoGallery({
     }
   };
 
-  const deleteSelectedPhotos = async () => {
+  const deleteSelectedPhotos = () => {
     if (selectedPhotos.length === 0) return;
-
-    const confirmed = confirm(`Delete ${selectedPhotos.length} photo${selectedPhotos.length > 1 ? 's' : ''}?`);
-    if (!confirmed) return;
-
-    try {
-      setError(null);
-      
-      // Get photos to delete
-      const photosToDelete = photos.filter(p => selectedPhotos.includes(p.id));
-      
-      // Delete from storage
-      for (const photo of photosToDelete) {
-        const filesToDelete = [photo.file_name];
-        if (photo.thumbnail_url) {
-          const thumbFileName = photo.file_name.replace('photo_', 'thumb_');
-          filesToDelete.push(thumbFileName);
-        }
-
-        await supabase.storage
-          .from('profile-photos')
-          .remove(filesToDelete.map(name => `${userId}/${name}`));
-
-        // Delete from database if exists
-        try {
-          await supabase.from('profile_photos').delete().eq('id', photo.id);
-        } catch (dbError) {
-          console.log('Database delete failed (table may not exist):', dbError);
-        }
-      }
-
-      // Update state
-      setPhotos(prev => prev.filter(p => !selectedPhotos.includes(p.id)));
-      exitSelectionMode();
-
-    } catch (err) {
-      console.error('Batch delete error:', err);
-      setError('Failed to delete photos');
-    }
+    const photosToDelete = photos.filter(p => selectedPhotos.includes(p.id));
+    setConfirmDeletePhotos(photosToDelete);
   };
 
   // Privacy-related functions
@@ -560,11 +553,11 @@ export default function PhotoGallery({
       <div className="bg-white rounded-2xl shadow-sm p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-gray-900">Photo Gallery</h3>
-          <div className="flex gap-2">
+          <div className="flex gap-3 items-center">
             {editable && (
               <button
                 onClick={openPrivacySettings}
-                className="px-2 py-1.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
               >
                 Privacy
               </button>
@@ -573,9 +566,9 @@ export default function PhotoGallery({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="px-2 py-1.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:bg-gray-400 transition-colors"
+                className="text-xs font-medium text-emerald-600 hover:text-emerald-700 disabled:text-gray-400 transition-colors"
               >
-                {uploading ? 'Uploading...' : 'Add Photos'}
+                {uploading ? 'Uploading…' : '+ Add'}
               </button>
             )}
           </div>
@@ -737,12 +730,60 @@ export default function PhotoGallery({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+            {editable && (
+              <button
+                onClick={() => deletePhoto(selectedPhoto)}
+                className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 z-10"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete
+              </button>
+            )}
             <img
               src={selectedPhoto.url}
               alt="Full size photo"
               className="max-w-full max-h-full object-contain rounded-lg"
               onClick={closeModal}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Haven Delete Confirmation Modal */}
+      {confirmDeletePhotos && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[9999]">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                Delete {confirmDeletePhotos.length === 1 ? 'photo' : `${confirmDeletePhotos.length} photos`}?
+              </h3>
+              <p className="text-gray-600 text-sm mb-6">
+                {confirmDeletePhotos.length === 1
+                  ? 'This photo will be permanently deleted and cannot be recovered.'
+                  : `These ${confirmDeletePhotos.length} photos will be permanently deleted and cannot be recovered.`}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDeletePhotos(null)}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => executeDeletePhotos(confirmDeletePhotos)}
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 text-sm transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

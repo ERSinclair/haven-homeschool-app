@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import AvatarUpload from '@/components/AvatarUpload';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 type Connection = {
@@ -119,27 +119,55 @@ export default function ConnectionsPage() {
         throw new Error('No recipients selected');
       }
 
-      // Send message to each recipient
-      const messagePromises = recipients.map(connection => 
-        fetch(`${supabaseUrl}/rest/v1/messages`, {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal',
-          },
-          body: JSON.stringify({
-            sender_id: session.user.id,
-            receiver_id: connection.user.id,
-            content: messageText.trim(),
-            message_type: 'text'
-          }),
-        })
-      );
+      // Send message to each recipient using conversation model
+      const h = {
+        'apikey': supabaseKey!,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      };
 
-      const responses = await Promise.all(messagePromises);
-      const failedSends = responses.filter(response => !response.ok);
+      const failedSends: Response[] = [];
+
+      for (const connection of recipients) {
+        const otherId = connection.user.id;
+
+        // Find existing conversation
+        const convoRes = await fetch(
+          `${supabaseUrl}/rest/v1/conversations?or=(and(participant_1.eq.${session.user.id},participant_2.eq.${otherId}),and(participant_1.eq.${otherId},participant_2.eq.${session.user.id}))&select=id&limit=1`,
+          { headers: h }
+        );
+        const convos = convoRes.ok ? await convoRes.json() : [];
+        let conversationId: string;
+
+        if (convos.length > 0) {
+          conversationId = convos[0].id;
+        } else {
+          // Create new conversation
+          const newConvoRes = await fetch(`${supabaseUrl}/rest/v1/conversations`, {
+            method: 'POST',
+            headers: { ...h, 'Prefer': 'return=representation' },
+            body: JSON.stringify({ participant_1: session.user.id, participant_2: otherId }),
+          });
+          if (!newConvoRes.ok) { failedSends.push(newConvoRes); continue; }
+          const [newConvo] = await newConvoRes.json();
+          conversationId = newConvo.id;
+        }
+
+        // Send message
+        const msgRes = await fetch(`${supabaseUrl}/rest/v1/messages`, {
+          method: 'POST',
+          headers: { ...h, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ conversation_id: conversationId, sender_id: session.user.id, content: messageText.trim() }),
+        });
+        if (!msgRes.ok) { failedSends.push(msgRes); continue; }
+
+        // Update conversation metadata
+        await fetch(`${supabaseUrl}/rest/v1/conversations?id=eq.${conversationId}`, {
+          method: 'PATCH',
+          headers: h,
+          body: JSON.stringify({ last_message_text: messageText.trim(), last_message_at: new Date().toISOString(), last_message_by: session.user.id }),
+        });
+      }
 
       if (failedSends.length === 0) {
         // All messages sent successfully
@@ -409,7 +437,7 @@ export default function ConnectionsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader />
+        <AppHeader />
 
         {/* Expandable Search Bar */}
         {showSearch && (
@@ -433,19 +461,17 @@ export default function ConnectionsPage() {
         )}
 
         {/* Main View Toggle with Search */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide justify-center">
+        <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
           <button
             onClick={() => router.push('/messages')}
-            className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
           >
             Messages
           </button>
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
-              showSearch || searchTerm
-                ? 'bg-emerald-600 text-white shadow-md scale-105'
-                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              showSearch || searchTerm ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             Search
@@ -453,45 +479,37 @@ export default function ConnectionsPage() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide justify-center">
-            <button
-              onClick={() => setActiveTab('connections')}
-              className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-32 flex items-center justify-center ${
-                activeTab === 'connections'
-                  ? 'bg-emerald-600 text-white shadow-md scale-105'
-                  : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
-              }`}
-            >
-              Connections ({filteredConnections.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('requests')}
-              className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-32 flex items-center justify-center gap-1 ${
-                activeTab === 'requests'
-                  ? 'bg-emerald-600 text-white shadow-md scale-105'
-                  : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
-              }`}
-            >
-              Requests
-              {pendingRequests.length > 0 ? (
-                <span className="bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 min-w-[16px] flex items-center justify-center border border-white shadow-sm flex-shrink-0 text-xs">
-                  {pendingRequests.length > 9 ? '9+' : pendingRequests.length}
-                </span>
-              ) : (
-                <span>(0)</span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('sent')}
-              className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-32 flex items-center justify-center ${
-                activeTab === 'sent'
-                  ? 'bg-emerald-600 text-white shadow-md scale-105'
-                  : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
-              }`}
-            >
-              Sent ({filteredSentRequests.length})
-            </button>
-          </div>
+        <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+          <button
+            onClick={() => setActiveTab('connections')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'connections' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Connections ({filteredConnections.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('requests')}
+            className={`relative flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'requests' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Requests
+            {pendingRequests.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center border border-white leading-none">
+                {pendingRequests.length > 9 ? '9+' : pendingRequests.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('sent')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'sent' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Sent ({filteredSentRequests.length})
+          </button>
+        </div>
 
         {/* Multi-select header */}
         {isMultiSelectMode && (
@@ -621,6 +639,7 @@ export default function ConnectionsPage() {
                             name={connection.user.family_name || connection.user.display_name}
                             size="md"
                             editable={false}
+                            viewable={true}
                           />
                         </div>
                       </div>
@@ -696,6 +715,7 @@ export default function ConnectionsPage() {
                       name={request.user.family_name || request.user.display_name}
                       size="md"
                       editable={false}
+                            viewable={true}
                     />
                     <div className="flex-1">
                       <h3 className="font-semibold text-emerald-600">
@@ -770,6 +790,7 @@ export default function ConnectionsPage() {
                       name={request.user.family_name || request.user.display_name}
                       size="md"
                       editable={false}
+                            viewable={true}
                     />
                     <div className="flex-1">
                       <h3 className="font-semibold text-emerald-600">
@@ -840,6 +861,7 @@ export default function ConnectionsPage() {
                   name={selectedProfile.user.family_name || selectedProfile.user.display_name || 'Family'}
                   size="lg"
                   editable={false}
+                            viewable={true}
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
@@ -967,6 +989,7 @@ export default function ConnectionsPage() {
                             name={conn.user.family_name || conn.user.display_name || 'User'}
                             size="sm"
                             editable={false}
+                            viewable={true}
                           />
                         </div>
                         <span className="text-xs text-emerald-700 font-medium">
@@ -984,6 +1007,7 @@ export default function ConnectionsPage() {
                   name={selectedConnectionForMessage.user.family_name || selectedConnectionForMessage.user.display_name || 'User'}
                   size="md"
                   editable={false}
+                            viewable={true}
                 />
                 <div>
                   <h3 className="font-semibold text-emerald-600">

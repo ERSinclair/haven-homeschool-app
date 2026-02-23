@@ -10,10 +10,12 @@ import { getAvatarColor, statusColors } from '@/lib/colors';
 import { geocodeSuburb } from '@/lib/geocode';
 import AvatarUpload from '@/components/AvatarUpload';
 import PhotoGallery from '@/components/PhotoGallery';
-import HavenHeader from '@/components/HavenHeader';
+import SimpleLocationPicker from '@/components/SimpleLocationPicker';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AdminBadge from '@/components/AdminBadge';
 import { submitBugReport, submitFeedback } from '@/lib/feedback';
+import { registerPush } from '@/lib/push';
 
 type Profile = {
   id: string;
@@ -35,6 +37,9 @@ type Profile = {
   // Business-specific
   services?: string;
   contact_info?: string;
+  // Location coordinates (used for Discover radius filtering)
+  location_lat?: number;
+  location_lng?: number;
 };
 
 export default function ProfilePage() {
@@ -61,6 +66,7 @@ export default function ProfilePage() {
   const [services, setServices] = useState('');
   const [contactInfo, setContactInfo] = useState('');
   const [children, setChildren] = useState<{ id: number; age: string }[]>([{ id: 1, age: '' }]);
+  const [selectedLocationCoords, setSelectedLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [showBugReportModal, setShowBugReportModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -69,6 +75,7 @@ export default function ProfilePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [isViewingOtherUser, setIsViewingOtherUser] = useState(false);
+  const [notifCount, setNotifCount] = useState(0);
   const router = useRouter();
 
   // Load user and profile
@@ -186,6 +193,17 @@ export default function ProfilePage() {
     loadProfile();
   }, [router]);
 
+  // Register push notifications once user is loaded (best-effort)
+  useEffect(() => {
+    if (!user) return;
+    const session = getStoredSession();
+    if (!session?.access_token) return;
+    // Only attempt if user hasn't dismissed / denied before
+    if (typeof window !== 'undefined' && Notification.permission !== 'denied') {
+      registerPush(user.id, session.access_token);
+    }
+  }, [user]);
+
   const handleSave = async () => {
     if (!user) return;
     
@@ -201,8 +219,8 @@ export default function ProfilePage() {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-      // Geocode location if it changed
-      const coords = editData.location_name ? await geocodeSuburb(editData.location_name) : null;
+      // Use pre-selected coords from location picker, or fall back to geocoding the text
+      const coords = selectedLocationCoords ?? (editData.location_name ? await geocodeSuburb(editData.location_name) : null);
 
       const res = await fetch(
         `${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`,
@@ -256,6 +274,8 @@ export default function ProfilePage() {
               const combined = [...predefined, ...custom];
               return combined.length > 0 ? combined : ['considering'];
             })(),
+          // Update coords if geocoding succeeded (clears the discoverability warning)
+          ...(coords ? { location_lat: coords.lat, location_lng: coords.lng } : {}),
         } : null);
         setIsEditing(false);
       }
@@ -273,7 +293,7 @@ export default function ProfilePage() {
   const handleShare = async () => {
     const shareData = {
       title: 'Join me on Haven',
-      text: 'Haven is an app for homeschool families to find and connect with each other locally. Come find us!',
+      text: 'Haven is an app for Families, Teachers and Businesses to connect with each other locally. Come find us!',
       url: 'https://familyhaven.app',
     };
     if (navigator.share) {
@@ -291,6 +311,31 @@ export default function ProfilePage() {
       }
     }
   };
+
+  // Fetch unread notification count to badge the button
+  useEffect(() => {
+    if (isViewingOtherUser) return;
+    const session = getStoredSession();
+    if (!session?.user) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    fetch(
+      `${supabaseUrl}/rest/v1/notifications?user_id=eq.${session.user.id}&read=eq.false&select=id`,
+      {
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Prefer': 'count=exact',
+          'Range': '0-0',
+        },
+      }
+    ).then(res => {
+      if (res.ok) {
+        const cr = res.headers.get('Content-Range');
+        setNotifCount(cr ? parseInt(cr.split('/')[1]) || 0 : 0);
+      }
+    }).catch(() => {});
+  }, [isViewingOtherUser]);
 
   const getProfileCompleteness = () => {
     if (!profile) return { score: 0, missing: [] as string[] };
@@ -439,49 +484,127 @@ export default function ProfilePage() {
   return (
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
-      <div className="max-w-md mx-auto px-4 py-8">
+      <div className="max-w-md mx-auto px-4 pb-8 pt-2">
         {/* Header with conditional back button */}
         {isEditing ? (
-          <HavenHeader onBack={() => setIsEditing(false)} />
+          <AppHeader onBack={() => setIsEditing(false)} />
         ) : isViewingOtherUser ? (
-          <HavenHeader onBack={() => router.back()} />
+          <AppHeader onBack={() => router.back()} />
         ) : (
-          <HavenHeader />
-        )}
-
-        {/* Profile Controls */}
-        {!isEditing && !isViewingOtherUser && (
-          <>
-            <div className="flex gap-2 mb-2 justify-center">
-              <Link href="/connections" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
-                Connections
-              </Link>
-              <Link href="/settings" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
+          <AppHeader
+            left={
+              <Link href="/settings" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors">
                 Settings
               </Link>
+            }
+          />
+        )}
+
+        {/* Nav chips — Calendar, Connections, Education, Board */}
+        {!isEditing && !isViewingOtherUser && (
+          <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
+            <Link href="/calendar" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-center text-gray-500 hover:text-gray-700">
+              Calendar
+            </Link>
+            <Link href="/connections" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-center text-gray-500 hover:text-gray-700">
+              Connections
+            </Link>
+            <Link href="/education" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-center text-gray-500 hover:text-gray-700">
+              Education
+            </Link>
+            <Link href="/board" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-center text-gray-500 hover:text-gray-700">
+              Board
+            </Link>
+          </div>
+        )}
+
+        {/* Discoverability warning — own profile only, not editing, only when location truly unresolvable */}
+        {!isEditing && !isViewingOtherUser && profile?.location_name && !profile?.location_lat && !profile?.location_lng && (() => {
+          const knownSuburbs = ['torquay','geelong','anglesea','lorne','melbourne','ocean grove','barwon heads','point lonsdale'];
+          const loc = (profile.location_name || '').toLowerCase();
+          const resolvable = knownSuburbs.some(s => loc.includes(s) || s.includes(loc));
+          return !resolvable;
+        })() && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+            <p className="text-sm font-semibold text-amber-800 mb-1">You may not be visible in Discover</p>
+            <p className="text-xs text-amber-700 mb-3">
+              Haven couldn't verify your location coordinates, so you won't appear in other members' local results. To fix this, edit your profile and re-save your suburb.
+            </p>
+            <button
+              onClick={() => setIsEditing(true)}
+              className="px-4 py-2 bg-amber-600 text-white text-xs font-semibold rounded-xl hover:bg-amber-700 transition-colors"
+            >
+              Edit profile to fix this
+            </button>
+          </div>
+        )}
+
+        {/* Profile completeness nudge — own profile only, not editing */}
+        {!isEditing && !isViewingOtherUser && (() => {
+          const { score, missing } = getProfileCompleteness();
+          if (score === 100) return null;
+          return (
+            <div className="bg-white rounded-2xl shadow-sm p-5 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-gray-800">Profile completeness</span>
+                <span className="text-sm font-bold text-emerald-600">{score}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
+                <div
+                  className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${score}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Still missing: {missing.join(', ')}. A complete profile gets more connections.
+              </p>
               <button
                 onClick={() => setIsEditing(true)}
-                className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
+                className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
+              >
+                Complete profile
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Profile Card */}
+        <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 mt-4">
+          {/* Button row — Edit | Share profile | Notifications */}
+          {!isEditing && !isViewingOtherUser && (
+            <div className="flex items-center justify-center gap-6 pb-4">
+              <button
+                onClick={() => setIsEditing(true)}
+                className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
               >
                 Edit
               </button>
-            </div>
-            <div className="flex gap-2 mb-4 justify-center">
-              <Link href="/notifications" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
+              <button
+                onClick={async () => {
+                  const shareUrl = `https://familyhaven.app/u/${user?.id}`;
+                  if (navigator.share) {
+                    try {
+                      await navigator.share({ title: `${profile?.display_name || profile?.family_name} on Haven`, text: 'Connect with us on Haven — a community for homeschool families', url: shareUrl });
+                    } catch { /* user cancelled */ }
+                  } else {
+                    await navigator.clipboard.writeText(shareUrl);
+                    toast('Profile link copied!', 'success');
+                  }
+                }}
+                className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+              >
+                Share profile
+              </button>
+              <Link href="/notifications" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors flex items-center gap-1">
                 Notifications
-              </Link>
-              <Link href="/education" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
-                Education
-              </Link>
-              <Link href="/board" className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105">
-                Board
+                {notifCount > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center border border-white leading-none flex-shrink-0">
+                    {notifCount > 9 ? '9+' : notifCount}
+                  </span>
+                )}
               </Link>
             </div>
-          </>
-        )}
-
-        {/* Profile Card */}
-        <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 mt-12">
+          )}
           {/* Avatar & Name */}
           <div className="text-center pb-6 pt-2">
             <div className="mb-4 flex justify-center relative">
@@ -635,12 +758,13 @@ export default function ProfilePage() {
           {/* Location */}
           <div className="mb-6 text-center">
             {isEditing ? (
-              <input
-                type="text"
-                value={editData.location_name}
-                onChange={(e) => setEditData({ ...editData, location_name: e.target.value })}
-                className="w-full p-2 focus:ring-2 focus:ring-emerald-500 text-center focus:outline-none bg-transparent text-gray-700"
-                placeholder="Your suburb"
+              <SimpleLocationPicker
+                initialLocation={editData.location_name}
+                placeholder="Search your suburb..."
+                onLocationSelect={(loc) => {
+                  setEditData({ ...editData, location_name: loc.name });
+                  setSelectedLocationCoords({ lat: loc.lat, lng: loc.lng });
+                }}
               />
             ) : (
               <p className="text-gray-600">{profile.location_name || 'Not set'}</p>
@@ -925,34 +1049,21 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Profile completeness nudge — own profile only, not editing */}
-        {!isEditing && !isViewingOtherUser && (() => {
-          const { score, missing } = getProfileCompleteness();
-          if (score === 100) return null;
-          return (
-            <div className="bg-white rounded-2xl shadow-sm p-5 mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-gray-800">Profile completeness</span>
-                <span className="text-sm font-bold text-emerald-600">{score}%</span>
-              </div>
-              <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
-                <div
-                  className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${score}%` }}
-                />
-              </div>
-              <p className="text-xs text-gray-500 mb-3">
-                Still missing: {missing.join(', ')}. A complete profile gets more connections.
-              </p>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
-              >
-                Complete profile
-              </button>
-            </div>
-          );
-        })()}
+        {/* Invite card — own profile only */}
+        {!isViewingOtherUser && (
+          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 mb-6">
+            <h3 className="font-bold text-lg mb-1 text-gray-900">Know someone who would like to join our community?</h3>
+            <p className="text-gray-500 text-sm mb-4">
+              Invite families, friends, educators and businesses to Haven and help grow our local communities.
+            </p>
+            <button
+              onClick={handleShare}
+              className="w-full py-2.5 bg-white text-gray-700 font-semibold rounded-xl border border-gray-200 hover:bg-emerald-100 hover:text-emerald-800 hover:border-emerald-200 transition-colors text-sm shadow-sm"
+            >
+              Share Haven
+            </button>
+          </div>
+        )}
 
         {/* Photo Gallery */}
         <div className="mb-6" data-gallery>
@@ -963,22 +1074,6 @@ export default function ProfilePage() {
             viewingUserId={user?.id}
           />
         </div>
-
-        {/* Invite card — own profile only */}
-        {!isViewingOtherUser && (
-          <div className="bg-emerald-600 rounded-2xl p-5 mb-6 text-white">
-            <h3 className="font-bold text-lg mb-1">Know a homeschool family?</h3>
-            <p className="text-emerald-100 text-sm mb-4">
-              Invite them to Haven and grow your local community.
-            </p>
-            <button
-              onClick={handleShare}
-              className="w-full py-2.5 bg-white text-emerald-700 font-semibold rounded-xl hover:bg-emerald-50 transition-colors text-sm"
-            >
-              Share Haven
-            </button>
-          </div>
-        )}
 
         {/* Feedback buttons */}
         <div className="flex gap-3 mb-4">

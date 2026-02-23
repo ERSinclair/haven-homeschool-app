@@ -6,8 +6,7 @@
  * Clears on explicit user action; persists across page navigation in the same session.
  */
 
-import { useState } from 'react';
-import { geocodeSuburb } from '@/lib/geocode';
+import { useState, useRef, useEffect } from 'react';
 
 export type BrowseLocationState = {
   suburb: string;
@@ -31,6 +30,8 @@ export function clearBrowseLocation() {
   if (typeof window !== 'undefined') localStorage.removeItem(STORAGE_KEY);
 }
 
+type Suggestion = { name: string; lat: number; lng: number };
+
 type Props = {
   current: BrowseLocationState;
   onChange: (loc: BrowseLocationState) => void;
@@ -38,24 +39,72 @@ type Props = {
 
 export default function BrowseLocation({ current, onChange }: Props) {
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const handleSet = async () => {
-    if (!input.trim()) return;
-    setLoading(true);
-    setError('');
-    const coords = await geocodeSuburb(input.trim());
-    setLoading(false);
-    if (!coords) {
-      setError('Suburb not found — try a different spelling');
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setSuggestions([]);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const fetchSuggestions = (value: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (value.trim().length < 2) {
+      setSuggestions([]);
       return;
     }
-    const loc: BrowseLocationState = { suburb: input.trim(), lat: coords.lat, lng: coords.lng };
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const q = encodeURIComponent(`${value}, Australia`);
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=6&countrycodes=au&addressdetails=1`,
+          { headers: { 'Accept-Language': 'en', 'User-Agent': 'HavenApp/1.0' } }
+        );
+        const data = await res.json();
+        setSuggestions(
+          data.map((r: { display_name: string; lat: string; lon: string }) => ({
+            name: r.display_name
+              .split(',')
+              .slice(0, 3)
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+              .join(', '),
+            lat: parseFloat(r.lat),
+            lng: parseFloat(r.lon),
+          }))
+        );
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
+  };
+
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    setError('');
+    fetchSuggestions(value);
+  };
+
+  const selectSuggestion = (s: Suggestion) => {
+    const suburb = s.name.split(',')[0].trim();
+    const loc: BrowseLocationState = { suburb, lat: s.lat, lng: s.lng };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(loc));
     onChange(loc);
     setInput('');
+    setSuggestions([]);
     setOpen(false);
   };
 
@@ -66,7 +115,7 @@ export default function BrowseLocation({ current, onChange }: Props) {
   };
 
   return (
-    <div className="mb-4">
+    <div className="mb-4" ref={wrapperRef}>
       {current ? (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-sm">
           <span className="text-amber-700 font-medium flex-1">
@@ -95,26 +144,40 @@ export default function BrowseLocation({ current, onChange }: Props) {
       )}
 
       {open && (
-        <div className="mt-2 flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSet()}
-            placeholder="Enter suburb e.g. Melbourne"
-            className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-            autoFocus
-          />
-          <button
-            onClick={handleSet}
-            disabled={loading || !input.trim()}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 disabled:bg-gray-300 transition-colors"
-          >
-            {loading ? '...' : 'Go'}
-          </button>
+        <div className="mt-2 relative">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={e => handleInputChange(e.target.value)}
+              placeholder="Type a suburb e.g. Geelong"
+              className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              autoFocus
+            />
+            {searching && (
+              <div className="absolute right-3 top-2.5 w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+            )}
+          </div>
+
+          {suggestions.length > 0 && (
+            <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+              {suggestions.map((s, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => selectSuggestion(s)}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-800 transition-colors border-b border-gray-100 last:border-0"
+                  >
+                    {s.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {error && <p className="text-xs text-red-500 mt-1 px-1">{error}</p>}
         </div>
       )}
-      {error && <p className="text-xs text-red-500 mt-1 px-1">{error}</p>}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import AvatarUpload from '@/components/AvatarUpload';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 type CircleInvitation = {
@@ -198,7 +198,7 @@ export default function CircleInvitationsPage() {
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-2 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
+            className="px-2 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 text-sm"
           >
             Try Again
           </button>
@@ -211,13 +211,7 @@ export default function CircleInvitationsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader backHref="/circles" />
-
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Circle Invitations</h1>
-          <p className="text-gray-600">Invitations to join circles from other families</p>
-        </div>
+        <AppHeader backHref="/circles" />
 
         {/* Pending Invitations */}
         {pendingInvitations.length > 0 && (
@@ -289,16 +283,8 @@ export default function CircleInvitationsPage() {
         {/* No Pending Invitations */}
         {pendingInvitations.length === 0 && (
           <div className="text-center py-12">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Invitations</h3>
-            <p className="text-gray-600 mb-4">
-              You don't have any pending circle invitations right now.
-            </p>
-            <Link
-              href="/circles"
-              className="inline-flex items-center px-2 py-1.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors text-sm"
-            >
-              Browse Circles
-            </Link>
+            <p className="text-base font-bold text-gray-900 mb-1">No Pending Invitations</p>
+            <p className="text-sm text-gray-500">You don't have any pending circle invitations right now.</p>
           </div>
         )}
 

@@ -1,20 +1,21 @@
 'use client';
 import { toast } from '@/lib/toast';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { getStoredSession } from '@/lib/session';
-import { getAvatarColor, statusColors, statusLabels, statusIcons } from '@/lib/colors';
+import { getAvatarColor, statusColors, statusLabels, statusIcons, getUserTypeBadge } from '@/lib/colors';
 import { checkProfileCompletion, getResumeSignupUrl } from '@/lib/profileCompletion';
 import FamilyMap from '@/components/FamilyMap';
 import AvatarUpload from '@/components/AvatarUpload';
-import HavenHeader from '@/components/HavenHeader';
+import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AdminBadge from '@/components/AdminBadge';
 import { createNotification } from '@/lib/notifications';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
+import { loadSearchRadius } from '@/lib/preferences';
 
 type Family = {
   id: string;
@@ -100,8 +101,8 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
-// Get coordinates for common locations
-function getLocationCoords(locationName: string): { lat: number; lng: number } {
+// Get coordinates for common locations — returns null if unknown (do not guess)
+function getLocationCoords(locationName: string): { lat: number; lng: number } | null {
   const locations: { [key: string]: { lat: number; lng: number } } = {
     'Torquay': { lat: -38.3305, lng: 144.3256 },
     'Geelong': { lat: -38.1479, lng: 144.3599 },
@@ -124,11 +125,11 @@ function getLocationCoords(locationName: string): { lat: number; lng: number } {
   );
   if (partialMatch) return locations[partialMatch];
   
-  // Default to Torquay
-  return locations['Torquay'];
+  // Unknown location — return null so radius filter can exclude them
+  return null;
 }
 
-export default function EnhancedDiscoverPage() {
+function EnhancedDiscoverPage() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
@@ -138,10 +139,7 @@ export default function EnhancedDiscoverPage() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   
   // Selection and hiding system
-  const [selectedFamilies, setSelectedFamilies] = useState<string[]>([]);
   const [hiddenFamilies, setHiddenFamilies] = useState<string[]>([]);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageText, setSuccessMessageText] = useState('Success!');
   const [showHiddenModal, setShowHiddenModal] = useState(false);
@@ -157,7 +155,6 @@ export default function EnhancedDiscoverPage() {
   // View and filtering
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [activeSection, setActiveSection] = useState<Section>('families');
-  const [showFilters, setShowFilters] = useState(false);
   const [maxDistance, setMaxDistance] = useState(15);
   const [ageRange, setAgeRange] = useState({ min: 1, max: 10 });
   const [activeTab, setActiveTab] = useState<'all' | 'family' | 'teacher' | 'business'>('all');
@@ -171,22 +168,16 @@ export default function EnhancedDiscoverPage() {
   const [businessTypeFilter, setBusinessTypeFilter] = useState<string>('all');
   const [businessCustomFilter, setBusinessCustomFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
-  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [dismissedBanner, setDismissedBanner] = useState(() =>
+    typeof window !== 'undefined' && sessionStorage.getItem('haven-nearby-banner-dismissed') === 'true'
+  );
+  const [locationMissing, setLocationMissing] = useState(false);
 
-  
   // Radius search - with localStorage persistence for testing
-  const [radiusSearch, setRadiusSearch] = useState(() => {
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      return localStorage.getItem('haven-radius-search') === 'true';
-    }
-    return false;
-  });
-  const [searchRadius, setSearchRadius] = useState(() => {
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      return parseInt(localStorage.getItem('haven-search-radius') || '10');
-    }
-    return 10;
-  });
+  const [searchRadius] = useState(() => loadSearchRadius());
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(() => {
     if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
       const stored = localStorage.getItem('haven-user-location');
@@ -198,8 +189,25 @@ export default function EnhancedDiscoverPage() {
   const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
   
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-
+  // Auto-open profile from ?profile= query param (e.g. from notification links)
+  useEffect(() => {
+    const profileId = searchParams.get('profile');
+    if (!profileId) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const session = getStoredSession();
+    if (!session || !supabaseUrl || !supabaseKey) return;
+    fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${profileId}&select=*`, {
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data && data[0]) setSelectedFamilyDetails(data[0] as Family);
+      })
+      .catch(() => {});
+  }, [searchParams]);
 
   // Simplified location and radius management - no more complex localStorage persistence
 
@@ -306,6 +314,13 @@ export default function EnhancedDiscoverPage() {
           }
           
           setProfile(profileData);
+
+          // Warn only if the location can't be resolved at all — neither stored coords nor the known-suburbs list
+          if (profileData.location_name && !profileData.location_lat && !profileData.location_lng) {
+            const resolvable = getLocationCoords(profileData.location_name);
+            if (!resolvable) setLocationMissing(true);
+          }
+
           // Set age range based on kids
           if (profileData.kids_ages?.length > 0) {
             const minAge = Math.max(0, Math.min(...profileData.kids_ages) - 2);
@@ -398,16 +413,27 @@ export default function EnhancedDiscoverPage() {
 
     loadData();
 
-    // Cleanup long press timer on unmount
-    return () => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-      }
-    };
-  }, [router, longPressTimer]);
+  }, [router]);
 
   // Filter families based on current filters
   useEffect(() => {
+    // Global search — bypasses radius and all other filters
+    if (searchQuery.trim().length > 0) {
+      const q = searchQuery.trim().toLowerCase();
+      const results = families.filter(family => {
+        if (hiddenFamilies.includes(family.id)) return false;
+        return (
+          family.family_name?.toLowerCase().includes(q) ||
+          family.display_name?.toLowerCase().includes(q) ||
+          family.username?.toLowerCase().includes(q) ||
+          family.location_name?.toLowerCase().includes(q) ||
+          family.bio?.toLowerCase().includes(q)
+        );
+      });
+      setFilteredFamilies(results);
+      return;
+    }
+
     let filtered = families.filter(family => {
       // Filter out hidden families
       if (hiddenFamilies.includes(family.id)) return false;
@@ -427,6 +453,8 @@ export default function EnhancedDiscoverPage() {
         const familyCoords = (family.location_lat && family.location_lng)
           ? { lat: family.location_lat, lng: family.location_lng }
           : getLocationCoords(family.location_name);
+        // If coords are unknown, exclude from radius results
+        if (!familyCoords) return false;
         const distance = calculateDistance(
           activeLocation.lat,
           activeLocation.lng,
@@ -589,7 +617,7 @@ export default function EnhancedDiscoverPage() {
     });
 
     setFilteredFamilies(sortedFamilies);
-  }, [families, locationFilter, ageRange, activeTab, familyStatusFilter, familyCustomFilter, approachFilter, teacherTypeFilter, teacherTypeCustom, teacherSubFilter, teacherSubCustom, businessTypeFilter, businessCustomFilter, hiddenFamilies, profile, userLocation, browseLocation, searchRadius, connectionRequests]);
+  }, [families, locationFilter, ageRange, activeTab, familyStatusFilter, familyCustomFilter, approachFilter, teacherTypeFilter, teacherTypeCustom, teacherSubFilter, teacherSubCustom, businessTypeFilter, businessCustomFilter, hiddenFamilies, profile, userLocation, browseLocation, searchRadius, connectionRequests, searchQuery]);
 
   // Log 'other' box entries to search_insights table (debounced 1.5s)
   useEffect(() => {
@@ -624,62 +652,26 @@ export default function EnhancedDiscoverPage() {
     return () => clearTimeout(timer);
   }, [familyCustomFilter, teacherTypeCustom, teacherSubCustom, businessCustomFilter]);
 
-  // Family selection handlers
-  const toggleFamilySelection = (familyId: string) => {
-    setSelectedFamilies(prev =>
-      prev.includes(familyId)
-        ? prev.filter(id => id !== familyId)
-        : [...prev, familyId]
-    );
-  };
+  // Getting started toast — fires once per session until all steps complete
+  useEffect(() => {
+    if (!profile) return;
+    const acceptedCount = [...connectionRequests.values()].filter(c => c.status === 'accepted').length;
+    if (acceptedCount > 0) return; // fully onboarded
 
-  // Long hold handlers for selection
-  const handleLongPressStart = (familyId: string, event: React.MouseEvent | React.TouchEvent) => {
-    // Note: No preventDefault needed for long press functionality
-    
-    const timer = setTimeout(() => {
-      // Haptic feedback on mobile
-      if ('vibrate' in navigator) {
-        navigator.vibrate(50);
-      }
-      
-      // Enter selection mode if not already active
-      if (!selectionMode) {
-        setSelectionMode(true);
-      }
-      
-      // Select the family
-      toggleFamilySelection(familyId);
-    }, 1000); // 1000ms for long press
-    
-    setLongPressTimer(timer);
-  };
+    const shownKey = 'haven-setup-toast';
+    if (sessionStorage.getItem(shownKey)) return;
+    sessionStorage.setItem(shownKey, 'true');
 
-  const handleLongPressEnd = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
-    }
-  };
+    const profileDone = !!(profile?.bio?.trim());
+    const done = profileDone ? 1 : 0;
+    const total = 4;
+    const msg = done === 0
+      ? 'Welcome to Haven! Start by completing your profile.'
+      : `Setup: ${done}/${total} done — connect with families nearby!`;
 
-  const handleFamilyClick = (familyId: string) => {
-    if (selectionMode) {
-      // In selection mode, clicking toggles selection
-      toggleFamilySelection(familyId);
-    } else {
-      // Normal mode - could open family details (future feature)
-    }
-  };
-
-  const hideSelectedFamilies = () => {
-    setHiddenFamilies(prev => [...prev, ...selectedFamilies]);
-    setSelectedFamilies([]);
-    setSelectionMode(false);
-    
-    // Save to localStorage
-    const newHidden = [...hiddenFamilies, ...selectedFamilies];
-    localStorage.setItem('haven-hidden-families', JSON.stringify(newHidden));
-  };
+    const timer = setTimeout(() => toast(msg, 'info'), 1500);
+    return () => clearTimeout(timer);
+  }, [profile, connectionRequests]);
 
   const clearHiddenFamilies = () => {
     setHiddenFamilies([]);
@@ -714,20 +706,20 @@ export default function EnhancedDiscoverPage() {
     const connection = connectionRequests.get(familyId);
     
     if (!connection) {
-      return { text: 'Connect', disabled: false, style: 'bg-emerald-600 text-white hover:bg-emerald-700' };
+      return { text: 'Connect', disabled: false, style: 'bg-white text-gray-700 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200' };
     }
     
     switch (connection.status) {
       case 'accepted':
-        return { text: 'Connected', disabled: true, style: 'bg-green-100 text-green-700 border border-green-200' };
+        return { text: 'Connected', disabled: true, style: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
       case 'pending':
         if (connection.isRequester) {
-          return { text: 'Requested', disabled: false, style: 'bg-gray-100 text-gray-600 border border-gray-300' };
+          return { text: 'Requested', disabled: false, style: 'bg-gray-100 text-gray-500 border border-gray-200' };
         } else {
-          return { text: 'Accept Request', disabled: false, style: 'bg-blue-600 text-white hover:bg-blue-700' };
+          return { text: 'Accept', disabled: false, style: 'bg-white text-gray-700 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200' };
         }
       default:
-        return { text: 'Connect', disabled: false, style: 'bg-emerald-600 text-white hover:bg-emerald-700' };
+        return { text: 'Connect', disabled: false, style: 'bg-white text-gray-700 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200' };
     }
   };
 
@@ -945,53 +937,74 @@ export default function EnhancedDiscoverPage() {
         return false;
       }
 
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ryvecaicjhzfsikfedkp.supabase.co';
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_HqXqQ5cjrg1CJIFIyL2QnA_WlwZ4AjB';
-
-
-      // Create conversation
-      const conversationData = {
-        participant_1: user.id,
-        participant_2: recipientId,
-        last_message_text: message,
-        last_message_at: new Date().toISOString(),
-        last_message_by: user.id,
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const headers = {
+        'apikey': supabaseKey!,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
       };
 
-      const conversationRes = await fetch(`${supabaseUrl}/rest/v1/conversations`, {
-        method: 'POST',
-        headers: {
-          'apikey': supabaseKey!,
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation',
-        },
-        body: JSON.stringify(conversationData),
-      });
-
-      if (!conversationRes.ok) {
-        const errorText = await conversationRes.text();
-        console.error('Failed to create conversation:', conversationRes.status, errorText);
-        return false;
+      // Check if a conversation already exists (either direction)
+      let conversationId: string | null = null;
+      const existingRes = await fetch(
+        `${supabaseUrl}/rest/v1/conversations?or=(and(participant_1.eq.${user.id},participant_2.eq.${recipientId}),and(participant_1.eq.${recipientId},participant_2.eq.${user.id}))&select=id&limit=1`,
+        { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+      );
+      if (existingRes.ok) {
+        const existing = await existingRes.json();
+        if (existing && existing.length > 0) {
+          conversationId = existing[0].id;
+        }
       }
 
-      const [conversation] = await conversationRes.json();
+      // Create conversation only if none exists
+      if (!conversationId) {
+        const conversationRes = await fetch(`${supabaseUrl}/rest/v1/conversations`, {
+          method: 'POST',
+          headers: { ...headers, 'Prefer': 'return=representation' },
+          body: JSON.stringify({
+            participant_1: user.id,
+            participant_2: recipientId,
+            last_message_text: message,
+            last_message_at: new Date().toISOString(),
+            last_message_by: user.id,
+          }),
+        });
 
-      // Send message
-      const messageData = {
-        conversation_id: conversation.id,
-        sender_id: user.id,
-        content: message,
-      };
+        if (!conversationRes.ok) {
+          const errorText = await conversationRes.text();
+          console.error('Failed to create conversation:', conversationRes.status, errorText);
+          return false;
+        }
 
+        const [conversation] = await conversationRes.json();
+        conversationId = conversation.id;
+      } else {
+        // Update last_message on existing conversation
+        await fetch(
+          `${supabaseUrl}/rest/v1/conversations?id=eq.${conversationId}`,
+          {
+            method: 'PATCH',
+            headers: { ...headers, 'Prefer': 'return=minimal' },
+            body: JSON.stringify({
+              last_message_text: message,
+              last_message_at: new Date().toISOString(),
+              last_message_by: user.id,
+            }),
+          }
+        );
+      }
+
+      // Send the message
       const messageRes = await fetch(`${supabaseUrl}/rest/v1/messages`, {
         method: 'POST',
-        headers: {
-          'apikey': supabaseKey!,
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(messageData),
+        headers,
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          sender_id: user.id,
+          content: message,
+        }),
       });
 
       if (!messageRes.ok) {
@@ -1020,242 +1033,26 @@ export default function EnhancedDiscoverPage() {
   return (
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
-      <div className="max-w-md mx-auto px-4 py-8">
-        <HavenHeader />
+      <div className="max-w-md mx-auto px-4 pb-8 pt-2">
+        <AppHeader />
 
-        {/* Filter Controls */}
-        <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide justify-center">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center ${
-              showFilters
-                ? 'bg-emerald-600 text-white border border-emerald-600'
-                : 'bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105'
-            }`}
-          >
-            Filters
-          </button>
-          {viewMode !== 'list' && (
-            <button
-              onClick={() => setViewMode('list')}
-              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
-            >
-              List
-            </button>
-          )}
-          {viewMode !== 'map' && (
-            <button
-              onClick={() => setViewMode('map')}
-              className="px-2 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm w-24 flex items-center justify-center bg-white text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 hover:shadow-md hover:scale-105"
-            >
-              Map
-            </button>
-          )}
-        </div>
-
-        {/* Browse location */}
-        <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
-
-        {/* Filters Panel */}
-        {showFilters && (
-          <div className="bg-gray-50 rounded-xl p-4 mb-6">
-            <div className="space-y-4">
-                {/* Radius Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Search Radius</label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        const newRadius = Math.max(1, searchRadius - 1);
-                        setSearchRadius(newRadius);
-                        if (!userLocation) {
-                          getUserLocation();
-                        }
-                      }}
-                      className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold"
-                    >
-                      -
-                    </button>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={searchRadius}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (value === '') {
-                            setSearchRadius(15);
-                            return;
-                          }
-                          const newRadius = parseInt(value);
-                          if (!isNaN(newRadius)) {
-                            setSearchRadius(Math.max(1, Math.min(100, newRadius)));
-                            if (!userLocation) {
-                              getUserLocation();
-                            }
-                          }
-                        }}
-                        onFocus={(e) => e.target.select()}
-                        className="w-16 px-2 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-center"
-                      />
-                      <span className="text-sm text-gray-600 font-medium">km</span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newRadius = Math.min(100, searchRadius + 1);
-                        setSearchRadius(newRadius);
-                        if (!userLocation) {
-                          getUserLocation();
-                        }
-                      }}
-                      className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold"
-                    >
-                      +
-                    </button>
-                  </div>
-                  {locationError && (
-                    <p className="text-xs text-red-600 mt-1">{locationError}</p>
-                  )}
-                </div>
-
-                {/* Kids Age Range */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Kids Age Range</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Min Age</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="17"
-                        value={ageRange.min}
-                        onChange={(e) => {
-                          const min = parseInt(e.target.value) || 0;
-                          setAgeRange(prev => ({ 
-                            ...prev, 
-                            min: Math.max(0, Math.min(min, prev.max - 1))
-                          }));
-                        }}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-center"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Max Age</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="18"
-                        value={ageRange.max}
-                        onChange={(e) => {
-                          const max = parseInt(e.target.value) || 18;
-                          setAgeRange(prev => ({ 
-                            ...prev, 
-                            max: Math.max(prev.min + 1, Math.min(max, 18))
-                          }));
-                        }}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-center"
-                        placeholder="18"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Hidden Families */}
-                {hiddenFamilies.length > 0 && (
-                  <div>
-                    <button
-                      onClick={() => setShowHiddenModal(true)}
-                      className="px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-sm font-medium hover:bg-emerald-100 border border-emerald-200"
-                    >
-                      Show Hidden ({hiddenFamilies.length})
-                    </button>
-                  </div>
-                )}
-            </div>
+        {/* Discoverability warning */}
+        {locationMissing && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+            <p className="text-sm font-semibold text-amber-800 mb-0.5">You may not be showing up in Discover</p>
+            <p className="text-xs text-amber-700 mb-2">
+              Your location couldn't be verified, so other Haven members near you won't see your profile in their results.
+            </p>
+            <Link href="/profile" className="text-xs font-semibold text-amber-800 underline">
+              Go to your profile and re-save your location to fix this
+            </Link>
           </div>
         )}
 
-        {/* New families near you banner */}
-        {(() => {
-          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-          const userSuburb = profile?.location_name?.split(',')[0]?.trim().toLowerCase() || '';
-          const newNearby = families.filter(f => {
-            if (!f.created_at || f.created_at < sevenDaysAgo) return false;
-            if (!userSuburb) return false;
-            const theirSuburb = (f.location_name || '').split(',')[0].trim().toLowerCase();
-            return theirSuburb === userSuburb;
-          });
-          const dismissKey = `haven-new-families-banner-${new Date().toISOString().slice(0, 10)}`;
-          const dismissed = typeof window !== 'undefined' && localStorage.getItem(dismissKey) === 'true';
-          if (newNearby.length === 0 || dismissed) return null;
-          return (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-4 flex items-center justify-between gap-3">
-              <p className="text-sm text-emerald-800 font-medium">
-                {newNearby.length === 1
-                  ? `1 new family joined near ${profile?.location_name?.split(',')[0] || 'you'} this week`
-                  : `${newNearby.length} new families joined near ${profile?.location_name?.split(',')[0] || 'you'} this week`}
-              </p>
-              <button
-                onClick={() => {
-                  localStorage.setItem(dismissKey, 'true');
-                  // Force re-render by toggling a dummy state
-                  setApproachFilter(prev => prev);
-                }}
-                className="text-emerald-600 hover:text-emerald-800 text-lg flex-shrink-0 font-bold"
-              >
-                ×
-              </button>
-            </div>
-          );
-        })()}
-
-        {/* Getting Started — shown until user has at least one accepted connection */}
-        {(() => {
-          const acceptedCount = [...connectionRequests.values()].filter(c => c.status === 'accepted').length;
-          if (acceptedCount > 0) return null;
-          const steps = [
-            { done: !!(profile?.bio?.trim()), label: 'Complete your profile', href: '/profile' },
-            { done: false, label: 'Connect with a family below', href: null },
-            { done: false, label: 'Join or create a circle', href: '/circles' },
-            { done: false, label: 'Browse upcoming events', href: '/events' },
-          ];
-          const doneCount = steps.filter(s => s.done).length;
-          return (
-            <div className="bg-white rounded-xl p-4 shadow-sm mb-4 border border-emerald-100">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-900 text-sm">Getting started</h3>
-                <span className="text-xs text-gray-400">{doneCount}/{steps.length}</span>
-              </div>
-              <div className="space-y-2">
-                {steps.map((step, i) => (
-                  <div
-                    key={i}
-                    onClick={() => step.href && router.push(step.href)}
-                    className={`flex items-center gap-2.5 ${step.href ? 'cursor-pointer group' : ''}`}
-                  >
-                    <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
-                      step.done ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
-                    }`}>
-                      {step.done && (
-                        <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      )}
-                    </div>
-                    <span className={`text-xs ${step.done ? 'text-gray-400 line-through' : 'text-gray-700 group-hover:text-emerald-600'}`}>
-                      {step.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
+        <>
 
         {/* Account type tab bar — always visible */}
-        <div className="flex gap-1 mb-3 bg-gray-100 rounded-xl p-1">
+        <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
           {([
             { value: 'all',      label: 'All' },
             { value: 'family',   label: 'Families' },
@@ -1278,7 +1075,7 @@ export default function EnhancedDiscoverPage() {
               }}
               className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === tab.value
-                  ? 'bg-white text-emerald-700 shadow-sm'
+                  ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -1306,7 +1103,7 @@ export default function EnhancedDiscoverPage() {
                   }}
                   className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                     familyStatusFilter === chip.value
-                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
                       : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
                   }`}
                 >
@@ -1338,7 +1135,7 @@ export default function EnhancedDiscoverPage() {
                 onClick={() => setApproachFilter(approach)}
                 className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                   approachFilter === approach
-                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
                     : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
                 }`}
               >
@@ -1364,7 +1161,7 @@ export default function EnhancedDiscoverPage() {
                   onClick={() => { setTeacherTypeFilter(chip.value); setTeacherTypeCustom(''); setTeacherSubFilter('all'); setTeacherSubCustom(''); }}
                   className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                     teacherTypeFilter === chip.value
-                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
                       : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
                   }`}
                 >
@@ -1390,7 +1187,7 @@ export default function EnhancedDiscoverPage() {
                       onClick={() => { setTeacherSubFilter(sub); setTeacherSubCustom(''); }}
                       className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                         teacherSubFilter === sub
-                          ? 'bg-emerald-500 text-white border-emerald-500'
+                          ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
                           : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
                       }`}
                     >
@@ -1418,7 +1215,7 @@ export default function EnhancedDiscoverPage() {
                       onClick={() => { setTeacherSubFilter(sub); setTeacherSubCustom(''); }}
                       className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                         teacherSubFilter === sub
-                          ? 'bg-emerald-500 text-white border-emerald-500'
+                          ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
                           : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
                       }`}
                     >
@@ -1454,7 +1251,7 @@ export default function EnhancedDiscoverPage() {
                   onClick={() => { setBusinessTypeFilter(chip.value); setBusinessCustomFilter(''); }}
                   className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                     businessTypeFilter === chip.value
-                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
                       : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
                   }`}
                 >
@@ -1487,16 +1284,69 @@ export default function EnhancedDiscoverPage() {
           </div>
         )}
 
+        </>
+
+        {/* More options collapsible */}
+        <div className="mb-2">
+          <button
+            onClick={() => setShowMoreOptions(v => !v)}
+            className="text-sm text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1 mb-1"
+          >
+            More options
+            <svg className={`w-3 h-3 transition-transform ${showMoreOptions ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showMoreOptions && (
+            <div className="mt-2 space-y-3 pl-1">
+              {/* Search all of Haven — first */}
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search families, events, circles..."
+                  className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                      window.location.href = `/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`;
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Kids age range + Map view on same row */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Kids ages</span>
+                <input
+                  type="number" min="0" max="17" value={ageRange.min}
+                  onChange={(e) => { const v = parseInt(e.target.value) || 0; setAgeRange(prev => ({ ...prev, min: Math.max(0, Math.min(v, prev.max - 1)) })); }}
+                  className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                />
+                <span className="text-gray-400 text-xs">–</span>
+                <input
+                  type="number" min="1" max="18" value={ageRange.max}
+                  onChange={(e) => { const v = parseInt(e.target.value) || 18; setAgeRange(prev => ({ ...prev, max: Math.max(prev.min + 1, Math.min(v, 18)) })); }}
+                  className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                />
+                <button
+                  onClick={() => setViewMode(v => v === 'list' ? 'map' : 'list')}
+                  className="ml-auto text-xs text-gray-500 hover:text-emerald-600 transition-colors font-medium whitespace-nowrap flex-shrink-0"
+                >
+                  {viewMode === 'list' ? 'Map view' : 'List view'}
+                </button>
+              </div>
+
+              {/* Browse another location */}
+              <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
+            </div>
+          )}
+        </div>
+
         {/* Content */}
         <div>
-        {/* Selection Summary */}
-        {selectionMode && (
-          <div className="mb-6 flex items-center justify-end">
-            <p className="text-emerald-600 font-medium">
-              {selectedFamilies.length} selected
-            </p>
-          </div>
-        )}
 
         {/* Map View */}
         {viewMode === 'map' && (
@@ -1515,7 +1365,7 @@ export default function EnhancedDiscoverPage() {
 
         {/* List View */}
         {viewMode === 'list' && (
-          <div className="space-y-2 px-6">
+          <div className="space-y-2">
             {filteredFamilies.length === 0 ? (
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
@@ -1578,49 +1428,60 @@ export default function EnhancedDiscoverPage() {
                   </svg>
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {activeTab === 'teacher' ? 'No teachers found' : activeTab === 'business' ? 'No businesses found' : 'No families found'}
+                  {activeTab === 'teacher' ? 'No teachers found yet' : activeTab === 'business' ? 'No businesses found yet' : "You're one of the first families here"}
+
                 </h3>
-                <p className="text-gray-600">
-                  Try adjusting your filters or check back later!
+                <p className="text-gray-500 text-sm mb-5">
+                  {(activeTab === 'family' || activeTab === 'all')
+                    ? "Haven is just getting started in your area. The more families you invite, the more useful it becomes for everyone."
+                    : "Try adjusting your radius or check back as more people join."}
                 </p>
+                {(activeTab === 'family' || activeTab === 'all') && (
+                  <div className="space-y-2 max-w-xs mx-auto">
+                    <Link
+                      href="/profile?invite=1"
+                      className="block w-full py-3 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors"
+                    >
+                      Invite families you know
+                    </Link>
+                    <Link
+                      href="/events?create=1"
+                      className="block w-full py-3 bg-white text-gray-700 text-sm font-semibold rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
+                    >
+                      Create an event to get started
+                    </Link>
+                  </div>
+                )}
               </div>
             ) : (
               <>
+                {/* New families near you banner — above first card */}
+                {!dismissedBanner && (() => {
+                  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+                  const userSuburb = profile?.location_name?.split(',')[0]?.trim().toLowerCase() || '';
+                  const newNearby = families.filter(f => {
+                    if (!f.created_at || f.created_at < sevenDaysAgo) return false;
+                    if (!userSuburb) return false;
+                    return (f.location_name || '').split(',')[0].trim().toLowerCase() === userSuburb;
+                  });
+                  if (newNearby.length === 0) return null;
+                  return (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-3 flex items-center justify-between gap-3">
+                      <p className="text-sm text-emerald-800 font-medium">
+                        {newNearby.length === 1
+                          ? `1 new family joined near ${profile?.location_name?.split(',')[0] || 'you'} this week`
+                          : `${newNearby.length} new families joined near ${profile?.location_name?.split(',')[0] || 'you'} this week`}
+                      </p>
+                      <button onClick={() => { setDismissedBanner(true); sessionStorage.setItem('haven-nearby-banner-dismissed', 'true'); }} className="text-emerald-600 hover:text-emerald-800 text-lg flex-shrink-0 font-bold">×</button>
+                    </div>
+                  );
+                })()}
                 {filteredFamilies.map((family) => (
                 <div 
                   key={family.id} 
-                  className={`w-full bg-white rounded-xl p-4 transition-all cursor-pointer select-none ${
-                    selectionMode 
-                      ? selectedFamilies.includes(family.id) 
-                        ? 'ring-2 ring-emerald-500 bg-emerald-50' 
-                        : 'hover:bg-gray-50' 
-                      : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => handleFamilyClick(family.id)}
-                  onMouseDown={(e) => handleLongPressStart(family.id, e)}
-                  onMouseUp={handleLongPressEnd}
-                  onMouseLeave={handleLongPressEnd}
-                  onTouchStart={(e) => handleLongPressStart(family.id, e)}
-                  onTouchEnd={handleLongPressEnd}
-                  onTouchCancel={handleLongPressEnd}
+                  className="w-full bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all cursor-pointer"
                 >
                   <div className="flex items-start justify-between">
-                    {/* Selection Indicator */}
-                    {selectionMode && (
-                      <div className="mr-4 mt-1">
-                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                          selectedFamilies.includes(family.id)
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'border-gray-300 bg-white'
-                        }`}>
-                          {selectedFamilies.includes(family.id) && (
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                        </div>
-                      </div>
-                    )}
 
                     {/* Family Info */}
                     <div 
@@ -1638,7 +1499,7 @@ export default function EnhancedDiscoverPage() {
                         <div className="flex-1">
                           {/* Name and Username */}
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h3 className="font-semibold text-emerald-600">
+                            <h3 className="font-bold text-gray-900">
                               {family.display_name || family.family_name.split(' ')[0] || family.family_name}{family.username && ` (${family.username})`}
                             </h3>
                             <AdminBadge adminLevel={family.admin_level || null} />
@@ -1713,32 +1574,30 @@ export default function EnhancedDiscoverPage() {
                     </div>
 
                     {/* Actions */}
-                    {!selectionMode && (
-                      <div className="flex flex-col gap-2 items-end">
-                        <button
-                          onClick={() => sendConnectionRequest(family.id)}
-                          disabled={getConnectionButtonState(family.id).disabled}
-                          className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm min-w-[85px] ${getConnectionButtonState(family.id).style}`}
-                        >
-                          {getConnectionButtonState(family.id).text}
-                        </button>
-                        <button
-                          onClick={() => setSelectedFamily(family)}
-                          className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors text-sm min-w-[85px]"
-                        >
-                          Message
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            hideSingleFamily(family.id);
-                          }}
-                          className="text-xs text-gray-300 hover:text-red-400 transition-colors px-1"
-                        >
-                          Hide
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex flex-col gap-2 items-end">
+                      <button
+                        onClick={() => sendConnectionRequest(family.id)}
+                        disabled={getConnectionButtonState(family.id).disabled}
+                        className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm min-w-[85px] ${getConnectionButtonState(family.id).style}`}
+                      >
+                        {getConnectionButtonState(family.id).text}
+                      </button>
+                      <button
+                        onClick={() => setSelectedFamily(family)}
+                        className="px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg font-medium hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-colors text-sm min-w-[85px]"
+                      >
+                        Message
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          hideSingleFamily(family.id);
+                        }}
+                        className="text-xs text-gray-300 hover:text-red-400 transition-colors px-1"
+                      >
+                        Hide
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1761,10 +1620,11 @@ export default function EnhancedDiscoverPage() {
                 name={selectedFamily.family_name || selectedFamily.display_name || 'Family'}
                 size="md"
                 editable={false}
+                viewable={true}
               />
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-emerald-600">{selectedFamily.display_name || selectedFamily.family_name.split(' ')[0] || selectedFamily.family_name}</h3>
+                  <h3 className="font-bold text-gray-900">{selectedFamily.display_name || selectedFamily.family_name.split(' ')[0] || selectedFamily.family_name}</h3>
                   <AdminBadge adminLevel={selectedFamily.admin_level || null} />
                 </div>
                 <p className="text-sm text-gray-600">{selectedFamily.location_name}</p>
@@ -1903,7 +1763,7 @@ export default function EnhancedDiscoverPage() {
               </button>
               <Link
                 href="/circles"
-                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 text-center"
+                className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 text-center"
                 onClick={() => {
                   setShowCircleModal(false);
                   setSelectedFamily(null);
@@ -1912,38 +1772,6 @@ export default function EnhancedDiscoverPage() {
                 Create New Circle
               </Link>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Floating Selection Actions */}
-      {selectionMode && (
-        <div className="fixed bottom-20 left-4 right-4 z-50 flex items-center justify-center">
-          <div className="bg-gray-800 text-white rounded-full px-6 py-3 shadow-xl flex items-center gap-4">
-            {selectedFamilies.length > 0 ? (
-              <>
-                <span className="text-sm font-medium">
-                  {selectedFamilies.length} selected
-                </span>
-                <button
-                  onClick={hideSelectedFamilies}
-                  className="bg-red-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-red-700 transition-colors"
-                >
-                  Hide
-                </button>
-              </>
-            ) : (
-              <span className="text-sm text-gray-300">Select families to hide them</span>
-            )}
-            <button
-              onClick={() => {
-                setSelectionMode(false);
-                setSelectedFamilies([]);
-              }}
-              className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-gray-700 transition-colors"
-            >
-              Cancel
-            </button>
           </div>
         </div>
       )}
@@ -1975,6 +1803,7 @@ export default function EnhancedDiscoverPage() {
                   name={selectedFamilyDetails.family_name || selectedFamilyDetails.display_name || 'Family'}
                   size="lg"
                   editable={false}
+                  viewable={true}
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
@@ -1987,9 +1816,9 @@ export default function EnhancedDiscoverPage() {
                   {selectedFamilyDetails.username && (
                     <p className="text-gray-600 mb-2">@{selectedFamilyDetails.username}</p>
                   )}
-                  {selectedFamilyDetails.user_type && (
-                    <span className="inline-block px-3 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full capitalize mb-2">
-                      {selectedFamilyDetails.user_type === 'family' ? 'Family' : selectedFamilyDetails.user_type === 'teacher' ? 'Teacher' : selectedFamilyDetails.user_type === 'business' ? 'Business' : selectedFamilyDetails.user_type}
+                  {getUserTypeBadge(selectedFamilyDetails.user_type) && (
+                    <span className={`inline-block px-3 py-0.5 text-xs font-semibold rounded-full mb-2 ${getUserTypeBadge(selectedFamilyDetails.user_type)!.style}`}>
+                      {getUserTypeBadge(selectedFamilyDetails.user_type)!.label}
                     </span>
                   )}
                   <p className="text-sm text-gray-500">
@@ -2124,7 +1953,7 @@ export default function EnhancedDiscoverPage() {
                     setSelectedFamily(selectedFamilyDetails);
                     setSelectedFamilyDetails(null);
                   }}
-                  className="flex-1 px-2 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 active:scale-[0.98] transition-all text-sm"
+                  className="flex-1 px-2 py-2 bg-white text-gray-700 border border-gray-200 rounded-xl font-semibold hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 active:scale-[0.98] transition-all text-sm"
                 >
                   Message
                 </button>
@@ -2132,7 +1961,7 @@ export default function EnhancedDiscoverPage() {
                   onClick={() => {
                     window.location.href = `/profile?user=${selectedFamilyDetails.id}`;
                   }}
-                  className="flex-1 px-2 py-2 bg-white text-emerald-600 border-2 border-emerald-200 rounded-xl font-semibold hover:border-emerald-400 hover:bg-emerald-50 active:scale-[0.98] transition-all text-sm"
+                  className="flex-1 px-2 py-2 bg-white text-gray-700 border border-gray-200 rounded-xl font-semibold hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 active:scale-[0.98] transition-all text-sm"
                 >
                   Profile
                 </button>
@@ -2204,7 +2033,7 @@ export default function EnhancedDiscoverPage() {
                         </div>
                         <button
                           onClick={() => unhideFamily(family.id)}
-                          className="px-3 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 text-sm"
+                          className="px-3 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 text-sm"
                         >
                           Unhide
                         </button>
@@ -2229,7 +2058,7 @@ export default function EnhancedDiscoverPage() {
                       clearHiddenFamilies();
                       setShowHiddenModal(false);
                     }}
-                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
+                    className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800"
                   >
                     Unhide All
                   </button>
@@ -2247,5 +2076,13 @@ export default function EnhancedDiscoverPage() {
     </div>
     </div>
     </ProtectedRoute>
+  );
+}
+
+export default function DiscoverPage() {
+  return (
+    <Suspense>
+      <EnhancedDiscoverPage />
+    </Suspense>
   );
 }

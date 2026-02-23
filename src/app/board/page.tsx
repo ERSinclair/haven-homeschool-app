@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/session';
 import AvatarUpload from '@/components/AvatarUpload';
@@ -8,6 +8,8 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import { toast } from '@/lib/toast';
 import { distanceKm } from '@/lib/geocode';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
+import { loadSearchRadius } from '@/lib/preferences';
+import AppHeader from '@/components/AppHeader';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -36,6 +38,8 @@ type Post = {
   tag: string;
   created_at: string;
   author_id: string;
+  image_url?: string;
+  image_type?: string;
   author: {
     family_name: string;
     display_name?: string;
@@ -63,10 +67,13 @@ export default function BoardPage() {
   const [content, setContent] = useState('');
   const [tag, setTag] = useState('question');
   const [posting, setPosting] = useState(false);
+  const [boardImageFile, setBoardImageFile] = useState<File | null>(null);
+  const [boardImagePreview, setBoardImagePreview] = useState<string | null>(null);
+  const boardImgRef = useRef<HTMLInputElement>(null);
   const [currentUserId, setCurrentUserId] = useState('');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
-  const [searchRadius, setSearchRadius] = useState(50);
+  const [searchRadius] = useState(() => loadSearchRadius());
 
   // Load user's lat/lng from profile
   useEffect(() => {
@@ -92,15 +99,38 @@ export default function BoardPage() {
     if (!session) return;
     setCurrentUserId(session.user.id);
 
+    const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
     const tagFilter = activeTag !== 'all' ? `&tag=eq.${activeTag}` : '';
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/community_posts?select=*,author:author_id(family_name,display_name,avatar_url,location_lat,location_lng)&order=created_at.desc&limit=100${tagFilter}`,
-      { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
-    );
-    if (res.ok) {
-      setPosts(await res.json());
+
+    try {
+      // Step 1: fetch posts without join (no FK defined on community_posts.author_id)
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/community_posts?select=*&order=created_at.desc&limit=100${tagFilter}`,
+        { headers }
+      );
+      if (!res.ok) { setLoading(false); return; }
+      const rawPosts: Post[] = await res.json();
+
+      // Step 2: fetch author profiles for those posts
+      const authorIds = [...new Set(rawPosts.map(p => p.author_id).filter(Boolean))];
+      let profileMap: Record<string, Post['author']> = {};
+      if (authorIds.length > 0) {
+        const pRes = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?id=in.(${authorIds.join(',')})&select=id,family_name,display_name,avatar_url,location_lat,location_lng`,
+          { headers }
+        );
+        if (pRes.ok) {
+          const profiles = await pRes.json();
+          profiles.forEach((p: any) => { profileMap[p.id] = p; });
+        }
+      }
+
+      setPosts(rawPosts.map(p => ({ ...p, author: profileMap[p.author_id] || { family_name: 'Unknown' } })));
+    } catch {
+      // silent
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [activeTag]);
 
   useEffect(() => {
@@ -112,6 +142,26 @@ export default function BoardPage() {
     setPosting(true);
     try {
       const session = getStoredSession();
+      let imageUrl: string | undefined;
+      let imageType: string | undefined;
+      // Upload image if attached
+      if (boardImageFile) {
+        const ext = boardImageFile.name.split('.').pop() || 'jpg';
+        const path = `board/${session!.user.id}-${Date.now()}.${ext}`;
+        const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/event-files/${path}`, {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session!.access_token}`,
+            'Content-Type': boardImageFile.type || 'image/jpeg',
+          },
+          body: boardImageFile,
+        });
+        if (uploadRes.ok) {
+          imageUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}`;
+          imageType = boardImageFile.type;
+        }
+      }
       const res = await fetch(`${supabaseUrl}/rest/v1/community_posts`, {
         method: 'POST',
         headers: {
@@ -125,12 +175,15 @@ export default function BoardPage() {
           title: title.trim(),
           content: content.trim(),
           tag,
+          ...(imageUrl && { image_url: imageUrl, image_type: imageType }),
         }),
       });
       if (res.ok) {
         setTitle('');
         setContent('');
         setTag('question');
+        setBoardImageFile(null);
+        setBoardImagePreview(null);
         setShowCreate(false);
         toast('Post shared with the community', 'success');
         loadPosts();
@@ -158,38 +211,24 @@ export default function BoardPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50 pb-24">
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="text-emerald-600 hover:text-emerald-700 font-medium text-sm"
-          >
-            ← Back
-          </button>
-          <h1 className="font-bold text-gray-900 text-lg flex-1 text-center pr-10">Community Board</h1>
-        </div>
-
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white pb-24">
         <div className="max-w-md mx-auto px-4 pt-4">
-          {/* Browse location + radius */}
-          <BrowseLocation current={browseLocation} onChange={loc => { setBrowseLocation(loc); }} />
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-xs text-gray-500 font-medium">Radius</span>
-            <button onClick={() => setSearchRadius(r => Math.max(5, r - 5))} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold text-sm">-</button>
-            <span className="text-sm font-semibold text-gray-700 w-14 text-center">{searchRadius} km</span>
-            <button onClick={() => setSearchRadius(r => Math.min(200, r + 5))} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 font-bold text-sm">+</button>
+          <AppHeader backHref="/profile" />
+          <div className="mb-5">
+            <h1 className="text-2xl font-bold text-gray-900">Community Board</h1>
+            <p className="text-emerald-600 text-sm mt-1">Ask questions, share tips, connect with local families</p>
           </div>
+          {/* Browse location */}
+          <BrowseLocation current={browseLocation} onChange={loc => { setBrowseLocation(loc); }} />
 
           {/* Tag filter */}
-          <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200 overflow-x-auto">
             {TAGS.map(t => (
               <button
                 key={t.value}
                 onClick={() => setActiveTag(t.value)}
-                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-all border ${
-                  activeTag === t.value
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                  activeTag === t.value ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 {t.label}
@@ -200,9 +239,13 @@ export default function BoardPage() {
           {/* Create post button */}
           <button
             onClick={() => setShowCreate(v => !v)}
-            className="w-full mb-4 py-3 px-4 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors text-sm"
+            className={`w-full mb-4 py-3 px-4 rounded-xl text-sm transition-all text-left ${
+              showCreate
+                ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                : 'bg-white border border-gray-200 text-gray-400 hover:border-emerald-300 hover:text-emerald-600 shadow-sm'
+            }`}
           >
-            {showCreate ? 'Cancel' : '+ Ask a question or share something'}
+            {showCreate ? 'Cancel' : 'Ask a question or share something...'}
           </button>
 
           {/* Create post form */}
@@ -236,6 +279,44 @@ export default function BoardPage() {
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 resize-none"
               />
+              {/* Image attachment */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => boardImgRef.current?.click()}
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-emerald-600 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Add photo
+                </button>
+                <input
+                  ref={boardImgRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      setBoardImageFile(f);
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setBoardImagePreview(ev.target?.result as string);
+                      reader.readAsDataURL(f);
+                    }
+                  }}
+                />
+                {boardImagePreview && (
+                  <div className="relative inline-block">
+                    <img src={boardImagePreview} alt="preview" className="h-12 w-12 object-cover rounded-lg" />
+                    <button
+                      type="button"
+                      onClick={() => { setBoardImageFile(null); setBoardImagePreview(null); }}
+                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+                    >×</button>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={createPost}
                 disabled={!title.trim() || !content.trim() || posting}
@@ -294,6 +375,14 @@ export default function BoardPage() {
                   {/* Post content */}
                   <h3 className="font-semibold text-gray-900 text-sm mb-1">{post.title}</h3>
                   <p className="text-sm text-gray-600 leading-relaxed">{post.content}</p>
+                  {post.image_url && (
+                    <img
+                      src={post.image_url}
+                      alt="Post image"
+                      className="mt-3 rounded-xl max-h-64 w-full object-cover cursor-pointer"
+                      onClick={() => window.open(post.image_url, '_blank')}
+                    />
+                  )}
 
                   {/* Actions */}
                   <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">

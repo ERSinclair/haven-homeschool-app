@@ -39,58 +39,34 @@ export default function Home() {
             </Link>
           </div>
 
-          {/* Header */}
-          <div className="text-center mb-12 pt-8">
-            <h1 className="text-5xl sm:text-6xl font-bold bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-500 bg-clip-text text-transparent mb-8" style={{ fontFamily: 'var(--font-fredoka)' }}>
+          {/* Haven wordmark — matches discover page */}
+          <div className="text-center mb-24 pt-8">
+            <span
+              className="font-bold text-emerald-600 text-4xl"
+              style={{ fontFamily: 'var(--font-fredoka)' }}
+            >
               Haven
-            </h1>
+            </span>
+          </div>
+
+          {/* Headline + CTA */}
+          <div className="text-center mb-8">
             <p className="text-xl sm:text-2xl text-gray-700 max-w-lg mx-auto mb-2 font-medium">
               Find your parent community
             </p>
-            <p className="text-gray-500 max-w-md mx-auto">
-              Connect with local families who have kids the same age. Build your village, find your people.
+            <p className="text-gray-500 max-w-md mx-auto mb-2">
+              Connect with local families, home educators, teachers and like-minded businesses. Build your village, find your people.
             </p>
-          </div>
-
-          {/* Main CTA */}
-          <div className="max-w-sm mx-auto mb-12">
-            <Link 
-              href="/signup" 
-              className="block w-full bg-emerald-600 text-white text-lg font-semibold py-4 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-lg shadow-emerald-600/25 text-center"
-            >
-              Find Families Near Me
-            </Link>
-            <p className="text-center text-sm text-gray-500 mt-3">
-              Free · Takes 30 seconds
+            <p className="text-sm text-emerald-600 font-medium max-w-md mx-auto mb-8">
+              Families · Home Educators · Teachers · Businesses
             </p>
-          </div>
-
-          {/* App Preview */}
-          <div className="max-w-sm mx-auto">
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3">
-                <p className="text-white text-sm font-medium">Families near Torquay</p>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {[
-                  { name: 'Emma', loc: '2km away', ages: '2, 4', status: 'New to the area', color: 'bg-emerald-500' },
-                  { name: 'Michelle', loc: '3km away', ages: '1, 3', status: 'Stay-at-home mum', color: 'bg-emerald-500' },
-                  { name: 'Lisa', loc: '5km away', ages: '4, 5, 7', status: 'Homeschool family', color: 'bg-cyan-500' },
-                ].map((family, i) => (
-                  <div key={i} className="p-4 flex items-center gap-3">
-                    <div className={`w-10 h-10 ${family.color} rounded-full flex items-center justify-center text-white font-semibold text-sm`}>
-                      {family.name[0]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900">{family.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {family.loc} · Kids: {family.ages}
-                      </p>
-                      <p className="text-xs text-emerald-600">{family.status}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="max-w-sm mx-auto">
+              <Link 
+                href="/signup" 
+                className="block w-full bg-emerald-600 text-white text-lg font-semibold py-4 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-lg shadow-emerald-600/25 text-center"
+              >
+                Find Families Near Me
+              </Link>
             </div>
           </div>
         </div>
@@ -108,27 +84,18 @@ export default function Home() {
 
           <div className="grid sm:grid-cols-3 gap-6 text-left">
             <div className="bg-white rounded-xl p-6 shadow-sm">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4">
-                <div className="w-8 h-8 bg-emerald-100 rounded-lg"></div>
-              </div>
               <h3 className="font-semibold text-gray-900 mb-2">Actually local</h3>
               <p className="text-sm text-gray-600">
                 See families within 5, 10, or 20km. Not "Melbourne parents" — your actual neighbours.
               </p>
             </div>
             <div className="bg-white rounded-xl p-6 shadow-sm">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-                <span className="text-2xl">👶</span>
-              </div>
               <h3 className="font-semibold text-gray-900 mb-2">Age-matched</h3>
               <p className="text-sm text-gray-600">
                 Filter by your kids' ages. Find playmates and learning buddies at the right stage.
               </p>
             </div>
             <div className="bg-white rounded-xl p-6 shadow-sm">
-              <div className="w-12 h-12 bg-cyan-100 rounded-xl flex items-center justify-center mb-4">
-                <div className="w-8 h-8 bg-emerald-100 rounded-lg"></div>
-              </div>
               <h3 className="font-semibold text-gray-900 mb-2">Direct connection</h3>
               <p className="text-sm text-gray-600">
                 Message families directly. No admin approval, no group politics.
@@ -161,24 +128,6 @@ export default function Home() {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Testimonial */}
-      <div className="bg-emerald-600 py-12 px-4">
-        <div className="max-w-2xl mx-auto text-center">
-          <p className="text-xl text-white mb-6">
-            "We moved to the Surf Coast knowing nobody. Within two weeks of joining, we'd found three families for weekly park meetups. My kids finally have homeschool friends."
-          </p>
-          <div className="flex items-center justify-center gap-3">
-            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white font-semibold">
-              J
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-white">Jess</p>
-              <p className="text-sm text-white/70">Jan Juc, mum of 3</p>
-            </div>
           </div>
         </div>
       </div>
@@ -224,9 +173,6 @@ export default function Home() {
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">
             Ready to find your community?
           </h2>
-          <p className="text-gray-600 mb-8">
-            Join families across the Surf Coast and Geelong region.
-          </p>
           <Link 
             href="/signup" 
             className="inline-block w-full sm:w-auto bg-emerald-600 text-white text-lg font-semibold py-4 px-10 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-lg shadow-emerald-600/25"
@@ -240,7 +186,6 @@ export default function Home() {
       <div className="border-t border-gray-100 py-8 px-4">
         <div className="max-w-3xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2 pointer-events-none">
-            <span className="text-xl">🏡</span>
             <span className="font-bold text-emerald-600 text-4xl" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</span>
           </div>
           <p className="text-sm text-gray-500">
