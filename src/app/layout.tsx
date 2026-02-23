@@ -21,10 +21,11 @@ const fredoka = Fredoka({
 });
 
 export const metadata: Metadata = {
-  title: "Haven - Find Your Parent Community",
-  description: "Connect with local families who have kids the same age. Build your village, find your people.",
+  title: "Haven - Find Your Homeschool Community",
+  description: "Connect with local homeschool families. Find your village, build community, plan meetups.",
   icons: {
     icon: '/favicon.svg',
+    apple: '/apple-touch-icon.png',
   },
 };
 
@@ -44,8 +45,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="theme-color" content="#059669" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Haven" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="format-detection" content="telephone=no" />
         <style dangerouslySetInnerHTML={{

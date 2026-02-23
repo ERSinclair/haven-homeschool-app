@@ -1,7 +1,8 @@
 -- Add file attachment support to circle_messages
 ALTER TABLE circle_messages
   ADD COLUMN IF NOT EXISTS file_url TEXT,
-  ADD COLUMN IF NOT EXISTS file_type TEXT;
+  ADD COLUMN IF NOT EXISTS file_type TEXT,
+  ADD COLUMN IF NOT EXISTS message_type TEXT DEFAULT 'text';
 
 -- Add image support to community_posts
 ALTER TABLE community_posts

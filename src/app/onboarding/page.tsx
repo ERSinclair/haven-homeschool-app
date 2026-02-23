@@ -183,12 +183,13 @@ export default function OnboardingPage() {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">A little about your family</label>
                   <textarea
                     value={bio}
-                    onChange={e => setBio(e.target.value)}
+                    onChange={e => setBio(e.target.value.slice(0, 300))}
                     placeholder="Where you're based, what you love, why you're homeschooling..."
                     rows={4}
+                    maxLength={300}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm resize-none"
                   />
-                  <p className="text-xs text-gray-400 mt-1">{bio.length}/300</p>
+                  <p className={`text-xs mt-1 ${bio.length >= 280 ? 'text-amber-500' : 'text-gray-400'}`}>{bio.length}/300</p>
                 </div>
               </div>
             </div>
