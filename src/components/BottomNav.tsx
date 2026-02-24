@@ -89,7 +89,7 @@ export default function BottomNav() {
   const navItems = [
     { href: '/discover',    label: 'Discover', badge: 0 },
     { href: circlesHref,    label: 'Circles',  badge: circlesBadge, rootHref: '/circles' },
-    { href: '/events/my',   label: 'Events',   badge: 0 },
+    { href: '/events',      label: 'Events',   badge: 0 },
     { href: '/messages',    label: 'Message',  badge: messagesBadge },
     { href: '/profile',     label: 'Profile',  badge: notifBadge },
   ];
