@@ -177,7 +177,7 @@ export default function CirclesDiscoverPage() {
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
-        <div className="max-w-md mx-auto px-4 py-8">
+        <div className="max-w-md mx-auto px-4 pt-2 pb-8">
           <AppHeader backHref="/circles" />
 
           {/* Browse location */}
