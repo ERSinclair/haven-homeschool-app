@@ -23,6 +23,7 @@ type Circle = {
   next_meetup_time?: string | null;
   meetup_location?: string | null;
   meetup_notes?: string | null;
+  cover_image_url?: string | null;
 };
 
 type Member = {
@@ -108,6 +109,7 @@ export default function CirclePage() {
   const [tempName, setTempName] = useState('');
   const [tempDescription, setTempDescription] = useState('');
   const [savingChanges, setSavingChanges] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   const circleId = params.id as string;
 
@@ -708,6 +710,69 @@ export default function CirclePage() {
     }
   };
 
+  const uploadCoverImage = async (file: File) => {
+    if (uploadingCover) return;
+    setUploadingCover(true);
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const ext = file.name.split('.').pop() || 'jpg';
+      const path = `circles/covers/${circleId}-${Date.now()}.${ext}`;
+      const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/event-files/${path}`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': file.type || 'image/jpeg',
+        },
+        body: file,
+      });
+      if (!uploadRes.ok) { toast('Upload failed', 'error'); return; }
+      const coverUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}`;
+      await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({ cover_image_url: coverUrl }),
+      });
+      setCircle(prev => prev ? { ...prev, cover_image_url: coverUrl } : null);
+      toast('Cover photo updated', 'success');
+    } catch {
+      toast('Failed to upload cover photo', 'error');
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
+  const removeCoverImage = async () => {
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({ cover_image_url: null }),
+      });
+      setCircle(prev => prev ? { ...prev, cover_image_url: null } : null);
+      toast('Cover photo removed', 'success');
+    } catch {
+      toast('Failed to remove cover photo', 'error');
+    }
+  };
+
   const formatMessageTime = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -777,6 +842,18 @@ export default function CirclePage() {
               </button>
             ) : undefined}
           />
+          {/* Cover image banner */}
+          {circle.cover_image_url && (
+            <div className="relative w-full h-32 overflow-hidden">
+              <img
+                src={circle.cover_image_url}
+                alt="Circle cover"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+            </div>
+          )}
+
           {/* Circle Info */}
           <div className="flex items-center gap-3 px-4 pb-3">
             {circle.emoji && <span className="text-2xl">{circle.emoji}</span>}
@@ -1364,6 +1441,42 @@ export default function CirclePage() {
             
             {/* Content */}
             <div className="p-6 space-y-6">
+
+              {/* Cover Photo */}
+              {isAdmin && (
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-3">Cover Photo</h4>
+                  <div className="space-y-3">
+                    {circle?.cover_image_url ? (
+                      <div className="relative rounded-xl overflow-hidden h-28">
+                        <img src={circle.cover_image_url} alt="Cover" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/20" />
+                        <button
+                          onClick={removeCoverImage}
+                          className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-lg hover:bg-black/70"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="h-20 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center">
+                        <p className="text-sm text-gray-400">No cover photo set</p>
+                      </div>
+                    )}
+                    <label className={`block w-full py-2 text-center rounded-xl text-sm font-medium cursor-pointer transition-colors ${uploadingCover ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'}`}>
+                      {uploadingCover ? 'Uploading...' : circle?.cover_image_url ? 'Change cover photo' : 'Upload cover photo'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingCover}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadCoverImage(f); e.target.value = ''; }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {/* Circle Name */}
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">Circle Name</h4>

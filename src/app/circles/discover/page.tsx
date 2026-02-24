@@ -27,6 +27,7 @@ type Circle = {
   creator?: { location_lat?: number; location_lng?: number };
   isMember?: boolean;
   isJoining?: boolean;
+  cover_image_url?: string | null;
 };
 
 export default function CirclesDiscoverPage() {
@@ -207,8 +208,16 @@ export default function CirclesDiscoverPage() {
               {filtered.map(circle => (
                 <div
                   key={circle.id}
-                  className="bg-white rounded-xl shadow-sm border border-gray-100 p-4"
+                  className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
                 >
+                  {/* Cover image */}
+                  {circle.cover_image_url && (
+                    <div className="relative h-24 w-full">
+                      <img src={circle.cover_image_url} alt="" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+                    </div>
+                  )}
+                  <div className="p-4">
                   <div className="flex items-start gap-3">
                     {circle.emoji ? (
                       <span className="text-2xl flex-shrink-0">{circle.emoji}</span>
@@ -244,6 +253,7 @@ export default function CirclesDiscoverPage() {
                         )}
                       </div>
                     </div>
+                  </div>
                   </div>
                 </div>
               ))}

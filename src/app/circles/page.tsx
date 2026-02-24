@@ -20,6 +20,7 @@ type Circle = {
   created_at: string;
   created_by: string;
   role: string; // from circle_members
+  cover_image_url?: string | null;
 };
 
 export default function CirclesPage() {
@@ -259,6 +260,13 @@ export default function CirclesPage() {
           isSelected ? 'border-emerald-500 bg-emerald-50' : 'border-gray-100 bg-white hover:shadow-md'
         }`}
       >
+        {/* Cover image */}
+        {circle.cover_image_url && (
+          <div className="relative -mx-4 -mt-4 mb-3 h-24 overflow-hidden rounded-t-xl">
+            <img src={circle.cover_image_url} alt="" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+          </div>
+        )}
         <div className="flex items-start gap-3">
           {selectionMode && (
             <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center ${
