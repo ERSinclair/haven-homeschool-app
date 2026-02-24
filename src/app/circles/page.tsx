@@ -7,6 +7,9 @@ import { getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
+import { distanceKm } from '@/lib/geocode';
+import { loadSearchRadius } from '@/lib/preferences';
 
 type Circle = {
   id: string;
@@ -23,6 +26,26 @@ type Circle = {
   cover_image_url?: string | null;
 };
 
+type DiscoverCircle = {
+  id: string;
+  name: string;
+  description?: string;
+  emoji: string;
+  color: string;
+  is_public: boolean;
+  member_count: number;
+  last_activity_at: string;
+  created_at: string;
+  created_by: string;
+  cover_image_url?: string | null;
+  creator?: { location_lat?: number; location_lng?: number };
+  isMember?: boolean;
+  isJoining?: boolean;
+};
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
 export default function CirclesPage() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +58,73 @@ export default function CirclesPage() {
     is_public: false,
   });
   const router = useRouter();
+
+  // Main tabs
+  const [mainTab, setMainTab] = useState<'my' | 'discover'>('my');
+
+  // Discover tab state
+  const [discoverCircles, setDiscoverCircles] = useState<DiscoverCircle[]>([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [discoverLoaded, setDiscoverLoaded] = useState(false);
+  const [discoverSearch, setDiscoverSearch] = useState('');
+  const [discoverBrowseLocation, setDiscoverBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
+  const [discoverUserLocation, setDiscoverUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [discoverUserId, setDiscoverUserId] = useState<string | null>(null);
+  const searchRadius = loadSearchRadius();
+
+  const loadDiscoverCircles = async () => {
+    if (discoverLoading) return;
+    setDiscoverLoading(true);
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+      setDiscoverUserId(session.user.id);
+      const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+
+      const profileRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=location_lat,location_lng`, { headers });
+      if (profileRes.ok) {
+        const [p] = await profileRes.json();
+        if (p?.location_lat && p?.location_lng) setDiscoverUserLocation({ lat: p.location_lat, lng: p.location_lng });
+      }
+
+      const circlesRes = await fetch(`${supabaseUrl}/rest/v1/circles?is_public=eq.true&select=*,creator:created_by(location_lat,location_lng)&order=member_count.desc,created_at.desc`, { headers });
+      if (!circlesRes.ok) throw new Error();
+      const allCircles: DiscoverCircle[] = await circlesRes.json();
+
+      const memberRes = await fetch(`${supabaseUrl}/rest/v1/circle_members?member_id=eq.${session.user.id}&select=circle_id`, { headers });
+      const memberData = memberRes.ok ? await memberRes.json() : [];
+      const memberIds = new Set(memberData.map((m: any) => m.circle_id));
+
+      setDiscoverCircles(allCircles.map(c => ({ ...c, isMember: memberIds.has(c.id) })));
+      setDiscoverLoaded(true);
+    } catch {
+      toast('Failed to load circles', 'error');
+    } finally {
+      setDiscoverLoading(false);
+    }
+  };
+
+  const joinCircle = async (circleId: string) => {
+    const session = getStoredSession();
+    if (!session?.user || !discoverUserId) return;
+    setDiscoverCircles(prev => prev.map(c => c.id === circleId ? { ...c, isJoining: true } : c));
+    try {
+      const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+      const circle = discoverCircles.find(c => c.id === circleId);
+      const res = await fetch(`${supabaseUrl}/rest/v1/circle_members`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ circle_id: circleId, member_id: discoverUserId, role: 'member', joined_at: new Date().toISOString() }),
+      });
+      if (res.ok || res.status === 409) {
+        if (circle) await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`, { method: 'PATCH', headers, body: JSON.stringify({ member_count: (circle.member_count || 0) + 1 }) });
+        setDiscoverCircles(prev => prev.map(c => c.id === circleId ? { ...c, isMember: true, isJoining: false, member_count: (c.member_count || 0) + 1 } : c));
+        toast('Joined circle!', 'success');
+      } else throw new Error();
+    } catch {
+      toast('Failed to join circle', 'error');
+      setDiscoverCircles(prev => prev.map(c => c.id === circleId ? { ...c, isJoining: false } : c));
+    }
+  };
 
   const privateCircles = circles.filter(c => !c.is_public);
   const publicCircles = circles.filter(c => c.is_public);
@@ -50,6 +140,12 @@ export default function CirclesPage() {
   useEffect(() => {
     loadCircles();
   }, []);
+
+  useEffect(() => {
+    if (mainTab === 'discover' && !discoverLoaded) {
+      loadDiscoverCircles();
+    }
+  }, [mainTab]);
 
   const loadCircles = async () => {
     try {
@@ -325,72 +421,160 @@ export default function CirclesPage() {
             </div>
           )}
 
-          {/* Action row */}
-          {!selectionMode && <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
-            <button
-              onClick={() => router.push('/circles/discover')}
-              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
-            >
-              Find Circles
-            </button>
-            <button
-              onClick={() => router.push('/circles/invitations')}
-              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
-            >
-              Invitations
-            </button>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
-            >
-              + Create
-            </button>
-          </div>}
-
-          {/* Empty state */}
-          {circles.length === 0 && (
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No circles yet</h3>
-              <p className="text-gray-500 text-sm">
-                Join a public circle or create your own to connect around shared interests.
-              </p>
+          {/* Tab bar */}
+          {!selectionMode && (
+            <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+              <button
+                onClick={() => setMainTab('my')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mainTab === 'my' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                My Circles
+              </button>
+              <button
+                onClick={() => setMainTab('discover')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mainTab === 'discover' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Discover
+              </button>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
+              >
+                + Create
+              </button>
             </div>
           )}
 
-          {/* Private circles */}
-          {privateCircles.length > 0 && (
-            <div className="mb-6">
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Private</h2>
-              <div className="space-y-3">
-                {visiblePrivate.map(c => <CircleCard key={c.id} circle={c} />)}
-              </div>
-              {privateCircles.length > 3 && (
-                <button
-                  onClick={() => setShowAllPrivate(p => !p)}
-                  className="w-full mt-3 py-2 text-sm text-emerald-600 font-medium hover:text-emerald-700"
-                >
-                  {showAllPrivate ? 'Show less' : `Show ${privateCircles.length - 3} more`}
-                </button>
+          {/* My Circles tab */}
+          {mainTab === 'my' && (
+            <>
+              {/* Invitations link */}
+              <button
+                onClick={() => router.push('/circles/invitations')}
+                className="w-full mb-3 py-2 px-4 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors text-left flex items-center justify-between"
+              >
+                <span>Circle invitations</span>
+                <span className="text-gray-400">→</span>
+              </button>
+
+              {circles.length === 0 && (
+                <div className="text-center py-12">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No circles yet</h3>
+                  <p className="text-gray-500 text-sm mb-4">Join a public circle or create your own to connect around shared interests.</p>
+                  <button
+                    onClick={() => setMainTab('discover')}
+                    className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700"
+                  >
+                    Find circles
+                  </button>
+                </div>
               )}
-            </div>
+
+              {privateCircles.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Private</h2>
+                  <div className="space-y-3">
+                    {visiblePrivate.map(c => <CircleCard key={c.id} circle={c} />)}
+                  </div>
+                  {privateCircles.length > 3 && (
+                    <button onClick={() => setShowAllPrivate(p => !p)} className="w-full mt-3 py-2 text-sm text-emerald-600 font-medium hover:text-emerald-700">
+                      {showAllPrivate ? 'Show less' : `Show ${privateCircles.length - 3} more`}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {publicCircles.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Public</h2>
+                  <div className="space-y-3">
+                    {visiblePublic.map(c => <CircleCard key={c.id} circle={c} />)}
+                  </div>
+                  {publicCircles.length > 3 && (
+                    <button onClick={() => setShowAllPublic(p => !p)} className="w-full mt-3 py-2 text-sm text-emerald-600 font-medium hover:text-emerald-700">
+                      {showAllPublic ? 'Show less' : `Show ${publicCircles.length - 3} more`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
-          {/* Public circles */}
-          {publicCircles.length > 0 && (
-            <div className="mb-6">
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Public</h2>
-              <div className="space-y-3">
-                {visiblePublic.map(c => <CircleCard key={c.id} circle={c} />)}
+          {/* Discover tab */}
+          {mainTab === 'discover' && (
+            <>
+              <BrowseLocation current={discoverBrowseLocation} onChange={loc => setDiscoverBrowseLocation(loc)} />
+              <div className="mb-4">
+                <input
+                  type="text"
+                  value={discoverSearch}
+                  onChange={e => setDiscoverSearch(e.target.value)}
+                  placeholder="Search circles..."
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-sm"
+                />
               </div>
-              {publicCircles.length > 3 && (
-                <button
-                  onClick={() => setShowAllPublic(p => !p)}
-                  className="w-full mt-3 py-2 text-sm text-emerald-600 font-medium hover:text-emerald-700"
-                >
-                  {showAllPublic ? 'Show less' : `Show ${publicCircles.length - 3} more`}
-                </button>
+              {discoverLoading && (
+                <div className="flex justify-center py-12">
+                  <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                </div>
               )}
-            </div>
+              {!discoverLoading && (() => {
+                const activeLocation = discoverBrowseLocation ?? discoverUserLocation;
+                const filtered = discoverCircles.filter(c => {
+                  if (activeLocation && c.creator?.location_lat && c.creator?.location_lng) {
+                    const d = distanceKm(activeLocation.lat, activeLocation.lng, c.creator.location_lat, c.creator.location_lng);
+                    if (d > searchRadius) return false;
+                  }
+                  if (discoverSearch) return c.name.toLowerCase().includes(discoverSearch.toLowerCase()) || c.description?.toLowerCase().includes(discoverSearch.toLowerCase());
+                  return true;
+                });
+                if (filtered.length === 0) return (
+                  <div className="text-center py-16">
+                    <h3 className="font-semibold text-gray-900 mb-2">{discoverSearch ? 'No circles found' : 'No public circles yet'}</h3>
+                    <p className="text-gray-500 text-sm">{discoverSearch ? `Nothing matching "${discoverSearch}"` : 'Be the first to create a public circle'}</p>
+                  </div>
+                );
+                return (
+                  <div className="space-y-3">
+                    {filtered.map(circle => (
+                      <div key={circle.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        {circle.cover_image_url && (
+                          <div className="relative h-20 w-full">
+                            <img src={circle.cover_image_url} alt="" className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+                          </div>
+                        )}
+                        <div className="p-3">
+                          <div className="flex items-start gap-2.5">
+                            {circle.emoji ? (
+                              <span className="text-xl flex-shrink-0 leading-tight mt-0.5">{circle.emoji}</span>
+                            ) : (
+                              <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-emerald-700 font-bold text-sm">{circle.name[0]?.toUpperCase()}</span>
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-gray-900 text-sm mb-0.5">{circle.name}</h3>
+                              {circle.description && <p className="text-gray-500 text-xs mb-1.5 line-clamp-1">{circle.description}</p>}
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-400">{circle.member_count} {circle.member_count === 1 ? 'member' : 'members'}</span>
+                                {circle.isMember ? (
+                                  <button onClick={() => router.push(`/circles/${circle.id}`)} className="px-3 py-1.5 text-xs font-medium text-emerald-600 border border-emerald-200 rounded-full hover:bg-emerald-50">Open</button>
+                                ) : (
+                                  <button onClick={() => joinCircle(circle.id)} disabled={circle.isJoining} className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-full hover:bg-gray-800 disabled:opacity-50">
+                                    {circle.isJoining ? 'Joining...' : 'Join'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </>
           )}
         </div>
 

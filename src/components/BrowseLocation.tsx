@@ -139,7 +139,7 @@ export default function BrowseLocation({ current, onChange }: Props) {
           onClick={() => setOpen(o => !o)}
           className="w-full text-sm text-gray-400 hover:text-emerald-600 text-left px-1 transition-colors"
         >
-          + Browse another location
+          + Browse Locations
         </button>
       )}
 
