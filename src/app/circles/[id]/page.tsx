@@ -110,6 +110,8 @@ export default function CirclePage() {
   const [tempDescription, setTempDescription] = useState('');
   const [savingChanges, setSavingChanges] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [confirmDeleteCircle, setConfirmDeleteCircle] = useState(false);
+  const [deletingCircle, setDeletingCircle] = useState(false);
 
   const circleId = params.id as string;
 
@@ -770,6 +772,27 @@ export default function CirclePage() {
       toast('Cover photo removed', 'success');
     } catch {
       toast('Failed to remove cover photo', 'error');
+    }
+  };
+
+  const deleteCircle = async () => {
+    if (deletingCircle) return;
+    setDeletingCircle(true);
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+      await fetch(`${supabaseUrl}/rest/v1/circle_messages?circle_id=eq.${circleId}`, { method: 'DELETE', headers });
+      await fetch(`${supabaseUrl}/rest/v1/circle_members?circle_id=eq.${circleId}`, { method: 'DELETE', headers });
+      const res = await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`, { method: 'DELETE', headers });
+      if (!res.ok) throw new Error();
+      toast('Circle deleted', 'success');
+      router.push('/circles');
+    } catch {
+      toast('Failed to delete circle', 'error');
+      setDeletingCircle(false);
     }
   };
 
@@ -1629,6 +1652,45 @@ export default function CirclePage() {
                   }) : ''}
                 </p>
               </div>
+
+              {/* Danger zone — admin only */}
+              {isAdmin && (
+                <div className="pt-4 border-t border-red-100">
+                  <h4 className="font-semibold text-red-600 mb-3">Danger Zone</h4>
+                  {!confirmDeleteCircle ? (
+                    <button
+                      onClick={() => setConfirmDeleteCircle(true)}
+                      className="w-full p-3 text-left bg-red-50 hover:bg-red-100 rounded-xl transition-colors border border-red-200"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-red-700 font-medium text-sm">Delete Circle</span>
+                        <span className="text-red-400">→</span>
+                      </div>
+                      <p className="text-xs text-red-500 mt-0.5">Permanently removes this circle, all messages and members</p>
+                    </button>
+                  ) : (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                      <p className="text-sm font-semibold text-red-700 mb-1">Delete this circle?</p>
+                      <p className="text-xs text-red-500 mb-3">This cannot be undone. All messages and members will be removed.</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={deleteCircle}
+                          disabled={deletingCircle}
+                          className="flex-1 py-2 bg-red-600 text-white text-sm font-semibold rounded-xl hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {deletingCircle ? 'Deleting...' : 'Yes, delete'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteCircle(false)}
+                          className="flex-1 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
