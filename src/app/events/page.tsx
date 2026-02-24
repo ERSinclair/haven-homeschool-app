@@ -118,6 +118,8 @@ export default function EventsPage() {
   // Past events
   const [pastEventsSubTab, setPastEventsSubTab] = useState<'attended' | 'hosted'>('attended');
   const [showPastEvents, setShowPastEvents] = useState(false);
+  // Main tabs
+  const [mainTab, setMainTab] = useState<'discover' | 'mine'>('discover');
   const router = useRouter();
 
   // Auto-open create modal if ?create=1 is in the URL
@@ -1430,23 +1432,25 @@ export default function EventsPage() {
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
         <AppHeader />
 
-        {/* Controls Section */}
-        <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+        {/* Main tabs — Discover | My Events */}
+        <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
           <button
-            onClick={() => router.push('/events/invitations')}
-            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
+            onClick={() => setMainTab('discover')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mainTab === 'discover' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            Invitations
+            Discover
+          </button>
+          <button
+            onClick={() => setMainTab('mine')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mainTab === 'mine' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            My Events
           </button>
           <button
             onClick={() => setEventsViewMode(v => v === 'list' ? 'calendar' : 'list')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              eventsViewMode === 'calendar'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${eventsViewMode === 'calendar' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            {eventsViewMode === 'calendar' ? 'List view' : 'Calendar'}
+            {eventsViewMode === 'calendar' ? 'List' : 'Calendar'}
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
@@ -1456,8 +1460,8 @@ export default function EventsPage() {
           </button>
         </div>
 
-        {/* Category quick-filter chips */}
-        <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+        {/* Category quick-filter chips — discover only */}
+        {mainTab === 'discover' && <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
           {[
             { value: 'all',         label: 'All' },
             { value: 'Play',        label: 'Play' },
@@ -1476,10 +1480,10 @@ export default function EventsPage() {
               {cat.label}
             </button>
           ))}
-        </div>
+        </div>}
 
-        {/* Browse location */}
-        <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
+        {/* Browse location — discover only */}
+        {mainTab === 'discover' && <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />}
 
         {/* Calendar view */}
         {eventsViewMode === 'calendar' && (
@@ -1493,8 +1497,8 @@ export default function EventsPage() {
           />
         )}
 
-        {/* My Events — upcoming */}
-        {(() => {
+        {/* My Events tab */}
+        {mainTab === 'mine' && (() => {
           const today = new Date().toISOString().slice(0, 10);
           const upcomingMine = myEvents.filter(e => e.event_date >= today);
           const pastMine = events.filter(e => e.event_date < today && (e.user_rsvp || e.host_id === userId));
@@ -1502,6 +1506,15 @@ export default function EventsPage() {
           const pastAttended = pastMine.filter(e => e.user_rsvp && e.host_id !== userId);
           return (
             <>
+              {/* Invitations link */}
+              <button
+                onClick={() => router.push('/events/invitations')}
+                className="w-full mb-3 py-2 px-4 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors text-left flex items-center justify-between"
+              >
+                <span>Event invitations</span>
+                <span className="text-gray-400">→</span>
+              </button>
+
               {/* Countdown banner for next event */}
               {(() => {
                 const next = upcomingMine.find(e => e.user_rsvp || e.host_id === userId);
@@ -1524,11 +1537,24 @@ export default function EventsPage() {
                 );
               })()}
 
+              {upcomingMine.length === 0 && (
+                <div className="text-center py-8">
+                  <p className="font-semibold text-gray-700 mb-1">No upcoming events</p>
+                  <p className="text-sm text-gray-400 mb-4">Events you RSVP to or host will appear here.</p>
+                  <button
+                    onClick={() => setMainTab('discover')}
+                    className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700"
+                  >
+                    Browse events
+                  </button>
+                </div>
+              )}
+
               {upcomingMine.length > 0 && (
                 <div className="mb-6">
                   <h2 className="font-semibold text-gray-900 mb-3">Your upcoming events</h2>
                   <div className="space-y-2">
-                    {upcomingMine.slice(0, 2).map(event => (
+                    {upcomingMine.map(event => (
                       <button
                         key={event.id}
                         onClick={() => setSelectedEvent(event)}
@@ -1623,18 +1649,20 @@ export default function EventsPage() {
           );
         })()}
 
-        {/* Events List */}
-        {eventsViewMode === 'calendar' && selectedCalendarDate && (
+        {/* Discover tab — upcoming events list */}
+        {mainTab === 'discover' && eventsViewMode === 'calendar' && selectedCalendarDate && (
           <h2 className="font-semibold text-gray-700 mb-3 text-sm">
             {new Date(selectedCalendarDate + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })}
           </h2>
         )}
-        {(() => {
+        {mainTab === 'discover' && (() => {
+          const today = new Date().toISOString().slice(0, 10);
+          const upcomingFiltered = filteredEvents.filter(e => e.event_date >= today);
           const displayEvents = eventsViewMode === 'calendar' && selectedCalendarDate
-            ? filteredEvents.filter(e => e.event_date === selectedCalendarDate)
+            ? upcomingFiltered.filter(e => e.event_date === selectedCalendarDate)
             : eventsViewMode === 'calendar'
               ? [] // calendar mode, no date selected — list hidden
-              : filteredEvents;
+              : upcomingFiltered;
           if (eventsViewMode === 'calendar' && !selectedCalendarDate) return (
             <p className="text-center text-sm text-gray-400 py-4">Tap a day to see events</p>
           );
