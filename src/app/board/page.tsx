@@ -10,6 +10,7 @@ import { distanceKm } from '@/lib/geocode';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 import { loadSearchRadius } from '@/lib/preferences';
 import AppHeader from '@/components/AppHeader';
+import EmojiPicker from '@/components/EmojiPicker';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -70,6 +71,8 @@ export default function BoardPage() {
   const [boardImageFile, setBoardImageFile] = useState<File | null>(null);
   const [boardImagePreview, setBoardImagePreview] = useState<string | null>(null);
   const boardImgRef = useRef<HTMLInputElement>(null);
+  const boardContentRef = useRef<HTMLTextAreaElement>(null);
+  const [showBoardEmojiPicker, setShowBoardEmojiPicker] = useState(false);
   const [currentUserId, setCurrentUserId] = useState('');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
@@ -272,13 +275,43 @@ export default function BoardPage() {
                 placeholder="Title — what are you asking or sharing?"
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
               />
-              <textarea
-                value={content}
-                onChange={e => setContent(e.target.value)}
-                placeholder="Share more detail..."
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 resize-none"
-              />
+              <div className="relative">
+                {showBoardEmojiPicker && (
+                  <EmojiPicker
+                    onSelect={emoji => {
+                      const el = boardContentRef.current;
+                      if (el) {
+                        const start = el.selectionStart ?? content.length;
+                        const end = el.selectionEnd ?? content.length;
+                        const next = content.slice(0, start) + emoji + content.slice(end);
+                        setContent(next);
+                        setTimeout(() => { el.focus(); el.setSelectionRange(start + emoji.length, start + emoji.length); }, 0);
+                      } else {
+                        setContent(v => v + emoji);
+                      }
+                    }}
+                    onClose={() => setShowBoardEmojiPicker(false)}
+                  />
+                )}
+                <textarea
+                  ref={boardContentRef}
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  placeholder="Share more detail..."
+                  rows={4}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 resize-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowBoardEmojiPicker(v => !v)}
+                  className="absolute bottom-2 right-2 p-1 text-gray-400 hover:text-emerald-600 transition-colors"
+                  title="Emoji"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+              </div>
               {/* Image attachment */}
               <div className="flex items-center gap-2">
                 <button

@@ -13,6 +13,7 @@ import { createNotification } from '@/lib/notifications';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 import { loadSearchRadius } from '@/lib/preferences';
 import { EventsPageSkeleton } from '@/components/SkeletonLoader';
+import EmojiPicker from '@/components/EmojiPicker';
 
 type Event = {
   id: string;
@@ -72,6 +73,8 @@ export default function EventsPage() {
   
   // Event settings modal state
   const [showEventSettingsModal, setShowEventSettingsModal] = useState(false);
+  const [confirmCancelEvent, setConfirmCancelEvent] = useState(false);
+  const [cancellingEvent, setCancellingEvent] = useState(false);
   
   // Event editing state
   const [editingEventTitle, setEditingEventTitle] = useState(false);
@@ -119,6 +122,14 @@ export default function EventsPage() {
   const chatFileRef = useRef<HTMLInputElement>(null);
   const eventChatEndRef = useRef<HTMLDivElement>(null);
   const eventChatContainerRef = useRef<HTMLDivElement>(null);
+  const lastEventMsgIdRef = useRef<string | null>(null);
+  const eventChatInputRef = useRef<HTMLInputElement>(null);
+  const [showEventEmojiPicker, setShowEventEmojiPicker] = useState(false);
+  const [eventReactions, setEventReactions] = useState<Record<string, { emoji: string; users: string[] }[]>>({});
+  const [eventLongPressTimer, setEventLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const [eventSelectedChatMsg, setEventSelectedChatMsg] = useState<any>(null);
+  const [showEventReactionSheet, setShowEventReactionSheet] = useState(false);
+  const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
   // Past events
   const [pastEventsSubTab, setPastEventsSubTab] = useState<'attended' | 'hosted'>('attended');
   const [showPastEvents, setShowPastEvents] = useState(false);
@@ -217,8 +228,7 @@ export default function EventsPage() {
     setEventDetailTab(canChat ? 'chat' : 'info');
     setEventChatMessages([]);
     setChatSenderProfiles({});
-    // Always start at the top so the sticky header is visible
-    window.scrollTo({ top: 0 });
+    lastEventMsgIdRef.current = null;
   }, [selectedEvent?.id, userId]);
 
   // Load event chat messages when chat tab is active
@@ -227,8 +237,9 @@ export default function EventsPage() {
     const canChat = selectedEvent.user_rsvp || selectedEvent.host_id === userId;
     if (!canChat) return;
 
+    let isFirstLoad = true;
     const load = async () => {
-      setLoadingChat(true);
+      if (isFirstLoad) setLoadingChat(true);
       try {
         const session = getStoredSession();
         if (!session) return;
@@ -239,6 +250,7 @@ export default function EventsPage() {
         if (!res.ok) return;
         const msgs = await res.json();
         setEventChatMessages(msgs);
+        fetchEventReactions(msgs.map((m: any) => m.id));
         // Load sender profiles
         const senderIds = [...new Set<string>(msgs.map((m: any) => m.sender_id))];
         if (senderIds.length > 0) {
@@ -254,7 +266,9 @@ export default function EventsPage() {
           }
         }
       } catch { /* silent */ }
-      finally { setLoadingChat(false); }
+      finally {
+        if (isFirstLoad) { setLoadingChat(false); isFirstLoad = false; }
+      }
     };
     load();
     // Poll every 8s while chat tab is open
@@ -262,22 +276,115 @@ export default function EventsPage() {
     return () => clearInterval(interval);
   }, [selectedEvent?.id, eventDetailTab, userId]);
 
-  // Auto-scroll event chat to bottom on new messages or when switching to chat tab
+  // Auto-scroll only when a genuinely new message arrives (not every poll refresh)
   useEffect(() => {
+    const lastMsg = eventChatMessages[eventChatMessages.length - 1];
+    if (!lastMsg) return;
+    if (lastMsg.id === lastEventMsgIdRef.current) return; // same last message, don't scroll
+    lastEventMsgIdRef.current = lastMsg.id;
     const el = eventChatContainerRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [eventChatMessages]);
 
   useEffect(() => {
     if (eventDetailTab !== 'chat') return;
-    // Delay to let the chat DOM mount before scrolling
+    // Delay to let the chat DOM mount and messages load before scrolling
     const timer = setTimeout(() => {
       const el = eventChatContainerRef.current;
       if (el) el.scrollTop = el.scrollHeight;
-    }, 50);
+    }, 300);
     return () => clearTimeout(timer);
   }, [eventDetailTab]);
+
+  const cancelEvent = async () => {
+    if (!selectedEvent) return;
+    const session = getStoredSession();
+    if (!session) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    setCancellingEvent(true);
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/events?id=eq.${(selectedEvent as Event).id}`,
+        {
+          method: 'PATCH',
+          headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ is_cancelled: true }),
+        }
+      );
+      if (res.ok) {
+        setShowEventSettingsModal(false);
+        setConfirmCancelEvent(false);
+        setSelectedEvent(null);
+        setEvents(prev => prev.filter(e => e.id !== (selectedEvent as Event).id));
+        toast('Event cancelled', 'success');
+      } else {
+        toast('Could not cancel event', 'error');
+      }
+    } catch {
+      toast('Could not cancel event', 'error');
+    } finally {
+      setCancellingEvent(false);
+    }
+  };
+
+  const fetchEventReactions = async (msgIds: string[]) => {
+    if (!msgIds.length) return;
+    const session = getStoredSession();
+    if (!session) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    try {
+      const ids = msgIds.join(',');
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/message_reactions?message_id=in.(${ids})&message_type=eq.event&select=message_id,emoji,user_id`,
+        { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+      );
+      if (!res.ok) return;
+      const rows: { message_id: string; emoji: string; user_id: string }[] = await res.json();
+      const map: Record<string, { emoji: string; users: string[] }[]> = {};
+      rows.forEach(r => {
+        if (!map[r.message_id]) map[r.message_id] = [];
+        const group = map[r.message_id].find(g => g.emoji === r.emoji);
+        if (group) group.users.push(r.user_id);
+        else map[r.message_id].push({ emoji: r.emoji, users: [r.user_id] });
+      });
+      setEventReactions(map);
+    } catch { /* silent */ }
+  };
+
+  const toggleEventReaction = async (messageId: string, emoji: string) => {
+    const session = getStoredSession();
+    if (!session || !userId) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const myReaction = (eventReactions[messageId] || []).find(g => g.emoji === emoji)?.users.includes(userId);
+    if (myReaction) {
+      await fetch(
+        `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.event&user_id=eq.${userId}&emoji=eq.${encodeURIComponent(emoji)}`,
+        { method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+      );
+      setEventReactions(prev => {
+        const groups = (prev[messageId] || [])
+          .map(g => g.emoji === emoji ? { ...g, users: g.users.filter(u => u !== userId) } : g)
+          .filter(g => g.users.length > 0);
+        return { ...prev, [messageId]: groups };
+      });
+    } else {
+      await fetch(`${supabaseUrl}/rest/v1/message_reactions`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ message_id: messageId, message_type: 'event', user_id: userId, emoji }),
+      });
+      setEventReactions(prev => {
+        const groups = [...(prev[messageId] || [])];
+        const group = groups.find(g => g.emoji === emoji);
+        if (group) group.users.push(userId);
+        else groups.push({ emoji, users: [userId] });
+        return { ...prev, [messageId]: groups };
+      });
+    }
+  };
 
   const sendEventChatMessage = async () => {
     if (!eventChatInput.trim() || !selectedEvent || sendingChat) return;
@@ -1132,7 +1239,7 @@ export default function EventsPage() {
 
           {/* Tabs — Chat only visible to host + RSVPed users */}
           {((selectedEvent as Event).user_rsvp || (selectedEvent as Event).host_id === userId) && (
-            <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
+            <div className="flex gap-1 mt-4 mb-4 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
               <button
                 onClick={() => setEventDetailTab('info')}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${eventDetailTab === 'info' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
@@ -1140,7 +1247,7 @@ export default function EventsPage() {
                 Info
               </button>
               <button
-                onClick={() => { setEventDetailTab('chat'); window.scrollTo({ top: 0 }); }}
+                onClick={() => setEventDetailTab('chat')}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${eventDetailTab === 'chat' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 Chat {eventChatMessages.length > 0 && `(${eventChatMessages.length})`}
@@ -1150,12 +1257,8 @@ export default function EventsPage() {
 
           {/* Chat view */}
           {eventDetailTab === 'chat' && (
-            <div className="bg-white rounded-2xl shadow-lg">
-              <div className="p-4 border-b border-gray-100 rounded-t-2xl">
-                <p className="text-sm font-semibold text-gray-900">Event chat</p>
-                <p className="text-xs text-gray-400">Visible to host and attendees</p>
-              </div>
-              <div ref={eventChatContainerRef} className="overflow-y-auto p-4 pb-20 space-y-3" style={{ height: 'calc(100dvh - 280px)', minHeight: '200px' }}>
+            <div>
+              <div ref={eventChatContainerRef} className="overflow-y-auto pb-20 space-y-3" style={{ height: 'calc(100dvh - 220px)', minHeight: '200px' }}>
                 {loadingChat ? (
                   <div className="flex justify-center py-8">
                     <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -1170,39 +1273,64 @@ export default function EventsPage() {
                     const isMe = msg.sender_id === userId;
                     const sender = chatSenderProfiles[msg.sender_id];
                     const senderName = sender?.display_name || sender?.family_name || 'Unknown';
+                    const msgTime = new Date(msg.created_at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
                     return (
-                      <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
-                        <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 flex-shrink-0">
-                          {sender?.avatar_url
-                            ? <img src={sender.avatar_url} className="w-7 h-7 rounded-full object-cover" alt="" />
-                            : senderName[0]?.toUpperCase()}
-                        </div>
-                        <div className={`max-w-[75%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
+                      <div
+                        key={msg.id}
+                        className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}
+                        onTouchStart={() => {
+                          if (eventLongPressTimer) clearTimeout(eventLongPressTimer);
+                          const t = setTimeout(() => { setEventSelectedChatMsg(msg); setShowEventReactionSheet(true); }, 600);
+                          setEventLongPressTimer(t);
+                        }}
+                        onTouchEnd={() => { if (eventLongPressTimer) { clearTimeout(eventLongPressTimer); setEventLongPressTimer(null); } }}
+                        onContextMenu={e => { e.preventDefault(); setEventSelectedChatMsg(msg); setShowEventReactionSheet(true); }}
+                      >
+                        {/* Avatar — only show for others */}
+                        {!isMe && (
+                          <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 flex-shrink-0 self-end">
+                            {sender?.avatar_url
+                              ? <img src={sender.avatar_url} className="w-7 h-7 rounded-full object-cover" alt="" />
+                              : senderName[0]?.toUpperCase()}
+                          </div>
+                        )}
+                        <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                           {!isMe && <span className="text-xs text-gray-400 mb-0.5 ml-1">{senderName}</span>}
                           {msg.file_url && msg.file_type?.startsWith('image/') ? (
                             <img src={msg.file_url} alt={msg.content} className="max-w-[200px] max-h-[200px] object-cover rounded-2xl cursor-pointer" onClick={() => window.open(msg.file_url, '_blank')} />
+                          ) : msg.file_url ? (
+                            <div className={`px-4 py-3 rounded-2xl text-sm ${isMe ? 'bg-emerald-600 text-white rounded-br-sm' : 'bg-white text-gray-900 shadow-sm rounded-bl-sm'}`}>
+                              <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 underline ${isMe ? 'text-white' : 'text-emerald-700'}`}>
+                                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                <span className="text-xs truncate max-w-[150px]">{msg.content}</span>
+                              </a>
+                              <p className={`text-xs mt-0.5 ${isMe ? 'text-emerald-200' : 'text-gray-400'}`}>{msgTime}</p>
+                            </div>
                           ) : (
-                            <div className={`rounded-2xl text-sm overflow-hidden ${isMe ? 'bg-emerald-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'}`}>
-                              {msg.file_url ? (
-                                <a
-                                  href={msg.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`flex items-center gap-2 px-3 py-2 hover:opacity-80 ${isMe ? 'text-white' : 'text-emerald-700'}`}
-                                >
-                                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                  </svg>
-                                  <span className="text-xs underline truncate max-w-[150px]">{msg.content}</span>
-                                </a>
-                              ) : (
-                                <span className="px-3 py-2 block">{msg.content}</span>
-                              )}
+                            <div className={`px-4 py-3 rounded-2xl text-sm ${isMe ? 'bg-emerald-600 text-white rounded-br-sm' : 'bg-white text-gray-900 shadow-sm rounded-bl-sm'}`}>
+                              <p className="break-words">{msg.content}</p>
+                              <p className={`text-xs mt-0.5 ${isMe ? 'text-emerald-200' : 'text-gray-400'}`}>{msgTime}</p>
                             </div>
                           )}
-                          <span className="text-xs text-gray-400 mt-0.5 mx-1">
-                            {new Date(msg.created_at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                          {/* Reaction pills */}
+                          {(eventReactions[msg.id] || []).length > 0 && (
+                            <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                              {(eventReactions[msg.id] || []).map(r => (
+                                <button
+                                  key={r.emoji}
+                                  type="button"
+                                  onClick={() => toggleEventReaction(msg.id, r.emoji)}
+                                  className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-sm border transition-colors ${
+                                    userId && r.users.includes(userId)
+                                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                                      : 'bg-white border-gray-200 text-gray-700 hover:border-emerald-300'
+                                  }`}
+                                >
+                                  {r.emoji}{r.users.length > 1 && <span className="text-xs font-medium ml-0.5">{r.users.length}</span>}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1210,44 +1338,77 @@ export default function EventsPage() {
                 )}
                 <div ref={eventChatEndRef} />
               </div>
-              <div className="fixed left-0 right-0 bg-white border-t border-gray-100 z-20 px-4 py-3" style={{ bottom: '72px' }}><div className="max-w-md mx-auto flex gap-2 items-center">
-                <input
-                  ref={chatFileRef}
-                  type="file"
-                  accept="image/*,application/pdf,.doc,.docx"
-                  className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) sendFileMessage(f); }}
-                />
-                <button
-                  onClick={() => chatFileRef.current?.click()}
-                  disabled={uploadingFile}
-                  className="p-2 text-gray-400 hover:text-emerald-600 disabled:opacity-40 flex-shrink-0 transition-colors"
-                  title="Attach file"
-                >
-                  {uploadingFile ? (
-                    <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                    </svg>
+              <div className="fixed left-0 right-0 bg-white border-t border-gray-100 z-20 px-4 py-3" style={{ bottom: '72px' }}>
+                <div className="max-w-md mx-auto relative flex gap-2 items-center">
+                  {showEventEmojiPicker && (
+                    <EmojiPicker
+                      onSelect={emoji => {
+                        const el = eventChatInputRef.current;
+                        if (el) {
+                          const start = el.selectionStart ?? eventChatInput.length;
+                          const end = el.selectionEnd ?? eventChatInput.length;
+                          const next = eventChatInput.slice(0, start) + emoji + eventChatInput.slice(end);
+                          setEventChatInput(next);
+                          setTimeout(() => { el.focus(); el.setSelectionRange(start + emoji.length, start + emoji.length); }, 0);
+                        } else {
+                          setEventChatInput(v => v + emoji);
+                        }
+                      }}
+                      onClose={() => setShowEventEmojiPicker(false)}
+                    />
                   )}
-                </button>
-                <input
-                  type="text"
-                  value={eventChatInput}
-                  onChange={e => setEventChatInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendEventChatMessage()}
-                  placeholder="Message the group..."
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                />
-                <button
-                  onClick={sendEventChatMessage}
-                  disabled={!eventChatInput.trim() || sendingChat}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl disabled:bg-gray-200 disabled:text-gray-400 text-sm font-medium"
-                >
-                  {sendingChat ? '...' : 'Send'}
-                </button>
-              </div></div>
+                  <input
+                    ref={chatFileRef}
+                    type="file"
+                    accept="image/*,application/pdf,.doc,.docx"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) sendFileMessage(f); }}
+                  />
+                  <button
+                    onClick={() => chatFileRef.current?.click()}
+                    disabled={uploadingFile}
+                    className="p-2 text-gray-400 hover:text-emerald-600 disabled:opacity-40 flex-shrink-0 transition-colors"
+                    title="Attach file"
+                  >
+                    {uploadingFile ? (
+                      <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowEventEmojiPicker(v => !v)}
+                    className="p-2 text-gray-400 hover:text-emerald-600 flex-shrink-0 transition-colors"
+                    title="Emoji"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                  <input
+                    ref={eventChatInputRef}
+                    type="text"
+                    value={eventChatInput}
+                    onChange={e => setEventChatInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendEventChatMessage()}
+                    placeholder="Message the group..."
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={sendEventChatMessage}
+                    disabled={!eventChatInput.trim() || sendingChat}
+                    className="w-10 h-10 flex items-center justify-center flex-shrink-0 bg-emerald-600 text-white rounded-xl disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
+                  >
+                    {sendingChat
+                      ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                    }
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1440,7 +1601,7 @@ export default function EventsPage() {
             <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
               <div className="flex justify-between items-center">
                 <h3 className="text-xl font-bold text-gray-900">Event Settings</h3>
-                <button onClick={() => setShowEventSettingsModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+                <button onClick={() => { setShowEventSettingsModal(false); setConfirmCancelEvent(false); }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
               </div>
             </div>
             <div className="p-6 space-y-4">
@@ -1498,6 +1659,38 @@ export default function EventsPage() {
               <div className="bg-gray-50 rounded-xl p-4">
                 <p className="text-xs text-gray-500 mb-1">Attendance</p>
                 <p className="font-medium text-gray-900">{(selectedEvent as Event).rsvp_count || 0} going{(selectedEvent as Event).max_attendees ? ` / ${(selectedEvent as Event).max_attendees} max` : ''}</p>
+              </div>
+
+              {/* Danger Zone */}
+              <div className="border border-red-200 rounded-xl p-4">
+                <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-3">Danger Zone</p>
+                {!confirmCancelEvent ? (
+                  <button
+                    onClick={() => setConfirmCancelEvent(true)}
+                    className="w-full py-2.5 bg-white border border-red-300 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-50 transition-colors"
+                  >
+                    Cancel event
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-700 font-medium">Cancel this event? Attendees won't be notified automatically.</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setConfirmCancelEvent(false)}
+                        className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200"
+                      >
+                        Keep it
+                      </button>
+                      <button
+                        onClick={cancelEvent}
+                        disabled={cancellingEvent}
+                        className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
+                      >
+                        {cancellingEvent ? 'Cancelling...' : 'Yes, cancel'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2417,6 +2610,39 @@ export default function EventsPage() {
       
       {/* Bottom spacing for mobile nav */}
       <div className="h-20"></div>
+
+      {/* Event chat message reaction sheet */}
+      {showEventReactionSheet && eventSelectedChatMsg && (
+        <div
+          className="fixed inset-0 z-[9999]"
+          onClick={() => { setShowEventReactionSheet(false); setEventSelectedChatMsg(null); }}
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl pb-8"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+            </div>
+            <div className="flex justify-center gap-2 px-6 pb-4">
+              {QUICK_REACTIONS.map(emoji => {
+                const myReact = userId && (eventReactions[eventSelectedChatMsg.id] || []).find((g: { emoji: string; users: string[] }) => g.emoji === emoji)?.users.includes(userId);
+                return (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => { toggleEventReaction(eventSelectedChatMsg.id, emoji); setShowEventReactionSheet(false); setEventSelectedChatMsg(null); }}
+                    className={`w-10 h-10 flex items-center justify-center text-xl rounded-full transition-all ${myReact ? 'bg-emerald-100 ring-2 ring-emerald-400 scale-110' : 'bg-gray-100 hover:bg-gray-200 active:scale-95'}`}
+                  >
+                    {emoji}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </ProtectedRoute>
   );

@@ -9,6 +9,7 @@ import AvatarUpload from '@/components/AvatarUpload';
 import AppHeader from '@/components/AppHeader';
 import ImageCropModal from '@/components/ImageCropModal';
 import { createNotification } from '@/lib/notifications';
+import EmojiPicker from '@/components/EmojiPicker';
 
 type Circle = {
   id: string;
@@ -133,6 +134,15 @@ export default function CirclePage() {
   const [addingResource, setAddingResource] = useState(false);
   const resourceFileRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const boardTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showChatEmojiPicker, setShowChatEmojiPicker] = useState(false);
+  const [showBoardEmojiPicker, setShowBoardEmojiPicker] = useState(false);
+  const [circleReactions, setCircleReactions] = useState<Record<string, { emoji: string; users: string[] }[]>>({});
+  const [circleLongPressTimer, setCircleLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const [circleSelectedMsg, setCircleSelectedMsg] = useState<Message | null>(null);
+  const [showCircleReactionSheet, setShowCircleReactionSheet] = useState(false);
+  const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
   // New state for modals
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -233,6 +243,7 @@ export default function CirclePage() {
         if (messagesRes.ok) {
           const messagesData = await messagesRes.json();
           setMessages(messagesData.reverse()); // Show oldest first
+          fetchCircleReactions(messagesData.map((m: Message) => m.id));
         }
 
         // Load resources
@@ -309,10 +320,77 @@ export default function CirclePage() {
     }
   }, [members]);
 
-  // Auto scroll to bottom of messages
+  // Auto scroll to bottom of messages on load/update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Re-scroll when switching back to chat tab (messages already loaded, state unchanged)
+  useEffect(() => {
+    if (activeTab !== 'chat') return;
+    const timer = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [activeTab]);
+
+  const fetchCircleReactions = async (msgIds: string[]) => {
+    if (!msgIds.length) return;
+    const session = getStoredSession();
+    if (!session) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    try {
+      const ids = msgIds.join(',');
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/message_reactions?message_id=in.(${ids})&message_type=eq.circle&select=message_id,emoji,user_id`,
+        { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+      );
+      if (!res.ok) return;
+      const rows: { message_id: string; emoji: string; user_id: string }[] = await res.json();
+      const map: Record<string, { emoji: string; users: string[] }[]> = {};
+      rows.forEach(r => {
+        if (!map[r.message_id]) map[r.message_id] = [];
+        const group = map[r.message_id].find(g => g.emoji === r.emoji);
+        if (group) group.users.push(r.user_id);
+        else map[r.message_id].push({ emoji: r.emoji, users: [r.user_id] });
+      });
+      setCircleReactions(map);
+    } catch { /* silent */ }
+  };
+
+  const toggleCircleReaction = async (messageId: string, emoji: string) => {
+    const session = getStoredSession();
+    if (!session || !currentUserId) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const myReaction = (circleReactions[messageId] || []).find(g => g.emoji === emoji)?.users.includes(currentUserId);
+    if (myReaction) {
+      await fetch(
+        `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.circle&user_id=eq.${currentUserId}&emoji=eq.${encodeURIComponent(emoji)}`,
+        { method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+      );
+      setCircleReactions(prev => {
+        const groups = (prev[messageId] || [])
+          .map(g => g.emoji === emoji ? { ...g, users: g.users.filter(u => u !== currentUserId) } : g)
+          .filter(g => g.users.length > 0);
+        return { ...prev, [messageId]: groups };
+      });
+    } else {
+      await fetch(`${supabaseUrl}/rest/v1/message_reactions`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ message_id: messageId, message_type: 'circle', user_id: currentUserId, emoji }),
+      });
+      setCircleReactions(prev => {
+        const groups = [...(prev[messageId] || [])];
+        const group = groups.find(g => g.emoji === emoji);
+        if (group) group.users.push(currentUserId);
+        else groups.push({ emoji, users: [currentUserId] });
+        return { ...prev, [messageId]: groups };
+      });
+    }
+  };
 
   const addResource = async () => {
     if (!resourceTitle.trim() || addingResource) return;
@@ -1147,6 +1225,13 @@ export default function CirclePage() {
                     className={`flex gap-3 ${
                       message.sender_id === currentUserId ? 'flex-row-reverse' : ''
                     }`}
+                    onTouchStart={() => {
+                      if (circleLongPressTimer) clearTimeout(circleLongPressTimer);
+                      const t = setTimeout(() => { setCircleSelectedMsg(message); setShowCircleReactionSheet(true); }, 600);
+                      setCircleLongPressTimer(t);
+                    }}
+                    onTouchEnd={() => { if (circleLongPressTimer) { clearTimeout(circleLongPressTimer); setCircleLongPressTimer(null); } }}
+                    onContextMenu={e => { e.preventDefault(); setCircleSelectedMsg(message); setShowCircleReactionSheet(true); }}
                   >
                     <AvatarUpload
                       userId={message.sender_id}
@@ -1179,6 +1264,25 @@ export default function CirclePage() {
                           <p>{message.content}</p>
                         </div>
                       )}
+                      {/* Reaction pills */}
+                      {(circleReactions[message.id] || []).length > 0 && (
+                        <div className={`flex flex-wrap gap-1 mt-1 ${message.sender_id === currentUserId ? 'justify-end' : 'justify-start'}`}>
+                          {(circleReactions[message.id] || []).map(r => (
+                            <button
+                              key={r.emoji}
+                              type="button"
+                              onClick={() => toggleCircleReaction(message.id, r.emoji)}
+                              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-sm border transition-colors ${
+                                r.users.includes(currentUserId)
+                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                                  : 'bg-white border-gray-200 text-gray-700 hover:border-emerald-300'
+                              }`}
+                            >
+                              {r.emoji}{r.users.length > 1 && <span className="text-xs font-medium ml-0.5">{r.users.length}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-xs text-gray-500 mt-1">
                         {message.sender_id !== currentUserId && (
                           <>
@@ -1206,7 +1310,24 @@ export default function CirclePage() {
                   <button onClick={() => { setPendingChatFile(null); if (chatFileRef.current) chatFileRef.current.value = ''; }} className="text-gray-400 hover:text-red-400 text-lg leading-none">×</button>
                 </div>
               )}
-              <div className="flex gap-2 items-end">
+              <div className="relative flex gap-2 items-end">
+                {showChatEmojiPicker && (
+                  <EmojiPicker
+                    onSelect={emoji => {
+                      const el = chatTextareaRef.current;
+                      if (el) {
+                        const start = el.selectionStart ?? newMessage.length;
+                        const end = el.selectionEnd ?? newMessage.length;
+                        const next = newMessage.slice(0, start) + emoji + newMessage.slice(end);
+                        setNewMessage(next);
+                        setTimeout(() => { el.focus(); el.setSelectionRange(start + emoji.length, start + emoji.length); }, 0);
+                      } else {
+                        setNewMessage(v => v + emoji);
+                      }
+                    }}
+                    onClose={() => setShowChatEmojiPicker(false)}
+                  />
+                )}
                 <button
                   onClick={() => chatFileRef.current?.click()}
                   disabled={uploadingChatFile}
@@ -1228,7 +1349,18 @@ export default function CirclePage() {
                   className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) setPendingChatFile(f); }}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowChatEmojiPicker(v => !v)}
+                  className="p-2 text-gray-400 hover:text-emerald-600 flex-shrink-0 transition-colors"
+                  title="Emoji"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
                 <textarea
+                  ref={chatTextareaRef}
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
@@ -1640,14 +1772,44 @@ export default function CirclePage() {
                     maxLength={120}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
-                  <textarea
-                    placeholder="Share something with the circle..."
-                    value={boardContent}
-                    onChange={e => setBoardContent(e.target.value)}
-                    rows={3}
-                    maxLength={1000}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-                  />
+                  <div className="relative">
+                    {showBoardEmojiPicker && (
+                      <EmojiPicker
+                        onSelect={emoji => {
+                          const el = boardTextareaRef.current;
+                          if (el) {
+                            const start = el.selectionStart ?? boardContent.length;
+                            const end = el.selectionEnd ?? boardContent.length;
+                            const next = boardContent.slice(0, start) + emoji + boardContent.slice(end);
+                            setBoardContent(next);
+                            setTimeout(() => { el.focus(); el.setSelectionRange(start + emoji.length, start + emoji.length); }, 0);
+                          } else {
+                            setBoardContent(v => v + emoji);
+                          }
+                        }}
+                        onClose={() => setShowBoardEmojiPicker(false)}
+                      />
+                    )}
+                    <textarea
+                      ref={boardTextareaRef}
+                      placeholder="Share something with the circle..."
+                      value={boardContent}
+                      onChange={e => setBoardContent(e.target.value)}
+                      rows={3}
+                      maxLength={1000}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowBoardEmojiPicker(v => !v)}
+                      className="absolute bottom-2 right-2 p-1 text-gray-400 hover:text-emerald-600 transition-colors"
+                      title="Emoji"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </button>
+                  </div>
                   <select
                     value={boardTag}
                     onChange={e => setBoardTag(e.target.value)}
@@ -2180,6 +2342,39 @@ export default function CirclePage() {
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Circle message reaction sheet */}
+      {showCircleReactionSheet && circleSelectedMsg && (
+        <div
+          className="fixed inset-0 z-[9999]"
+          onClick={() => { setShowCircleReactionSheet(false); setCircleSelectedMsg(null); }}
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl pb-8"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+            </div>
+            <div className="flex justify-center gap-2 px-6 pb-4">
+              {QUICK_REACTIONS.map(emoji => {
+                const myReact = (circleReactions[circleSelectedMsg.id] || []).find(g => g.emoji === emoji)?.users.includes(currentUserId);
+                return (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => { toggleCircleReaction(circleSelectedMsg.id, emoji); setShowCircleReactionSheet(false); setCircleSelectedMsg(null); }}
+                    className={`w-10 h-10 flex items-center justify-center text-xl rounded-full transition-all ${myReact ? 'bg-emerald-100 ring-2 ring-emerald-400 scale-110' : 'bg-gray-100 hover:bg-gray-200 active:scale-95'}`}
+                  >
+                    {emoji}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

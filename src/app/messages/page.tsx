@@ -10,6 +10,7 @@ import { getAvatarColor } from '@/lib/colors';
 import AvatarUpload from '@/components/AvatarUpload';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import EmojiPicker from '@/components/EmojiPicker';
 
 type Conversation = {
   id: string;
@@ -39,7 +40,12 @@ function MessagesContent() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showMsgEmojiPicker, setShowMsgEmojiPicker] = useState(false);
   const [newMessage, setNewMessage] = useState('');
+  const [reactions, setReactions] = useState<Record<string, { emoji: string; users: string[] }[]>>({});
+
+  const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -205,6 +211,7 @@ function MessagesContent() {
         
         const msgs = await res.json();
         setMessages(msgs);
+        fetchDmReactions(msgs.map((m: { id: string }) => m.id));
 
         // Mark conversation as read by clearing unread status
         // This happens when user opens a conversation
@@ -537,6 +544,60 @@ function MessagesContent() {
         console.error('Error deleting messages:', err);
         toast('Failed to delete messages. Please try again.', 'error');
       }
+    }
+  };
+
+  const fetchDmReactions = async (msgIds: string[]) => {
+    if (!msgIds.length) return;
+    const session = getStoredSession();
+    if (!session) return;
+    try {
+      const ids = msgIds.join(',');
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/message_reactions?message_id=in.(${ids})&message_type=eq.dm&select=message_id,emoji,user_id`,
+        { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+      );
+      if (!res.ok) return;
+      const rows: { message_id: string; emoji: string; user_id: string }[] = await res.json();
+      const map: Record<string, { emoji: string; users: string[] }[]> = {};
+      rows.forEach(r => {
+        if (!map[r.message_id]) map[r.message_id] = [];
+        const group = map[r.message_id].find(g => g.emoji === r.emoji);
+        if (group) group.users.push(r.user_id);
+        else map[r.message_id].push({ emoji: r.emoji, users: [r.user_id] });
+      });
+      setReactions(map);
+    } catch { /* silent */ }
+  };
+
+  const toggleDmReaction = async (messageId: string, emoji: string) => {
+    const session = getStoredSession();
+    if (!session || !userId) return;
+    const myReaction = (reactions[messageId] || []).find(g => g.emoji === emoji)?.users.includes(userId);
+    if (myReaction) {
+      await fetch(
+        `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.dm&user_id=eq.${userId}&emoji=eq.${encodeURIComponent(emoji)}`,
+        { method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+      );
+      setReactions(prev => {
+        const groups = (prev[messageId] || [])
+          .map(g => g.emoji === emoji ? { ...g, users: g.users.filter(u => u !== userId) } : g)
+          .filter(g => g.users.length > 0);
+        return { ...prev, [messageId]: groups };
+      });
+    } else {
+      await fetch(`${supabaseUrl}/rest/v1/message_reactions`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ message_id: messageId, message_type: 'dm', user_id: userId, emoji }),
+      });
+      setReactions(prev => {
+        const groups = [...(prev[messageId] || [])];
+        const group = groups.find(g => g.emoji === emoji);
+        if (group) group.users.push(userId);
+        else groups.push({ emoji, users: [userId] });
+        return { ...prev, [messageId]: groups };
+      });
     }
   };
 
@@ -1328,6 +1389,25 @@ function MessagesContent() {
                             </p>
                           </div>
                         )}
+                        {/* Reaction pills */}
+                        {(reactions[msg.id] || []).length > 0 && (
+                          <div className={`flex flex-wrap gap-1 mt-1 ${msg.sender_id === userId ? 'justify-end' : 'justify-start'}`}>
+                            {(reactions[msg.id] || []).map(r => (
+                              <button
+                                key={r.emoji}
+                                type="button"
+                                onClick={() => toggleDmReaction(msg.id, r.emoji)}
+                                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-sm border transition-colors ${
+                                  userId && r.users.includes(userId)
+                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                                    : 'bg-white border-gray-200 text-gray-700 hover:border-emerald-300'
+                                }`}
+                              >
+                                {r.emoji}{r.users.length > 1 && <span className="text-xs font-medium ml-0.5">{r.users.length}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -1360,8 +1440,26 @@ function MessagesContent() {
                   </button>
                 </div>
               )}
-              <div className="flex gap-2">
+              <div className="relative flex gap-2">
+                {showMsgEmojiPicker && (
+                  <EmojiPicker
+                    onSelect={emoji => {
+                      const el = messageTextareaRef.current;
+                      if (el) {
+                        const start = el.selectionStart ?? newMessage.length;
+                        const end = el.selectionEnd ?? newMessage.length;
+                        const next = newMessage.slice(0, start) + emoji + newMessage.slice(end);
+                        setNewMessage(next);
+                        setTimeout(() => { el.focus(); el.setSelectionRange(start + emoji.length, start + emoji.length); }, 0);
+                      } else {
+                        setNewMessage(v => v + emoji);
+                      }
+                    }}
+                    onClose={() => setShowMsgEmojiPicker(false)}
+                  />
+                )}
               <textarea
+                ref={messageTextareaRef}
                 value={newMessage}
                 onChange={(e) => {
                   setNewMessage(e.target.value);
@@ -1393,6 +1491,16 @@ function MessagesContent() {
                 }}
                 className="hidden"
               />
+              <button
+                type="button"
+                onClick={() => setShowMsgEmojiPicker(v => !v)}
+                className="px-3 py-3 text-gray-400 hover:text-emerald-600 flex items-center justify-center transition-colors"
+                title="Emoji"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
               <button
                 onClick={() => document.getElementById('file-input')?.click()}
                 className="px-4 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 flex items-center justify-center"
@@ -1828,6 +1936,22 @@ function MessagesContent() {
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-2">
               <div className="w-10 h-1 bg-gray-300 rounded-full" />
+            </div>
+            {/* Quick emoji reactions */}
+            <div className="flex justify-center gap-2 px-6 pb-3">
+              {QUICK_REACTIONS.map(emoji => {
+                const myReact = userId && (reactions[contextMenuMessage.id] || []).find(g => g.emoji === emoji)?.users.includes(userId);
+                return (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => { toggleDmReaction(contextMenuMessage.id, emoji); setShowMessageContextMenu(false); setContextMenuMessage(null); }}
+                    className={`w-10 h-10 flex items-center justify-center text-xl rounded-full transition-all ${myReact ? 'bg-emerald-100 ring-2 ring-emerald-400 scale-110' : 'bg-gray-100 hover:bg-gray-200 active:scale-95'}`}
+                  >
+                    {emoji}
+                  </button>
+                );
+              })}
             </div>
             {/* Message preview */}
             {contextMenuMessage.content && (
