@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.39.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
     "@types/mapbox-gl": "^3.4.1",
@@ -20,6 +21,7 @@
     "react-dom": "19.2.3",
     "react-image-crop": "^11.0.10",
     "react-map-gl": "^8.1.0",
+    "resend": "^6.9.2",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
