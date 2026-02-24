@@ -568,11 +568,37 @@ export default function ProfilePage() {
           );
         })()}
 
+        {/* Invite banner */}
+        {!isEditing && !isViewingOtherUser && (
+          <div className="bg-white rounded-2xl shadow-sm p-4 mb-4 flex items-center gap-3">
+            <div className="flex-1">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Know someone who would like to join our community? Invite families, friends, educators and businesses to Haven and help grow our local communities.
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                const shareText = 'Join me on Haven — a community for local homeschool families. Connect, share resources and find events near you.';
+                const shareUrl = 'https://familyhaven.app';
+                if (navigator.share) {
+                  try { await navigator.share({ title: 'Join Haven', text: shareText, url: shareUrl }); } catch { /* cancelled */ }
+                } else {
+                  await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
+                  toast('Invite link copied!', 'success');
+                }
+              }}
+              className="flex-shrink-0 px-3 py-2 bg-gray-900 text-white text-xs font-semibold rounded-xl hover:bg-gray-800 transition-colors whitespace-nowrap"
+            >
+              Share Haven
+            </button>
+          </div>
+        )}
+
         {/* Profile Card */}
-        <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 mt-4">
-          {/* Button row — Edit | Notifications */}
+        <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
+          {/* Top corners — Edit (left) | Notifications (right) */}
           {!isEditing && !isViewingOtherUser && (
-            <div className="flex items-center justify-center gap-6 pb-4">
+            <div className="flex items-center justify-between pb-3">
               <button
                 onClick={() => setIsEditing(true)}
                 className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
