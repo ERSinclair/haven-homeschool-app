@@ -1580,19 +1580,19 @@ function EnhancedDiscoverPage() {
                     <button
                       onClick={() => sendConnectionRequest(family.id)}
                       disabled={getConnectionButtonState(family.id).disabled}
-                      className={`flex-1 py-1 rounded-lg font-semibold transition-colors text-[11px] ${getConnectionButtonState(family.id).style}`}
+                      className={`flex-1 py-1 rounded-lg font-semibold transition-colors text-xs ${getConnectionButtonState(family.id).style}`}
                     >
                       {getConnectionButtonState(family.id).text}
                     </button>
                     <button
                       onClick={() => setSelectedFamily(family)}
-                      className="flex-1 py-1 bg-white text-gray-600 border border-gray-200 rounded-lg font-semibold hover:bg-gray-50 transition-colors text-[11px]"
+                      className="flex-1 py-1 bg-white text-gray-600 border border-gray-200 rounded-lg font-semibold hover:bg-gray-50 transition-colors text-xs"
                     >
                       Message
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); hideSingleFamily(family.id); }}
-                      className="px-2 py-1 text-gray-300 hover:text-red-400 transition-colors text-[11px]"
+                      className="px-2 py-1 text-gray-300 hover:text-red-400 transition-colors text-xs"
                     >
                       Hide
                     </button>
