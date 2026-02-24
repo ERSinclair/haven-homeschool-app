@@ -1507,7 +1507,7 @@ function EnhancedDiscoverPage() {
                       userId={family.id}
                       currentAvatarUrl={family.avatar_url}
                       name={family.family_name || family.display_name || 'Family'}
-                      size="md"
+                      size="lg"
                       editable={false}
                     />
                     <div className="flex-1 min-w-0">
@@ -1576,23 +1576,23 @@ function EnhancedDiscoverPage() {
                   </div>
 
                   {/* Bottom row: actions */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-gray-50">
+                  <div className="flex items-center gap-1.5 pt-2 border-t border-gray-50">
                     <button
                       onClick={() => sendConnectionRequest(family.id)}
                       disabled={getConnectionButtonState(family.id).disabled}
-                      className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors text-xs ${getConnectionButtonState(family.id).style}`}
+                      className={`flex-1 py-1 rounded-lg font-semibold transition-colors text-[11px] ${getConnectionButtonState(family.id).style}`}
                     >
                       {getConnectionButtonState(family.id).text}
                     </button>
                     <button
                       onClick={() => setSelectedFamily(family)}
-                      className="flex-1 py-1.5 bg-white text-gray-600 border border-gray-200 rounded-lg font-semibold hover:bg-gray-50 transition-colors text-xs"
+                      className="flex-1 py-1 bg-white text-gray-600 border border-gray-200 rounded-lg font-semibold hover:bg-gray-50 transition-colors text-[11px]"
                     >
                       Message
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); hideSingleFamily(family.id); }}
-                      className="px-2 py-1.5 text-gray-300 hover:text-red-400 transition-colors text-xs"
+                      className="px-2 py-1 text-gray-300 hover:text-red-400 transition-colors text-[11px]"
                     >
                       Hide
                     </button>
