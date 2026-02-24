@@ -568,26 +568,16 @@ export default function ProfilePage() {
           );
         })()}
 
-        {/* Invite banner */}
-        {!isEditing && !isViewingOtherUser && (
-          <div className="bg-white rounded-2xl shadow-sm p-4 mb-4 flex items-center gap-3">
-            <div className="flex-1">
-              <p className="text-xs text-gray-600 leading-relaxed">
-                Know someone who would like to join our community? Invite families, friends, educators and businesses to Haven and help grow our local communities.
-              </p>
-            </div>
+        {/* Invite card */}
+        {!isViewingOtherUser && (
+          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 mb-4">
+            <h3 className="font-bold text-lg mb-1 text-gray-900">Know someone who would like to join our community?</h3>
+            <p className="text-gray-500 text-sm mb-4">
+              Invite families, friends, educators and businesses to Haven and help grow our local communities.
+            </p>
             <button
-              onClick={async () => {
-                const shareText = 'Join me on Haven — a community for local homeschool families. Connect, share resources and find events near you.';
-                const shareUrl = 'https://familyhaven.app';
-                if (navigator.share) {
-                  try { await navigator.share({ title: 'Join Haven', text: shareText, url: shareUrl }); } catch { /* cancelled */ }
-                } else {
-                  await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
-                  toast('Invite link copied!', 'success');
-                }
-              }}
-              className="flex-shrink-0 px-3 py-2 bg-gray-900 text-white text-xs font-semibold rounded-xl hover:bg-gray-800 transition-colors whitespace-nowrap"
+              onClick={handleShare}
+              className="w-full py-2.5 bg-white text-gray-700 font-semibold rounded-xl border border-gray-200 hover:bg-emerald-100 hover:text-emerald-800 hover:border-emerald-200 transition-colors text-sm shadow-sm"
             >
               Share Haven
             </button>
@@ -1058,22 +1048,6 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
-
-        {/* Invite card — own profile only */}
-        {!isViewingOtherUser && (
-          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 mb-6">
-            <h3 className="font-bold text-lg mb-1 text-gray-900">Know someone who would like to join our community?</h3>
-            <p className="text-gray-500 text-sm mb-4">
-              Invite families, friends, educators and businesses to Haven and help grow our local communities.
-            </p>
-            <button
-              onClick={handleShare}
-              className="w-full py-2.5 bg-white text-gray-700 font-semibold rounded-xl border border-gray-200 hover:bg-emerald-100 hover:text-emerald-800 hover:border-emerald-200 transition-colors text-sm shadow-sm"
-            >
-              Share Haven
-            </button>
-          </div>
-        )}
 
         {/* Photo Gallery */}
         <div className="mb-6" data-gallery>
