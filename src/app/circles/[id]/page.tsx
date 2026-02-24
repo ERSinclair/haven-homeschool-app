@@ -850,7 +850,7 @@ export default function CirclePage() {
   const colors = getColorClasses(circle.color);
 
   return (
-    <div className="h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden">
+    <div className="h-dvh bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden">
       {/* Header — flex-shrink-0, always visible */}
       <div className="flex-shrink-0 bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-md mx-auto">

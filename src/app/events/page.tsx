@@ -1069,18 +1069,23 @@ export default function EventsPage() {
     return (
       <>
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
-        <div className="max-w-md mx-auto px-4 pb-8 pt-2">
-          <AppHeader
-            onBack={() => setSelectedEvent(null)}
-            right={(selectedEvent as Event).host_id === userId ? (
-              <button
-                onClick={() => setShowEventSettingsModal(true)}
-                className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
-              >
-                Settings
-              </button>
-            ) : undefined}
-          />
+        {/* Sticky header — always visible when scrolling event chat */}
+        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-gray-100">
+          <div className="max-w-md mx-auto px-4 pt-2">
+            <AppHeader
+              onBack={() => setSelectedEvent(null)}
+              right={(selectedEvent as Event).host_id === userId ? (
+                <button
+                  onClick={() => setShowEventSettingsModal(true)}
+                  className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+                >
+                  Settings
+                </button>
+              ) : undefined}
+            />
+          </div>
+        </div>
+        <div className="max-w-md mx-auto px-4 pb-8">
 
           {/* Tabs — Chat only visible to host + RSVPed users */}
           {((selectedEvent as Event).user_rsvp || (selectedEvent as Event).host_id === userId) && (

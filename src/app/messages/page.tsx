@@ -1135,7 +1135,7 @@ function MessagesContent() {
 
   if (selected) {
     return (
-      <div className="h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden">
+      <div className="h-dvh bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden">
         <div className="flex-shrink-0 z-30 bg-white/90 backdrop-blur-sm border-b border-gray-100">
           <div className="max-w-md mx-auto">
             <AppHeader onBack={() => setSelectedId(null)} />
