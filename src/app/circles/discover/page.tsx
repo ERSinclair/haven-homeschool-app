@@ -212,28 +212,28 @@ export default function CirclesDiscoverPage() {
                 >
                   {/* Cover image */}
                   {circle.cover_image_url && (
-                    <div className="relative h-24 w-full">
+                    <div className="relative h-20 w-full">
                       <img src={circle.cover_image_url} alt="" className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
                     </div>
                   )}
-                  <div className="p-4">
-                  <div className="flex items-start gap-3">
+                  <div className="p-3">
+                  <div className="flex items-start gap-2.5">
                     {circle.emoji ? (
-                      <span className="text-2xl flex-shrink-0">{circle.emoji}</span>
+                      <span className="text-xl flex-shrink-0 leading-tight mt-0.5">{circle.emoji}</span>
                     ) : (
-                      <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-emerald-700 font-bold">{circle.name[0]?.toUpperCase()}</span>
+                      <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-emerald-700 font-bold text-sm">{circle.name[0]?.toUpperCase()}</span>
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 mb-0.5">{circle.name}</h3>
+                      <h3 className="font-semibold text-gray-900 text-sm mb-0.5">{circle.name}</h3>
                       {circle.description && (
-                        <p className="text-gray-500 text-sm mb-2 line-clamp-2">{circle.description}</p>
+                        <p className="text-gray-500 text-xs mb-1.5 line-clamp-1">{circle.description}</p>
                       )}
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-400">
-                          {circle.member_count} {circle.member_count === 1 ? 'member' : 'members'} · Active {formatTimeAgo(circle.last_activity_at)}
+                          {circle.member_count} {circle.member_count === 1 ? 'member' : 'members'}
                         </span>
                         {circle.isMember ? (
                           <button

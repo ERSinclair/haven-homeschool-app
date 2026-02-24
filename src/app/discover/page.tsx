@@ -1477,127 +1477,108 @@ function EnhancedDiscoverPage() {
                   );
                 })()}
                 {filteredFamilies.map((family) => (
-                <div 
-                  key={family.id} 
-                  className="w-full bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all cursor-pointer"
+                <div
+                  key={family.id}
+                  className="w-full bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all"
                 >
-                  <div className="flex items-start justify-between">
-
-                    {/* Family Info */}
-                    <div 
-                      className="flex-1 cursor-pointer"
-                      onClick={() => setSelectedFamilyDetails(family)}
-                    >
-                      <div className="flex items-start gap-4">
-                        <AvatarUpload
-                          userId={family.id}
-                          currentAvatarUrl={family.avatar_url}
-                          name={family.family_name || family.display_name || 'Family'}
-                          size="md"
-                          editable={false}
-                        />
-                        <div className="flex-1">
-                          {/* Name and Username */}
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h3 className="font-bold text-gray-900">
-                              {family.display_name || family.family_name.split(' ')[0] || family.family_name}{family.username && ` (${family.username})`}
-                            </h3>
-                            <AdminBadge adminLevel={family.admin_level || null} />
-                            {family.is_verified && <span className="text-green-500">✓</span>}
-                            {(family.user_type === 'teacher') && (
-                              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">Teacher</span>
-                            )}
-                            {(family.user_type === 'business' || family.user_type === 'facility') && (
-                              <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded">Business</span>
-                            )}
-                          </div>
-                          
-                          {/* Location with Online Status */}
-                          <div className="flex items-center gap-2 mb-2">
-                            <p className="text-sm text-gray-600">{family.location_name}</p>
-                            {/* Online status indicator */}
-                            {family.is_online && (
-                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            )}
-                            {/* Last active status */}
-                            {!family.is_online && family.last_active && (
-                              <span className="text-xs text-gray-500">• {formatLastActive(family.last_active)}</span>
-                            )}
-                          </div>
-                          
-                          {/* Children dots with ages (families) */}
-                          {(!family.user_type || family.user_type === 'family') && family.kids_ages && family.kids_ages.length > 0 && (
-                            <div className="flex items-center gap-1">
-                              {family.kids_ages.map((age, index) => (
-                                <div key={index} className="flex items-center">
-                                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
-                                    <span className="text-xs font-medium text-emerald-700">{age}</span>
-                                  </div>
-                                  {index < family.kids_ages.length - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
-                                </div>
-                              ))}
+                  {/* Top row: avatar + info */}
+                  <div
+                    className="flex items-start gap-3 cursor-pointer mb-2.5"
+                    onClick={() => setSelectedFamilyDetails(family)}
+                  >
+                    <AvatarUpload
+                      userId={family.id}
+                      currentAvatarUrl={family.avatar_url}
+                      name={family.family_name || family.display_name || 'Family'}
+                      size="sm"
+                      editable={false}
+                    />
+                    <div className="flex-1 min-w-0">
+                      {/* Name + badges */}
+                      <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                        <h3 className="font-semibold text-gray-900 text-sm leading-tight">
+                          {family.display_name || family.family_name.split(' ')[0] || family.family_name}
+                        </h3>
+                        <AdminBadge adminLevel={family.admin_level || null} />
+                        {family.is_verified && <span className="text-green-500 text-xs">✓</span>}
+                        {family.user_type === 'teacher' && (
+                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">Teacher</span>
+                        )}
+                        {(family.user_type === 'business' || family.user_type === 'facility') && (
+                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded">Business</span>
+                        )}
+                      </div>
+                      {/* Location + online */}
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <p className="text-xs text-gray-500 truncate">{family.location_name}</p>
+                        {family.is_online && <div className="w-1.5 h-1.5 bg-green-500 rounded-full flex-shrink-0" />}
+                        {!family.is_online && family.last_active && (
+                          <span className="text-xs text-gray-400 flex-shrink-0">· {formatLastActive(family.last_active)}</span>
+                        )}
+                      </div>
+                      {/* Kids ages */}
+                      {(!family.user_type || family.user_type === 'family') && family.kids_ages && family.kids_ages.length > 0 && (
+                        <div className="flex items-center gap-1 mb-1">
+                          {family.kids_ages.map((age, index) => (
+                            <div key={index} className="w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center">
+                              <span className="text-xs font-medium text-emerald-700" style={{ fontSize: '10px' }}>{age}</span>
                             </div>
-                          )}
-                          {/* Approach chips (families) */}
-                          {(!family.user_type || family.user_type === 'family') && family.homeschool_approaches && family.homeschool_approaches.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {family.homeschool_approaches.slice(0, 2).map((a, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs rounded-full border border-emerald-200">{a}</span>
-                              ))}
-                              {family.homeschool_approaches.length > 2 && (
-                                <span className="text-xs text-gray-400">+{family.homeschool_approaches.length - 2}</span>
-                              )}
-                            </div>
-                          )}
-                          {/* Subjects preview (teachers) */}
-                          {family.user_type === 'teacher' && (
-                            <div className="flex flex-wrap gap-1">
-                              {family.subjects && family.subjects.length > 0
-                                ? family.subjects.slice(0, 3).map((s, i) => (
-                                    <span key={i} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">{s}</span>
-                                  ))
-                                : <span className="text-xs text-gray-400">No subjects listed</span>
-                              }
-                              {family.subjects && family.subjects.length > 3 && (
-                                <span className="text-xs text-gray-400">+{family.subjects.length - 3} more</span>
-                              )}
-                            </div>
-                          )}
-                          {/* Services preview (businesses) */}
-                          {(family.user_type === 'business' || family.user_type === 'facility') && (
-                            <p className="text-xs text-gray-500 line-clamp-1">
-                              {family.services || 'No services listed'}
-                            </p>
+                          ))}
+                        </div>
+                      )}
+                      {/* Approach chips */}
+                      {(!family.user_type || family.user_type === 'family') && family.homeschool_approaches && family.homeschool_approaches.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {family.homeschool_approaches.slice(0, 2).map((a, i) => (
+                            <span key={i} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-xs rounded-full border border-emerald-100">{a}</span>
+                          ))}
+                          {family.homeschool_approaches.length > 2 && (
+                            <span className="text-xs text-gray-400">+{family.homeschool_approaches.length - 2}</span>
                           )}
                         </div>
-                      </div>
+                      )}
+                      {/* Teacher subjects */}
+                      {family.user_type === 'teacher' && (
+                        <div className="flex flex-wrap gap-1">
+                          {family.subjects && family.subjects.length > 0
+                            ? family.subjects.slice(0, 3).map((s, i) => (
+                                <span key={i} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-100">{s}</span>
+                              ))
+                            : <span className="text-xs text-gray-400">No subjects listed</span>
+                          }
+                          {family.subjects && family.subjects.length > 3 && (
+                            <span className="text-xs text-gray-400">+{family.subjects.length - 3}</span>
+                          )}
+                        </div>
+                      )}
+                      {/* Business services */}
+                      {(family.user_type === 'business' || family.user_type === 'facility') && (
+                        <p className="text-xs text-gray-500 line-clamp-1">{family.services || 'No services listed'}</p>
+                      )}
                     </div>
+                  </div>
 
-                    {/* Actions */}
-                    <div className="flex flex-col gap-2 items-end">
-                      <button
-                        onClick={() => sendConnectionRequest(family.id)}
-                        disabled={getConnectionButtonState(family.id).disabled}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm min-w-[85px] ${getConnectionButtonState(family.id).style}`}
-                      >
-                        {getConnectionButtonState(family.id).text}
-                      </button>
-                      <button
-                        onClick={() => setSelectedFamily(family)}
-                        className="px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg font-medium hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-colors text-sm min-w-[85px]"
-                      >
-                        Message
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          hideSingleFamily(family.id);
-                        }}
-                        className="text-xs text-gray-300 hover:text-red-400 transition-colors px-1"
-                      >
-                        Hide
-                      </button>
-                    </div>
+                  {/* Bottom row: actions */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-gray-50">
+                    <button
+                      onClick={() => sendConnectionRequest(family.id)}
+                      disabled={getConnectionButtonState(family.id).disabled}
+                      className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors text-xs ${getConnectionButtonState(family.id).style}`}
+                    >
+                      {getConnectionButtonState(family.id).text}
+                    </button>
+                    <button
+                      onClick={() => setSelectedFamily(family)}
+                      className="flex-1 py-1.5 bg-white text-gray-600 border border-gray-200 rounded-lg font-semibold hover:bg-gray-50 transition-colors text-xs"
+                    >
+                      Message
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); hideSingleFamily(family.id); }}
+                      className="px-2 py-1.5 text-gray-300 hover:text-red-400 transition-colors text-xs"
+                    >
+                      Hide
+                    </button>
                   </div>
                 </div>
               ))}

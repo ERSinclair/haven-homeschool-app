@@ -256,13 +256,13 @@ export default function CirclesPage() {
         onMouseLeave={onLongPressEnd}
         onTouchStart={onLongPressStart}
         onTouchEnd={onLongPressEnd}
-        className={`rounded-xl shadow-sm border p-4 transition-all cursor-pointer active:scale-[0.99] ${
+        className={`rounded-xl shadow-sm border p-3 transition-all cursor-pointer active:scale-[0.99] ${
           isSelected ? 'border-emerald-500 bg-emerald-50' : 'border-gray-100 bg-white hover:shadow-md'
         }`}
       >
         {/* Cover image */}
         {circle.cover_image_url && (
-          <div className="relative -mx-4 -mt-4 mb-3 h-24 overflow-hidden rounded-t-xl">
+          <div className="relative -mx-3 -mt-3 mb-2.5 h-20 overflow-hidden rounded-t-xl">
             <img src={circle.cover_image_url} alt="" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
           </div>

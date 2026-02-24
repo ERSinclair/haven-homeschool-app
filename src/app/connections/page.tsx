@@ -603,7 +603,7 @@ export default function ConnectionsPage() {
                 return (
                   <div 
                     key={connection.id} 
-                    className={`bg-white rounded-xl shadow-sm p-4 transition-all ${
+                    className={`bg-white rounded-xl shadow-sm p-3 transition-all ${
                       isSelected ? 'ring-2 ring-emerald-500 bg-emerald-50' : ''
                     }`}
                     onTouchStart={handleTouchStart}
@@ -637,7 +637,7 @@ export default function ConnectionsPage() {
                             userId={connection.user.id}
                             currentAvatarUrl={connection.user.avatar_url}
                             name={connection.user.family_name || connection.user.display_name}
-                            size="md"
+                            size="sm"
                             editable={false}
                             viewable={true}
                           />
@@ -647,20 +647,17 @@ export default function ConnectionsPage() {
                         className="flex-1 cursor-pointer"
                         onClick={handleClick}
                       >
-                        <h3 className="font-semibold text-emerald-600">
+                        <h3 className="font-semibold text-emerald-600 text-sm leading-tight">
                           {connection.user.family_name || connection.user.display_name}
                         </h3>
-                        <p className="text-sm text-gray-600 mb-1">{connection.user.location_name}</p>
+                        <p className="text-xs text-gray-500 mb-0.5">{connection.user.location_name}</p>
                         
                         {/* Children dots with ages */}
                         {connection.user.kids_ages && connection.user.kids_ages.length > 0 && (
                           <div className="flex items-center gap-1">
                             {connection.user.kids_ages.map((age, index) => (
-                              <div key={index} className="flex items-center">
-                                <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
-                                  <span className="text-xs font-medium text-emerald-700">{age}</span>
-                                </div>
-                                {index < (connection.user.kids_ages?.length || 0) - 1 && <div className="w-1 h-1 bg-gray-300 rounded-full mx-1"></div>}
+                              <div key={index} className="w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center">
+                                <span className="font-medium text-emerald-700" style={{ fontSize: '10px' }}>{age}</span>
                               </div>
                             ))}
                           </div>

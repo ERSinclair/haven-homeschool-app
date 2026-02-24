@@ -1650,39 +1650,36 @@ export default function EventsPage() {
               <button
                 key={`${event.id}-${event.event_date}-${idx}`}
                 onClick={() => setSelectedEvent(event)}
-                className="w-full bg-white rounded-xl shadow-sm p-4 text-left hover:shadow-md:shadow-slate-900/50 transition-shadow border border-transparent"
+                className="w-full bg-white rounded-xl shadow-sm p-3 text-left hover:shadow-md transition-shadow border border-gray-100"
               >
-                <div className="flex justify-between items-start mb-2">
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium ${categoryColors[event.category]}`}>
+                {/* Category + status */}
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${categoryColors[event.category]}`}>
                     {categoryLabels[event.category]}
                   </span>
                   <div className="flex items-center gap-1.5">
                     {event.user_rsvp && <span className="text-emerald-600 text-xs font-semibold">✓ Going</span>}
                     {event.user_waitlist && <span className="text-amber-600 text-xs font-semibold">Waitlisted</span>}
                     {event.max_attendees && !event.user_rsvp && !event.user_waitlist && (event.rsvp_count || 0) >= event.max_attendees && (
-                      <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Full</span>
+                      <span className="text-xs font-semibold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Full</span>
                     )}
                   </div>
                 </div>
-                <h3 className="font-semibold text-gray-900 mb-1">{event.title}</h3>
-                <p className="text-sm text-gray-600 mb-2">
-                  {formatDate(event.event_date)} at {formatTime(event.event_time)}
+                {/* Title */}
+                <h3 className="font-semibold text-gray-900 text-sm mb-1 leading-snug">{event.title}</h3>
+                {/* Date · location on one line */}
+                <p className="text-xs text-gray-500 mb-1">
+                  {formatDate(event.event_date)} · {formatTime(event.event_time)}
+                  {event.location_name && ` · ${event.location_name}`}
+                  {!event.location_name && ' · Location TBA'}
+                  {userLocation && event.latitude && event.longitude && (
+                    <span className="text-emerald-600 font-medium"> · {calculateDistance(userLocation.lat, userLocation.lng, event.latitude, event.longitude).toFixed(1)}km</span>
+                  )}
                 </p>
-                {event.location_name ? (
-                  <div className="flex items-center gap-2 mb-2">
-                    <p className="text-sm text-gray-600">{event.location_name}</p>
-                    {userLocation && event.latitude && event.longitude && (
-                      <span className="text-xs text-emerald-600 font-medium">
-                        {calculateDistance(userLocation.lat, userLocation.lng, event.latitude, event.longitude).toFixed(1)}km
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 italic mb-2">Location TBA</p>
-                )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">By {event.host?.name}</span>
-                  <span className="text-gray-500">
+                {/* Footer */}
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>By {event.host?.name}</span>
+                  <span>
                     {event.rsvp_count}{event.max_attendees ? `/${event.max_attendees}` : ''} going
                     {(event.waitlist_count || 0) > 0 && ` · ${event.waitlist_count} waiting`}
                   </span>
