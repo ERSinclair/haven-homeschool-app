@@ -1101,10 +1101,10 @@ function EnhancedDiscoverPage() {
                     setFamilyCustomFilter('');
                     if (chip.value !== 'new') setApproachFilter('all');
                   }}
-                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     familyStatusFilter === chip.value
-                      ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
                   }`}
                 >
                   {chip.label}
@@ -1133,10 +1133,10 @@ function EnhancedDiscoverPage() {
               <button
                 key={approach}
                 onClick={() => setApproachFilter(approach)}
-                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   approachFilter === approach
-                    ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
                 }`}
               >
                 {approach === 'all' ? 'Any approach' : approach}
@@ -1159,10 +1159,10 @@ function EnhancedDiscoverPage() {
                 <button
                   key={chip.value}
                   onClick={() => { setTeacherTypeFilter(chip.value); setTeacherTypeCustom(''); setTeacherSubFilter('all'); setTeacherSubCustom(''); }}
-                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     teacherTypeFilter === chip.value
-                      ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
                   }`}
                 >
                   {chip.label}
@@ -1185,10 +1185,10 @@ function EnhancedDiscoverPage() {
                     <button
                       key={sub}
                       onClick={() => { setTeacherSubFilter(sub); setTeacherSubCustom(''); }}
-                      className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                      className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                         teacherSubFilter === sub
-                          ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
                       }`}
                     >
                       {sub === 'all' ? 'All' : sub}
@@ -1213,10 +1213,10 @@ function EnhancedDiscoverPage() {
                     <button
                       key={sub}
                       onClick={() => { setTeacherSubFilter(sub); setTeacherSubCustom(''); }}
-                      className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                      className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                         teacherSubFilter === sub
-                          ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
                       }`}
                     >
                       {sub === 'all' ? 'All' : sub}
@@ -1249,10 +1249,10 @@ function EnhancedDiscoverPage() {
                 <button
                   key={chip.value}
                   onClick={() => { setBusinessTypeFilter(chip.value); setBusinessCustomFilter(''); }}
-                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     businessTypeFilter === chip.value
-                      ? 'bg-white text-gray-900 border-gray-400 shadow-sm'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
                   }`}
                 >
                   {chip.label}
