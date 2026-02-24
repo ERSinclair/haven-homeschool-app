@@ -8,6 +8,7 @@ import { getStoredSession } from '@/lib/session';
 import AvatarUpload from '@/components/AvatarUpload';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { ConnectionsPageSkeleton } from '@/components/SkeletonLoader';
 
 type Connection = {
   id: string;
@@ -427,8 +428,13 @@ export default function ConnectionsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+        <div className="max-w-md mx-auto px-4 pt-2">
+          <div className="h-16 flex items-center">
+            <div className="w-16 h-4 bg-gray-200 rounded-lg animate-pulse" />
+          </div>
+          <ConnectionsPageSkeleton />
+        </div>
       </div>
     );
   }
@@ -548,33 +554,19 @@ export default function ConnectionsPage() {
         {activeTab === 'connections' && (
           <div className="space-y-4">
             {filteredConnections.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
+              searchTerm ? (
+                <div className="text-center py-10 px-6">
+                  <div className="text-3xl mb-2">🔍</div>
+                  <p className="font-semibold text-gray-700 mb-1">No connections match &ldquo;{searchTerm}&rdquo;</p>
+                  <p className="text-sm text-gray-500">Try a different name.</p>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {searchTerm ? 'No Results Found' : 'No Connections Yet'}
-                </h3>
-                {searchTerm ? (
-                  <p className="text-gray-500 text-sm mb-4">
-                    No connections match "{searchTerm}". Try a different search term.
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-gray-500 text-sm mb-6">
-                      Find families near you and send a connection request to get started.
-                    </p>
-                    <Link
-                      href="/discover"
-                      className="inline-block px-5 py-2.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors text-sm"
-                    >
-                      Find Families
-                    </Link>
-                  </>
-                )}
-              </div>
+              ) : (
+                <div className="text-center py-12 px-6">
+                  <div className="text-4xl mb-3">🤝</div>
+                  <p className="font-semibold text-gray-800 mb-1">No connections yet</p>
+                  <p className="text-sm text-gray-500">Head to Discover to find families in your area and send a connection request.</p>
+                </div>
+              )
             ) : (
               filteredConnections.map((connection) => {
                 const isSelected = selectedConnections.has(connection.id);

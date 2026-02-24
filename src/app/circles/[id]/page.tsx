@@ -1,12 +1,13 @@
 'use client';
 import { toast } from '@/lib/toast';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import AvatarUpload from '@/components/AvatarUpload';
 import AppHeader from '@/components/AppHeader';
+import ImageCropModal from '@/components/ImageCropModal';
 import { createNotification } from '@/lib/notifications';
 
 type Circle = {
@@ -59,8 +60,32 @@ type Resource = {
   title: string;
   url?: string;
   description?: string;
+  file_url?: string;
+  file_name?: string;
   created_by: string;
   created_at: string;
+};
+
+type BoardPost = {
+  id: string;
+  title: string;
+  content: string;
+  tag: string;
+  created_at: string;
+  author_id: string;
+  author: {
+    family_name: string;
+    display_name?: string;
+    avatar_url?: string;
+  };
+};
+
+const BOARD_TAG_COLORS: Record<string, string> = {
+  question:   'bg-purple-100 text-purple-700',
+  curriculum: 'bg-blue-100 text-blue-700',
+  resource:   'bg-emerald-100 text-emerald-700',
+  meetup:     'bg-orange-100 text-orange-700',
+  general:    'bg-gray-100 text-gray-600',
 };
 
 export default function CirclePage() {
@@ -82,20 +107,31 @@ export default function CirclePage() {
   // Chat functionality
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [pendingChatFile, setPendingChatFile] = useState<File | null>(null);
   const [uploadingChatFile, setUploadingChatFile] = useState(false);
   const chatFileRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'chat' | 'members' | 'resources' | 'meetup'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'members' | 'resources' | 'meetup' | 'board'>('chat');
+  const [boardPosts, setBoardPosts] = useState<BoardPost[]>([]);
+  const [boardLoading, setBoardLoading] = useState(false);
+  const [showBoardCreate, setShowBoardCreate] = useState(false);
+  const [boardTitle, setBoardTitle] = useState('');
+  const [boardContent, setBoardContent] = useState('');
+  const [boardTag, setBoardTag] = useState('general');
+  const [boardPosting, setBoardPosting] = useState(false);
   const [meetupDate, setMeetupDate] = useState('');
-  const [meetupTime, setMeetupTime] = useState('');
+  const [meetupTime, setMeetupTime] = useState('09:00');
   const [meetupLocation, setMeetupLocation] = useState('');
   const [meetupNotes, setMeetupNotes] = useState('');
   const [savingMeetup, setSavingMeetup] = useState(false);
+  const [showMeetupForm, setShowMeetupForm] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
   const [showAddResource, setShowAddResource] = useState(false);
   const [resourceTitle, setResourceTitle] = useState('');
   const [resourceUrl, setResourceUrl] = useState('');
   const [resourceDesc, setResourceDesc] = useState('');
+  const [resourceFile, setResourceFile] = useState<File | null>(null);
   const [addingResource, setAddingResource] = useState(false);
+  const resourceFileRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // New state for modals
@@ -110,10 +146,17 @@ export default function CirclePage() {
   const [tempDescription, setTempDescription] = useState('');
   const [savingChanges, setSavingChanges] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [coverCropSrc, setCoverCropSrc] = useState<string | null>(null);
   const [confirmDeleteCircle, setConfirmDeleteCircle] = useState(false);
   const [deletingCircle, setDeletingCircle] = useState(false);
 
   const circleId = params.id as string;
+
+  // Reset window scroll before first paint so the header is never cut off
+  // (the h-dvh layout is affected by any scroll carry-over from the previous page)
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [circleId]);
 
   // Load circle data
   useEffect(() => {
@@ -278,6 +321,31 @@ export default function CirclePage() {
       const session = getStoredSession();
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      // Upload file if one was selected
+      let uploadedFileUrl: string | null = null;
+      let uploadedFileName: string | null = null;
+      if (resourceFile) {
+        const safeFileName = resourceFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `circles/resources/${circleId}/${Date.now()}-${safeFileName}`;
+        const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/event-files/${path}`, {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session!.access_token}`,
+            'Content-Type': resourceFile.type || 'application/octet-stream',
+          },
+          body: resourceFile,
+        });
+        if (uploadRes.ok) {
+          uploadedFileUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}`;
+          uploadedFileName = resourceFile.name;
+        } else {
+          toast('File upload failed', 'error');
+          return;
+        }
+      }
+
       const res = await fetch(`${supabaseUrl}/rest/v1/circle_resources`, {
         method: 'POST',
         headers: {
@@ -292,6 +360,8 @@ export default function CirclePage() {
           title: resourceTitle.trim(),
           url: resourceUrl.trim() || null,
           description: resourceDesc.trim() || null,
+          file_url: uploadedFileUrl,
+          file_name: uploadedFileName,
         }),
       });
       if (res.ok) {
@@ -300,6 +370,8 @@ export default function CirclePage() {
         setResourceTitle('');
         setResourceUrl('');
         setResourceDesc('');
+        setResourceFile(null);
+        if (resourceFileRef.current) resourceFileRef.current.value = '';
         setShowAddResource(false);
         toast('Resource added', 'success');
       } else {
@@ -332,6 +404,82 @@ export default function CirclePage() {
     } catch {
       toast('Failed to delete resource', 'error');
     }
+  };
+
+  const loadBoardPosts = useCallback(async () => {
+    if (!circleId) return;
+    setBoardLoading(true);
+    try {
+      const session = getStoredSession();
+      if (!session) return;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/community_posts?circle_id=eq.${circleId}&select=id,title,content,tag,created_at,author_id,author:profiles(family_name,display_name,avatar_url)&order=created_at.desc`,
+        { headers: { apikey: supabaseKey!, Authorization: `Bearer ${session.access_token}` } }
+      );
+      const data = await res.json();
+      setBoardPosts(Array.isArray(data) ? data : []);
+    } catch {
+      // silent
+    } finally {
+      setBoardLoading(false);
+    }
+  }, [circleId]);
+
+  useEffect(() => {
+    if (activeTab === 'board') loadBoardPosts();
+  }, [activeTab, loadBoardPosts]);
+
+  const submitBoardPost = async () => {
+    if (!boardTitle.trim() || !boardContent.trim()) return;
+    setBoardPosting(true);
+    try {
+      const session = getStoredSession();
+      if (!session) return;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/rest/v1/community_posts`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseKey!,
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({
+          circle_id: circleId,
+          author_id: session.user.id,
+          title: boardTitle.trim(),
+          content: boardContent.trim(),
+          tag: boardTag,
+        }),
+      });
+      if (res.ok) {
+        setBoardTitle('');
+        setBoardContent('');
+        setBoardTag('general');
+        setShowBoardCreate(false);
+        loadBoardPosts();
+        toast('Post shared', 'success');
+      }
+    } catch {
+      toast('Failed to post', 'error');
+    } finally {
+      setBoardPosting(false);
+    }
+  };
+
+  const deleteBoardPost = async (postId: string) => {
+    const session = getStoredSession();
+    if (!session) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    await fetch(`${supabaseUrl}/rest/v1/community_posts?id=eq.${postId}`, {
+      method: 'DELETE',
+      headers: { apikey: supabaseKey!, Authorization: `Bearer ${session.access_token}` },
+    });
+    setBoardPosts(prev => prev.filter(p => p.id !== postId));
   };
 
   const sendMessage = async () => {
@@ -484,6 +632,23 @@ export default function CirclePage() {
         referenceId: circleId,
         accessToken: session.access_token,
       });
+
+      // Email the invitee (best-effort)
+      try {
+        const inviteeRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=email`, {
+          headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+        });
+        if (inviteeRes.ok) {
+          const [invitee] = await inviteeRes.json();
+          if (invitee?.email) {
+            fetch('/api/email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'circle_invite', to: invitee.email, circleName: circle?.name || 'a circle' }),
+            }).catch(() => {});
+          }
+        }
+      } catch { /* silent */ }
     } catch (error) {
       console.error('Error sending invitation:', error);
     } finally {
@@ -752,6 +917,12 @@ export default function CirclePage() {
     }
   };
 
+  const handleCoverCropConfirm = async (blob: Blob) => {
+    setCoverCropSrc(null);
+    const file = new File([blob], `circle-cover-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    await uploadCoverImage(file);
+  };
+
   const removeCoverImage = async () => {
     try {
       const session = getStoredSession();
@@ -850,9 +1021,21 @@ export default function CirclePage() {
   const colors = getColorClasses(circle.color);
 
   return (
-    <div className="h-dvh bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden">
+    <div className="fixed top-0 left-0 right-0 bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden" style={{ bottom: '72px' }}>
+      {/* Cover image crop modal */}
+      {coverCropSrc && (
+        <ImageCropModal
+          imageSrc={coverCropSrc}
+          aspect={16 / 9}
+          circular={false}
+          title="Crop cover photo"
+          onConfirm={handleCoverCropConfirm}
+          onCancel={() => setCoverCropSrc(null)}
+        />
+      )}
+
       {/* Header — flex-shrink-0, always visible */}
-      <div className="flex-shrink-0 bg-white shadow-sm border-b border-gray-200">
+      <div className="flex-shrink-0 bg-white shadow-sm border-b border-gray-200" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="max-w-md mx-auto">
           <AppHeader
             backHref="/circles"
@@ -932,6 +1115,16 @@ export default function CirclePage() {
             >
               Meetup
             </button>
+            <button
+              onClick={() => setActiveTab('board')}
+              className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
+                activeTab === 'board'
+                  ? 'border-emerald-500 text-emerald-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Board
+            </button>
           </div>
         </div>
       </div>
@@ -1002,7 +1195,17 @@ export default function CirclePage() {
             </div>
 
             {/* Message Input */}
-            <div className="bg-white border-t border-gray-200 p-4">
+            <div className="bg-white border-t border-gray-200 p-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
+              {/* Pending file preview */}
+              {pendingChatFile && (
+                <div className="mb-2 px-3 py-2 bg-gray-50 rounded-xl flex items-center gap-2 text-sm">
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                  <span className="flex-1 truncate text-gray-700">{pendingChatFile.name}</span>
+                  <button onClick={() => { setPendingChatFile(null); if (chatFileRef.current) chatFileRef.current.value = ''; }} className="text-gray-400 hover:text-red-400 text-lg leading-none">×</button>
+                </div>
+              )}
               <div className="flex gap-2 items-end">
                 <button
                   onClick={() => chatFileRef.current?.click()}
@@ -1023,13 +1226,16 @@ export default function CirclePage() {
                   type="file"
                   accept="image/*,.pdf,.doc,.docx,.txt"
                   className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) sendCircleFile(f); }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) setPendingChatFile(f); }}
                 />
                 <textarea
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Type a message..."
+                  onFocus={() => {
+                    setTimeout(() => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }), 150);
+                  }}
+                  placeholder={pendingChatFile ? 'Add a message (optional)...' : 'Type a message...'}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
                   maxLength={500}
                   rows={1}
@@ -1040,11 +1246,11 @@ export default function CirclePage() {
                   }}
                 />
                 <button
-                  onClick={sendMessage}
-                  disabled={!newMessage.trim() || sendingMessage}
+                  onClick={async () => { if (pendingChatFile) { await sendCircleFile(pendingChatFile); setPendingChatFile(null); if (chatFileRef.current) chatFileRef.current.value = ''; if (newMessage.trim()) sendMessage(); } else { sendMessage(); } }}
+                  disabled={(!newMessage.trim() && !pendingChatFile) || sendingMessage || uploadingChatFile}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
-                  {sendingMessage ? '...' : 'Send'}
+                  {sendingMessage || uploadingChatFile ? '...' : 'Send'}
                 </button>
               </div>
             </div>
@@ -1149,6 +1355,41 @@ export default function CirclePage() {
                   rows={2}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 bg-white resize-none"
                 />
+
+                {/* File attachment */}
+                <div>
+                  <input
+                    ref={resourceFileRef}
+                    type="file"
+                    className="hidden"
+                    onChange={e => setResourceFile(e.target.files?.[0] ?? null)}
+                  />
+                  {resourceFile ? (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-white border border-emerald-300 rounded-lg text-sm">
+                      <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                      </svg>
+                      <span className="flex-1 truncate text-gray-700">{resourceFile.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => { setResourceFile(null); if (resourceFileRef.current) resourceFileRef.current.value = ''; }}
+                        className="text-gray-400 hover:text-red-400 text-lg leading-none flex-shrink-0"
+                      >×</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => resourceFileRef.current?.click()}
+                      className="w-full px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-emerald-400 hover:text-emerald-600 bg-white text-left flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                      </svg>
+                      Attach a file (optional)
+                    </button>
+                  )}
+                </div>
+
                 <button
                   onClick={addResource}
                   disabled={!resourceTitle.trim() || addingResource}
@@ -1183,11 +1424,22 @@ export default function CirclePage() {
                         ) : (
                           <p className="font-medium text-gray-900 text-sm">{resource.title}</p>
                         )}
-                        {resource.url && (
-                          <p className="text-xs text-gray-400 truncate mt-0.5">{resource.url}</p>
-                        )}
                         {resource.description && (
                           <p className="text-sm text-gray-600 mt-1">{resource.description}</p>
+                        )}
+                        {resource.file_url && (
+                          <a
+                            href={resource.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={resource.file_name || true}
+                            className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 bg-gray-100 hover:bg-emerald-50 border border-gray-200 hover:border-emerald-300 rounded-lg text-xs text-gray-600 hover:text-emerald-700 transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            {resource.file_name || 'Download file'}
+                          </a>
                         )}
                       </div>
                       {(resource.created_by === currentUserId || isAdmin) && (
@@ -1239,8 +1491,15 @@ export default function CirclePage() {
 
             {/* Admin: schedule / edit meetup */}
             {isAdmin && (
+              <>
+                <button
+                  onClick={() => setShowMeetupForm(v => !v)}
+                  className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${showMeetupForm ? 'bg-gray-100 text-gray-700' : 'bg-gray-900 text-white'}`}
+                >
+                  {showMeetupForm ? 'Cancel' : circle?.next_meetup_date ? 'Edit meetup' : 'Schedule a meetup'}
+                </button>
+              {showMeetupForm && (
               <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-                <p className="font-semibold text-gray-900 text-sm">{circle?.next_meetup_date ? 'Update meetup' : 'Schedule a meetup'}</p>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Date</label>
                   <input
@@ -1252,12 +1511,26 @@ export default function CirclePage() {
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Time (optional)</label>
-                  <input
-                    type="time"
-                    value={meetupTime}
-                    onChange={e => setMeetupTime(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500"
-                  />
+                  <div className="flex gap-2">
+                    <select
+                      value={(() => { const h = parseInt(meetupTime.split(':')[0] ?? '9', 10); return h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`; })()}
+                      onChange={(e) => { const label = e.target.value; const isPM = label.includes('PM'); const num = parseInt(label, 10); const hour = num === 12 ? (isPM ? 12 : 0) : isPM ? num + 12 : num; const m = meetupTime.split(':')[1] ?? '00'; setMeetupTime(`${String(hour).padStart(2, '0')}:${m}`); }}
+                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      {['6 AM','7 AM','8 AM','9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM'].map(h => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={meetupTime.split(':')[1] ?? '00'}
+                      onChange={(e) => { const h = meetupTime.split(':')[0] ?? '09'; setMeetupTime(`${h}:${e.target.value}`); }}
+                      className="w-24 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      {['00','15','30','45'].map(m => (
+                        <option key={m} value={m}>{m === '00' ? ':00' : `:${m}`}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Location</label>
@@ -1306,6 +1579,7 @@ export default function CirclePage() {
                         });
                         if (res.ok) {
                           setCircle(prev => prev ? { ...prev, next_meetup_date: meetupDate, next_meetup_time: meetupTime || null, meetup_location: meetupLocation || null, meetup_notes: meetupNotes || null } : null);
+                          setShowMeetupForm(false);
                         }
                       } catch { /* silent */ }
                       finally { setSavingMeetup(false); }
@@ -1329,7 +1603,8 @@ export default function CirclePage() {
                             body: JSON.stringify({ next_meetup_date: null, next_meetup_time: null, meetup_location: null, meetup_notes: null }),
                           });
                           setCircle(prev => prev ? { ...prev, next_meetup_date: null, next_meetup_time: null, meetup_location: null, meetup_notes: null } : null);
-                          setMeetupDate(''); setMeetupTime(''); setMeetupLocation(''); setMeetupNotes('');
+                          setMeetupDate(''); setMeetupTime('09:00'); setMeetupLocation(''); setMeetupNotes('');
+                          setShowMeetupForm(false);
                         } catch { /* silent */ }
                         finally { setSavingMeetup(false); }
                       }}
@@ -1341,6 +1616,104 @@ export default function CirclePage() {
                 </div>
               </div>
             )}
+              </>
+            )}
+          </div>
+        ) : activeTab === 'board' ? (
+          <div className="h-full overflow-y-auto p-4">
+            <div className="pt-4">
+              {/* Post button */}
+              <button
+                onClick={() => setShowBoardCreate(v => !v)}
+                className="w-full py-2.5 bg-gray-900 text-white text-sm font-semibold rounded-xl mb-4"
+              >
+                {showBoardCreate ? 'Cancel' : '+ New post'}
+              </button>
+
+              {/* Create form */}
+              {showBoardCreate && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 space-y-3">
+                  <input
+                    placeholder="Title"
+                    value={boardTitle}
+                    onChange={e => setBoardTitle(e.target.value)}
+                    maxLength={120}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <textarea
+                    placeholder="Share something with the circle..."
+                    value={boardContent}
+                    onChange={e => setBoardContent(e.target.value)}
+                    rows={3}
+                    maxLength={1000}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                  />
+                  <select
+                    value={boardTag}
+                    onChange={e => setBoardTag(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="general">General</option>
+                    <option value="question">Question</option>
+                    <option value="curriculum">Curriculum</option>
+                    <option value="resource">Resource</option>
+                    <option value="meetup">Meetup idea</option>
+                  </select>
+                  <button
+                    onClick={submitBoardPost}
+                    disabled={boardPosting || !boardTitle.trim() || !boardContent.trim()}
+                    className="w-full py-2.5 bg-gray-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+                  >
+                    {boardPosting ? 'Posting...' : 'Post'}
+                  </button>
+                </div>
+              )}
+
+              {/* Posts list */}
+              {boardLoading ? (
+                <div className="space-y-3">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse">
+                      <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-gray-100 rounded w-full mb-1" />
+                      <div className="h-3 bg-gray-100 rounded w-2/3" />
+                    </div>
+                  ))}
+                </div>
+              ) : boardPosts.length === 0 ? (
+                <div className="text-center py-12 px-6">
+                  <div className="text-4xl mb-3">📋</div>
+                  <p className="font-semibold text-gray-800 mb-1">Nothing posted yet</p>
+                  <p className="text-sm text-gray-500">Be the first to share something with the circle.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {boardPosts.map(post => (
+                    <div key={post.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex-1">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mr-2 ${BOARD_TAG_COLORS[post.tag] || 'bg-gray-100 text-gray-600'}`}>
+                            {post.tag}
+                          </span>
+                          <span className="text-xs text-gray-400">{new Date(post.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span>
+                        </div>
+                        {post.author_id === currentUserId && (
+                          <button
+                            onClick={() => deleteBoardPost(post.id)}
+                            className="text-xs text-gray-400 hover:text-red-500"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                      <p className="font-semibold text-gray-900 text-sm mb-1">{post.title}</p>
+                      <p className="text-sm text-gray-600 leading-relaxed">{post.content}</p>
+                      <p className="text-xs text-gray-400 mt-2">— {post.author?.display_name || post.author?.family_name}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
       </div>
@@ -1493,7 +1866,14 @@ export default function CirclePage() {
                         accept="image/*"
                         className="hidden"
                         disabled={uploadingCover}
-                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadCoverImage(f); e.target.value = ''; }}
+                        onChange={e => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          const reader = new FileReader();
+                          reader.onload = () => setCoverCropSrc(reader.result as string);
+                          reader.readAsDataURL(f);
+                          e.target.value = '';
+                        }}
                       />
                     </label>
                   </div>

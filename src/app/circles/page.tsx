@@ -10,6 +10,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 import { distanceKm } from '@/lib/geocode';
 import { loadSearchRadius } from '@/lib/preferences';
+import { CirclesPageSkeleton } from '@/components/SkeletonLoader';
 
 type Circle = {
   id: string;
@@ -311,8 +312,13 @@ export default function CirclesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+        <div className="max-w-md mx-auto px-4 pt-2">
+          <div className="h-16 flex items-center">
+            <div className="w-16 h-4 bg-gray-200 rounded-lg animate-pulse" />
+          </div>
+          <CirclesPageSkeleton />
+        </div>
       </div>
     );
   }
@@ -458,15 +464,10 @@ export default function CirclesPage() {
               </button>
 
               {circles.length === 0 && (
-                <div className="text-center py-12">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No circles yet</h3>
-                  <p className="text-gray-500 text-sm mb-4">Join a public circle or create your own to connect around shared interests.</p>
-                  <button
-                    onClick={() => setMainTab('discover')}
-                    className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700"
-                  >
-                    Find circles
-                  </button>
+                <div className="text-center py-12 px-6">
+                  <div className="text-4xl mb-3">🔵</div>
+                  <p className="font-semibold text-gray-800 mb-1">You're not in any circles yet</p>
+                  <p className="text-sm text-gray-500">Circles are groups where families connect around shared interests — co-ops, subjects, local meetups. Find one to join below.</p>
                 </div>
               )}
 
@@ -529,10 +530,19 @@ export default function CirclesPage() {
                   return true;
                 });
                 if (filtered.length === 0) return (
-                  <div className="text-center py-16">
-                    <h3 className="font-semibold text-gray-900 mb-2">{discoverSearch ? 'No circles found' : 'No public circles yet'}</h3>
-                    <p className="text-gray-500 text-sm">{discoverSearch ? `Nothing matching "${discoverSearch}"` : 'Be the first to create a public circle'}</p>
-                  </div>
+                  discoverSearch ? (
+                    <div className="text-center py-10 px-6">
+                      <div className="text-3xl mb-2">🔍</div>
+                      <p className="font-semibold text-gray-700 mb-1">No circles match that search</p>
+                      <p className="text-sm text-gray-500">Try a different term, or create a new circle.</p>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 px-6">
+                      <div className="text-4xl mb-3">🌀</div>
+                      <p className="font-semibold text-gray-800 mb-1">No circles yet in your area</p>
+                      <p className="text-sm text-gray-500">Start the first one — a local co-op, a study group, a sports circle. Your community will find you.</p>
+                    </div>
+                  )
                 );
                 return (
                   <div className="space-y-3">

@@ -32,73 +32,72 @@ export const deleteAccount = async (userId: string, isAdminAction: boolean = fal
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+  // Helper: DELETE a resource but silently ignore 404 (table may not exist yet)
+  const softDelete = async (url: string) => {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'apikey': supabaseKey!,
+        'Authorization': `Bearer ${session!.access_token}`,
+      },
+    });
+    if (!res.ok && res.status !== 404) {
+      console.warn(`Cleanup warning (${res.status}): ${url}`);
+    }
+  };
+
   try {
     // Start transaction-like cleanup (order matters due to foreign key constraints)
     
     // 1. Delete from blocked_users (both as blocker and blocked)
-    await fetch(`${supabaseUrl}/rest/v1/blocked_users?or=(blocker_id.eq.${userId},blocked_id.eq.${userId})`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey!,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    });
+    await softDelete(`${supabaseUrl}/rest/v1/blocked_users?or=(blocker_id.eq.${userId},blocked_id.eq.${userId})`);
 
     // 2. Delete reports (both as reporter and reported)
-    await fetch(`${supabaseUrl}/rest/v1/reports?or=(reporter_id.eq.${userId},reported_id.eq.${userId})`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey!,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    });
+    await softDelete(`${supabaseUrl}/rest/v1/reports?or=(reporter_id.eq.${userId},reported_id.eq.${userId})`);
 
-    // 3. Delete event RSVPs
-    await fetch(`${supabaseUrl}/rest/v1/event_rsvps?profile_id=eq.${userId}`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey!,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    });
+    // 3. Delete push notification subscriptions
+    await softDelete(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}`);
 
-    // 4. Delete events hosted by user
-    await fetch(`${supabaseUrl}/rest/v1/events?host_id=eq.${userId}`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey!,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    });
+    // 4. Delete circle messages sent by user
+    await softDelete(`${supabaseUrl}/rest/v1/circle_messages?sender_id=eq.${userId}`);
 
-    // 5. Delete messages sent by user
-    await fetch(`${supabaseUrl}/rest/v1/messages?sender_id=eq.${userId}`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey!,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    });
+    // 5. Delete event messages sent by user
+    await softDelete(`${supabaseUrl}/rest/v1/event_messages?sender_id=eq.${userId}`);
 
-    // 6. Delete conversations where user is participant
-    await fetch(`${supabaseUrl}/rest/v1/conversations?or=(participant_1.eq.${userId},participant_2.eq.${userId})`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey!,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    });
+    // 6. Delete circle memberships
+    await softDelete(`${supabaseUrl}/rest/v1/circle_members?member_id=eq.${userId}`);
 
-    // 7. Delete user notifications
-    await fetch(`${supabaseUrl}/rest/v1/user_notifications?user_id=eq.${userId}`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey!,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    });
+    // 7. Delete circle invitations (sent or received)
+    await softDelete(`${supabaseUrl}/rest/v1/circle_invitations?or=(inviter_id.eq.${userId},invitee_id.eq.${userId})`);
 
-    // 8. Delete profile photo from storage if exists
+    // 8. Delete event invitations (sent or received)
+    await softDelete(`${supabaseUrl}/rest/v1/event_invitations?or=(inviter_id.eq.${userId},invitee_id.eq.${userId})`);
+
+    // 9. Delete event RSVPs
+    await softDelete(`${supabaseUrl}/rest/v1/event_rsvps?profile_id=eq.${userId}`);
+
+    // 10. Delete events hosted by user
+    await softDelete(`${supabaseUrl}/rest/v1/events?host_id=eq.${userId}`);
+
+    // 11. Delete community posts by user
+    await softDelete(`${supabaseUrl}/rest/v1/community_posts?author_id=eq.${userId}`);
+
+    // 12. Delete calendar notes
+    await softDelete(`${supabaseUrl}/rest/v1/calendar_notes?profile_id=eq.${userId}`);
+
+    // 13. Delete direct messages sent by user
+    await softDelete(`${supabaseUrl}/rest/v1/messages?sender_id=eq.${userId}`);
+
+    // 14. Delete conversations where user is participant
+    await softDelete(`${supabaseUrl}/rest/v1/conversations?or=(participant_1.eq.${userId},participant_2.eq.${userId})`);
+
+    // 15. Delete connections (sent or received)
+    await softDelete(`${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${userId},receiver_id.eq.${userId})`);
+
+    // 16. Delete notifications for this user
+    await softDelete(`${supabaseUrl}/rest/v1/notifications?user_id=eq.${userId}`);
+
+    // 17. Delete profile photo from storage if exists
     try {
       const { data: profile } = await supabase
         .from('profiles')
@@ -115,7 +114,7 @@ export const deleteAccount = async (userId: string, isAdminAction: boolean = fal
       // Continue with deletion even if photo deletion fails
     }
 
-    // 9. Delete profile (this should cascade to auth.users via trigger)
+    // 18. Delete profile (this should cascade to auth.users via trigger)
     const deleteResponse = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`, {
       method: 'DELETE',
       headers: {
@@ -129,7 +128,7 @@ export const deleteAccount = async (userId: string, isAdminAction: boolean = fal
       throw new Error(`Failed to delete profile: ${error}`);
     }
 
-    // 10. Delete from auth.users (requires service role or admin function)
+    // 19. Delete from auth.users (requires service role or admin function)
     // Note: This might need to be done via a Database Function or Edge Function
     // For now, we soft-delete by removing the profile which is the main concern
 

@@ -12,6 +12,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import { createNotification } from '@/lib/notifications';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 import { loadSearchRadius } from '@/lib/preferences';
+import { EventsPageSkeleton } from '@/components/SkeletonLoader';
 
 type Event = {
   id: string;
@@ -117,6 +118,7 @@ export default function EventsPage() {
   const [chatSenderProfiles, setChatSenderProfiles] = useState<Record<string, any>>({});
   const chatFileRef = useRef<HTMLInputElement>(null);
   const eventChatEndRef = useRef<HTMLDivElement>(null);
+  const eventChatContainerRef = useRef<HTMLDivElement>(null);
   // Past events
   const [pastEventsSubTab, setPastEventsSubTab] = useState<'attended' | 'hosted'>('attended');
   const [showPastEvents, setShowPastEvents] = useState(false);
@@ -215,6 +217,8 @@ export default function EventsPage() {
     setEventDetailTab(canChat ? 'chat' : 'info');
     setEventChatMessages([]);
     setChatSenderProfiles({});
+    // Always start at the top so the sticky header is visible
+    window.scrollTo({ top: 0 });
   }, [selectedEvent?.id, userId]);
 
   // Load event chat messages when chat tab is active
@@ -258,10 +262,22 @@ export default function EventsPage() {
     return () => clearInterval(interval);
   }, [selectedEvent?.id, eventDetailTab, userId]);
 
-  // Auto-scroll event chat to bottom on new messages
+  // Auto-scroll event chat to bottom on new messages or when switching to chat tab
   useEffect(() => {
-    eventChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = eventChatContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [eventChatMessages]);
+
+  useEffect(() => {
+    if (eventDetailTab !== 'chat') return;
+    // Delay to let the chat DOM mount before scrolling
+    const timer = setTimeout(() => {
+      const el = eventChatContainerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [eventDetailTab]);
 
   const sendEventChatMessage = async () => {
     if (!eventChatInput.trim() || !selectedEvent || sendingChat) return;
@@ -1080,8 +1096,13 @@ export default function EventsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+        <div className="max-w-md mx-auto px-4 pt-2">
+          <div className="h-16 flex items-center">
+            <div className="w-16 h-4 bg-gray-200 rounded-lg animate-pulse" />
+          </div>
+          <EventsPageSkeleton />
+        </div>
       </div>
     );
   }
@@ -1119,7 +1140,7 @@ export default function EventsPage() {
                 Info
               </button>
               <button
-                onClick={() => setEventDetailTab('chat')}
+                onClick={() => { setEventDetailTab('chat'); window.scrollTo({ top: 0 }); }}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${eventDetailTab === 'chat' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 Chat {eventChatMessages.length > 0 && `(${eventChatMessages.length})`}
@@ -1129,18 +1150,21 @@ export default function EventsPage() {
 
           {/* Chat view */}
           {eventDetailTab === 'chat' && (
-            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-              <div className="p-4 border-b border-gray-100">
+            <div className="bg-white rounded-2xl shadow-lg">
+              <div className="p-4 border-b border-gray-100 rounded-t-2xl">
                 <p className="text-sm font-semibold text-gray-900">Event chat</p>
                 <p className="text-xs text-gray-400">Visible to host and attendees</p>
               </div>
-              <div className="h-96 overflow-y-auto p-4 space-y-3">
+              <div ref={eventChatContainerRef} className="overflow-y-auto p-4 pb-20 space-y-3" style={{ height: 'calc(100dvh - 280px)', minHeight: '200px' }}>
                 {loadingChat ? (
                   <div className="flex justify-center py-8">
                     <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
                   </div>
                 ) : eventChatMessages.length === 0 ? (
-                  <p className="text-center text-gray-400 text-sm py-8">No messages yet. Say hi!</p>
+                  <div className="text-center py-8 px-6">
+                    <p className="text-2xl mb-2">💬</p>
+                    <p className="text-sm text-gray-500">No messages yet — say hi to the group!</p>
+                  </div>
                 ) : (
                   eventChatMessages.map((msg: any) => {
                     const isMe = msg.sender_id === userId;
@@ -1186,7 +1210,7 @@ export default function EventsPage() {
                 )}
                 <div ref={eventChatEndRef} />
               </div>
-              <div className="p-3 border-t border-gray-100 flex gap-2 items-center">
+              <div className="fixed left-0 right-0 bg-white border-t border-gray-100 z-20 px-4 py-3" style={{ bottom: '72px' }}><div className="max-w-md mx-auto flex gap-2 items-center">
                 <input
                   ref={chatFileRef}
                   type="file"
@@ -1223,7 +1247,7 @@ export default function EventsPage() {
                 >
                   {sendingChat ? '...' : 'Send'}
                 </button>
-              </div>
+              </div></div>
             </div>
           )}
 
@@ -1317,7 +1341,10 @@ export default function EventsPage() {
                       {[1,2,3].map(i => <div key={i} className="w-8 h-8 rounded-full bg-gray-100 animate-pulse" />)}
                     </div>
                   ) : attendees.length === 0 ? (
-                    <p className="text-sm text-gray-400">No one yet — be the first!</p>
+                    <div className="text-center py-6">
+                      <p className="text-2xl mb-2">👋</p>
+                      <p className="text-sm text-gray-500">No one's RSVP'd yet — be the first!</p>
+                    </div>
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {attendees.map(p => (
@@ -1691,9 +1718,19 @@ export default function EventsPage() {
                           </button>
                         ))}
                         {(pastEventsSubTab === 'attended' ? pastAttended : pastHosted).length === 0 && (
-                          <p className="text-sm text-gray-400 text-center py-3">
-                            {pastEventsSubTab === 'attended' ? 'No attended events yet' : 'No hosted events yet'}
-                          </p>
+                          pastEventsSubTab === 'attended' ? (
+                            <div className="text-center py-10 px-6">
+                              <div className="text-3xl mb-2">🎟️</div>
+                              <p className="font-semibold text-gray-700 mb-1">No events attended yet</p>
+                              <p className="text-sm text-gray-500">Events you RSVP to will appear here.</p>
+                            </div>
+                          ) : (
+                            <div className="text-center py-10 px-6">
+                              <div className="text-3xl mb-2">🗓️</div>
+                              <p className="font-semibold text-gray-700 mb-1">You haven't hosted any events yet</p>
+                              <p className="text-sm text-gray-500">Create your first event and bring families together.</p>
+                            </div>
+                          )
                         )}
                       </div>
                     </>
@@ -1722,9 +1759,16 @@ export default function EventsPage() {
             <p className="text-center text-sm text-gray-400 py-4">Tap a day to see events</p>
           );
           if (displayEvents.length === 0) return (
-            <div className="text-center py-12">
-              <h3 className="font-semibold text-gray-900 mb-2">No events yet</h3>
-              <p className="text-gray-500 text-sm">Events in your area will appear here.</p>
+            <div className="text-center py-12 px-6">
+              <div className="text-4xl mb-3">📅</div>
+              <p className="font-semibold text-gray-800 mb-1">No events nearby yet</p>
+              <p className="text-sm text-gray-500">Be the first to organise something — a park day, a study session, a field trip. It only takes a minute.</p>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="mt-4 px-5 py-2 bg-gray-900 text-white text-sm font-semibold rounded-xl"
+              >
+                Create an event
+              </button>
             </div>
           );
           return (
@@ -2039,13 +2083,41 @@ export default function EventsPage() {
                   <div>
                     {editingEventTime ? (
                       <div className="space-y-2">
-                        <input
-                          type="time"
-                          value={tempEventTime}
-                          onChange={(e) => setTempEventTime(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                          autoFocus
-                        />
+                        {/* Custom time picker */}
+                        <div className="flex gap-2">
+                          <select
+                            value={(() => {
+                              const [h] = (tempEventTime || '09:00').split(':');
+                              const hour = parseInt(h, 10);
+                              return hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+                            })()}
+                            onChange={(e) => {
+                              const label = e.target.value;
+                              const isPM = label.includes('PM');
+                              const num = parseInt(label, 10);
+                              const hour = num === 12 ? (isPM ? 12 : 0) : isPM ? num + 12 : num;
+                              const [, m] = (tempEventTime || '09:00').split(':');
+                              setTempEventTime(`${String(hour).padStart(2, '0')}:${m || '00'}`);
+                            }}
+                            className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          >
+                            {['6 AM','7 AM','8 AM','9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM'].map(h => (
+                              <option key={h} value={h}>{h}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={(() => { const [,m] = (tempEventTime || '09:00').split(':'); return m || '00'; })()}
+                            onChange={(e) => {
+                              const [h] = (tempEventTime || '09:00').split(':');
+                              setTempEventTime(`${h}:${e.target.value}`);
+                            }}
+                            className="w-24 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          >
+                            {['00','15','30','45'].map(m => (
+                              <option key={m} value={m}>{m === '00' ? ':00' : `:${m}`}</option>
+                            ))}
+                          </select>
+                        </div>
                         <div className="flex gap-1">
                           <button
                             onClick={saveEventTime}
@@ -2467,8 +2539,8 @@ function CreateEventModal({
           <h2 className="text-2xl font-bold text-gray-900">Create Event</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
         </div>
-        {/* Scrollable form */}
-        <div className="overflow-y-auto flex-1 p-6 pb-28">
+        {/* Scrollable form — min-h-0 is required for overflow-y-auto to work inside a flex-col */}
+        <div className="overflow-y-auto flex-1 min-h-0 p-6 pb-28" style={{ WebkitOverflowScrolling: 'touch' }}>
           <div className="space-y-6">
             <div>
               <input
@@ -2522,13 +2594,40 @@ function CreateEventModal({
                   className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900"
                 />
               </div>
-              <div>
-                <input
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900"
-                />
+              {/* Custom time picker */}
+              <div className="flex gap-2">
+                <select
+                  value={(() => {
+                    const [h] = time.split(':');
+                    const hour = parseInt(h, 10);
+                    return hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+                  })()}
+                  onChange={(e) => {
+                    const label = e.target.value;
+                    const isPM = label.includes('PM');
+                    const num = parseInt(label, 10);
+                    const hour = num === 12 ? (isPM ? 12 : 0) : isPM ? num + 12 : num;
+                    const [, m] = time.split(':');
+                    setTime(`${String(hour).padStart(2, '0')}:${m || '00'}`);
+                  }}
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  {['6 AM','7 AM','8 AM','9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM'].map(h => (
+                    <option key={h} value={h}>{h}</option>
+                  ))}
+                </select>
+                <select
+                  value={(() => { const [,m] = time.split(':'); return m || '00'; })()}
+                  onChange={(e) => {
+                    const [h] = time.split(':');
+                    setTime(`${h}:${e.target.value}`);
+                  }}
+                  className="w-24 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  {['00','15','30','45'].map(m => (
+                    <option key={m} value={m}>{m === '00' ? ':00' : `:${m}`}</option>
+                  ))}
+                </select>
               </div>
             </div>
 

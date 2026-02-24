@@ -16,6 +16,8 @@ import AdminBadge from '@/components/AdminBadge';
 import { createNotification } from '@/lib/notifications';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 import { loadSearchRadius } from '@/lib/preferences';
+import ReportBlockModal from '@/components/ReportBlockModal';
+import { DiscoverPageSkeleton } from '@/components/SkeletonLoader';
 
 type Family = {
   id: string;
@@ -136,6 +138,7 @@ function EnhancedDiscoverPage() {
   const [filteredFamilies, setFilteredFamilies] = useState<Family[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedFamily, setSelectedFamily] = useState<Family | null>(null);
+  const [reportBlockTarget, setReportBlockTarget] = useState<{ id: string; name: string; mode: 'report' | 'block' } | null>(null);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   
   // Selection and hiding system
@@ -1041,8 +1044,13 @@ function EnhancedDiscoverPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+        <div className="max-w-md mx-auto px-4 pt-2">
+          <div className="h-16 flex items-center">
+            <div className="w-16 h-4 bg-gray-200 rounded-lg animate-pulse" />
+          </div>
+          <DiscoverPageSkeleton />
+        </div>
       </div>
     );
   }
@@ -1384,92 +1392,25 @@ function EnhancedDiscoverPage() {
         {viewMode === 'list' && (
           <div className="space-y-2">
             {filteredFamilies.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-emerald-50 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <svg 
-                    viewBox="0 0 64 64" 
-                    className="w-12 h-12"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    {/* Adult head (centered) */}
-                    <circle 
-                      cx="32" 
-                      cy="29" 
-                      r="11" 
-                      fill="rgba(75, 85, 99, 0.8)"
-                      stroke="rgba(75, 85, 99, 0.9)" 
-                      strokeWidth="1"
-                    />
-                    {/* Adult shoulders */}
-                    <path 
-                      d="M18 52 C18 44, 24 40, 32 40 C40 40, 46 44, 46 52" 
-                      fill="rgba(75, 85, 99, 0.8)"
-                      stroke="rgba(75, 85, 99, 0.9)" 
-                      strokeWidth="1"
-                    />
-                    
-                    {/* Left child head */}
-                    <circle 
-                      cx="13" 
-                      cy="40" 
-                      r="7" 
-                      fill="rgba(75, 85, 99, 0.75)"
-                      stroke="rgba(75, 85, 99, 0.85)" 
-                      strokeWidth="0.8"
-                    />
-                    {/* Left child shoulders */}
-                    <path 
-                      d="M4 54 C4 50, 7 47, 13 47 C19 47, 22 50, 22 54" 
-                      fill="rgba(75, 85, 99, 0.75)"
-                      stroke="rgba(75, 85, 99, 0.85)" 
-                      strokeWidth="0.8"
-                    />
-                    
-                    {/* Right child head */}
-                    <circle 
-                      cx="51" 
-                      cy="40" 
-                      r="7" 
-                      fill="rgba(75, 85, 99, 0.75)"
-                      stroke="rgba(75, 85, 99, 0.85)" 
-                      strokeWidth="0.8"
-                    />
-                    {/* Right child shoulders */}
-                    <path 
-                      d="M42 54 C42 50, 45 47, 51 47 C57 47, 60 50, 60 54" 
-                      fill="rgba(75, 85, 99, 0.75)"
-                      stroke="rgba(75, 85, 99, 0.85)" 
-                      strokeWidth="0.8"
-                    />
-                  </svg>
+              activeTab === 'teacher' ? (
+                <div className="text-center py-12 px-6">
+                  <div className="text-4xl mb-3">📚</div>
+                  <p className="font-semibold text-gray-800 mb-1">No teachers nearby yet</p>
+                  <p className="text-sm text-gray-500">Know a tutor or educator? Share Haven with them.</p>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {activeTab === 'teacher' ? 'No teachers found yet' : activeTab === 'business' ? 'No businesses found yet' : "You're one of the first families here"}
-
-                </h3>
-                <p className="text-gray-500 text-sm mb-5">
-                  {(activeTab === 'family' || activeTab === 'all')
-                    ? "Haven is just getting started in your area. The more families you invite, the more useful it becomes for everyone."
-                    : "Try adjusting your radius or check back as more people join."}
-                </p>
-                {(activeTab === 'family' || activeTab === 'all') && (
-                  <div className="space-y-2 max-w-xs mx-auto">
-                    <Link
-                      href="/profile?invite=1"
-                      className="block w-full py-3 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors"
-                    >
-                      Invite families you know
-                    </Link>
-                    <Link
-                      href="/events?create=1"
-                      className="block w-full py-3 bg-white text-gray-700 text-sm font-semibold rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
-                    >
-                      Create an event to get started
-                    </Link>
-                  </div>
-                )}
-              </div>
+              ) : activeTab === 'business' ? (
+                <div className="text-center py-12 px-6">
+                  <div className="text-4xl mb-3">🏪</div>
+                  <p className="font-semibold text-gray-800 mb-1">No businesses nearby yet</p>
+                  <p className="text-sm text-gray-500">Homeschool-friendly businesses will appear here as Haven grows in your area.</p>
+                </div>
+              ) : (
+                <div className="text-center py-12 px-6">
+                  <div className="text-4xl mb-3">🌱</div>
+                  <p className="font-semibold text-gray-800 mb-1">You're one of the first!</p>
+                  <p className="text-sm text-gray-500">Haven is just getting started in your area. Invite a family you know to join — every community starts with one connection.</p>
+                </div>
+              )
             ) : (
               <>
                 {/* New families near you banner — above first card */}
@@ -1690,8 +1631,39 @@ function EnhancedDiscoverPage() {
                 {isSendingMessage ? 'Sending...' : 'Send Message'}
               </button>
             </div>
+
+            {/* Safety actions — subtle, not prominent */}
+            <div className="flex justify-center gap-4 pt-1">
+              <button
+                onClick={() => setReportBlockTarget({ id: selectedFamily.id, name: selectedFamily.display_name || selectedFamily.family_name || 'this family', mode: 'block' })}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                Block
+              </button>
+              <span className="text-gray-200 text-xs">·</span>
+              <button
+                onClick={() => setReportBlockTarget({ id: selectedFamily.id, name: selectedFamily.display_name || selectedFamily.family_name || 'this family', mode: 'report' })}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                Report
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Report/Block modal */}
+      {reportBlockTarget && (
+        <ReportBlockModal
+          targetId={reportBlockTarget.id}
+          targetName={reportBlockTarget.name}
+          mode={reportBlockTarget.mode}
+          onClose={() => setReportBlockTarget(null)}
+          onBlocked={() => {
+            setFamilies(prev => prev.filter(f => f.id !== reportBlockTarget!.id));
+            setSelectedFamily(null);
+          }}
+        />
       )}
 
       {/* Circle Invitation Modal */}

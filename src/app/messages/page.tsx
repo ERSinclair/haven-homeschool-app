@@ -1135,8 +1135,8 @@ function MessagesContent() {
 
   if (selected) {
     return (
-      <div className="h-dvh bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden">
-        <div className="flex-shrink-0 z-30 bg-white/90 backdrop-blur-sm border-b border-gray-100">
+      <div className="fixed top-0 left-0 right-0 bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden" style={{ bottom: '72px' }}>
+        <div className="flex-shrink-0 z-30 bg-white/90 backdrop-blur-sm border-b border-gray-100" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="max-w-md mx-auto">
             <AppHeader onBack={() => setSelectedId(null)} />
 
@@ -1221,7 +1221,7 @@ function MessagesContent() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 pt-6 pb-36 space-y-4 max-w-md mx-auto w-full messages-container">
+        <div className="flex-1 overflow-y-auto px-4 pt-6 pb-4 space-y-4 max-w-md mx-auto w-full messages-container">
           {messages.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <p>No messages yet.</p>
@@ -1266,23 +1266,54 @@ function MessagesContent() {
                           </div>
                         )}
 
-                        {isImageOnly ? (
-                          /* Image-only: no bubble */
-                          <div
-                            className={`cursor-pointer transition-all ${selectionClass}`}
-                            {...touchHandlers}
-                          >
-                            <img
-                              src={file.fileUrl}
-                              alt="Attachment"
-                              className="max-w-[220px] max-h-[220px] rounded-2xl object-cover"
-                              onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
-                              onTouchEnd={(e) => { if (!selectionMode) { e.stopPropagation(); e.preventDefault(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
-                            />
+                        {file ? (
+                          /* File/image — no bubble wrapper */
+                          <div className={`cursor-pointer transition-all ${selectionClass}`} {...touchHandlers}>
+                            {file.isImage ? (
+                              <img
+                                src={file.fileUrl}
+                                alt="Attachment"
+                                className="max-w-[220px] max-h-[220px] rounded-2xl object-cover"
+                                onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
+                                onTouchEnd={(e) => { if (!selectionMode) { e.stopPropagation(); e.preventDefault(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
+                              />
+                            ) : (
+                              <button
+                                className={`flex items-center gap-2 px-3 py-2 rounded-2xl text-sm font-medium ${msg.sender_id === userId ? 'bg-emerald-600 text-white' : 'bg-white text-gray-900 shadow-sm border border-gray-100'}`}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const filename = decodeURIComponent(file.fileUrl.split('/').pop()?.split('?')[0] || 'file');
+                                  try {
+                                    const res = await fetch(file.fileUrl);
+                                    const blob = await res.blob();
+                                    const blobUrl = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = blobUrl;
+                                    a.download = filename;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                    URL.revokeObjectURL(blobUrl);
+                                  } catch {
+                                    window.open(file.fileUrl, '_blank');
+                                  }
+                                }}
+                              >
+                                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <span className="truncate max-w-[180px]">
+                                  {decodeURIComponent(file.fileUrl.split('/').pop()?.split('?')[0] || 'File')}
+                                </span>
+                              </button>
+                            )}
+                            {textContent && (
+                              <p className={`text-sm mt-1 break-words ${msg.sender_id === userId ? 'text-right' : ''}`} style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>{textContent}</p>
+                            )}
                             <p className="text-xs text-gray-400 mt-1">{formatTime(msg.created_at)}</p>
                           </div>
                         ) : (
-                          /* Regular bubble */
+                          /* Text-only bubble */
                           <div
                             className={`max-w-[75%] px-4 py-3 rounded-2xl transition-all cursor-pointer ${
                               msg.sender_id === userId
@@ -1291,32 +1322,7 @@ function MessagesContent() {
                             } ${selectionClass}`}
                             {...touchHandlers}
                           >
-                            {file?.isImage && (
-                              <div className="mb-2">
-                                <img
-                                  src={file.fileUrl}
-                                  alt="Attachment"
-                                  className="max-w-[200px] max-h-[200px] rounded-xl object-cover cursor-pointer"
-                                  onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
-                                  onTouchEnd={(e) => { if (!selectionMode) { e.stopPropagation(); e.preventDefault(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
-                                />
-                              </div>
-                            )}
-                            {file && !file.isImage && (
-                              <a
-                                href={file.fileUrl}
-                                download
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 px-3 py-2 bg-white/20 rounded-xl text-sm font-medium mb-2"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                Download file
-                              </a>
-                            )}
-                            {textContent && (
-                              <p className="text-sm break-words" style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>{textContent}</p>
-                            )}
+                            <p className="text-sm break-words" style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>{textContent}</p>
                             <p className={`text-xs mt-1 ${msg.sender_id === userId ? 'text-emerald-200' : 'text-gray-400'}`}>
                               {formatTime(msg.created_at)}
                             </p>
@@ -1332,7 +1338,7 @@ function MessagesContent() {
         </div>
 
         {!selectionMode && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-24 z-10">
+          <div className="flex-shrink-0 bg-white border-t border-gray-100 p-4 z-10">
             <div className="max-w-4xl mx-auto">
               {/* File preview */}
               {selectedFile && (
@@ -1425,15 +1431,28 @@ function MessagesContent() {
               onClick={(e) => e.stopPropagation()}
             />
             <div className="flex gap-3 mt-4" onClick={(e) => e.stopPropagation()}>
-              <a
-                href={lightboxUrl}
-                download
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
                 className="px-5 py-2 bg-white text-gray-900 rounded-xl font-medium hover:bg-gray-100 text-sm"
+                onClick={async () => {
+                  const filename = decodeURIComponent(lightboxUrl.split('/').pop()?.split('?')[0] || 'image');
+                  try {
+                    const res = await fetch(lightboxUrl);
+                    const blob = await res.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(blobUrl);
+                  } catch {
+                    window.open(lightboxUrl, '_blank');
+                  }
+                }}
               >
                 Download
-              </a>
+              </button>
               {lightboxMsgId && (
                 <button
                   onClick={() => {

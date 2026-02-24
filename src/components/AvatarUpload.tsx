@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Compressor from 'compressorjs';
 import { getStoredSession } from '@/lib/session';
+import ImageCropModal from './ImageCropModal';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -32,6 +33,7 @@ export default function AvatarUpload({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewingFullscreen, setViewingFullscreen] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync with prop changes
@@ -81,8 +83,24 @@ export default function AvatarUpload({
         return;
       }
 
-      setUploading(true);
+      // Show crop modal instead of uploading directly
+      const reader = new FileReader();
+      reader.onload = () => setCropSrc(reader.result as string);
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      if (event.target) event.target.value = '';
+    }
+  };
 
+  const handleCropConfirm = async (blob: Blob) => {
+    setCropSrc(null);
+    try {
+      setUploading(true);
+      setError(null);
+
+      const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
       const processedFile = await processImage(file);
       const session = getStoredSession();
       if (!session) { setError('Not logged in'); return; }
@@ -138,9 +156,6 @@ export default function AvatarUpload({
       setError('Something went wrong. Please try again.');
     } finally {
       setUploading(false);
-      if (event.target) {
-        event.target.value = '';
-      }
     }
   };
 
@@ -201,6 +216,18 @@ export default function AvatarUpload({
   
   return (
     <div className="relative">
+      {/* Image crop modal */}
+      {cropSrc && (
+        <ImageCropModal
+          imageSrc={cropSrc}
+          aspect={1}
+          circular={true}
+          title="Crop profile photo"
+          onConfirm={handleCropConfirm}
+          onCancel={() => { setCropSrc(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+        />
+      )}
+
       {/* Fullscreen photo overlay */}
       {viewingFullscreen && avatarUrl && (
         <div

@@ -439,10 +439,17 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Version */}
-        <p className="text-center text-xs text-gray-400 py-4">
-          <span style={{ fontFamily: 'var(--font-fredoka)' }} className="text-emerald-600 font-medium">Haven</span> v0.1.0 · Made in Australia 🇦🇺
-        </p>
+        {/* Version + legal */}
+        <div className="text-center text-xs text-gray-400 py-4 space-y-1">
+          <p>
+            <span style={{ fontFamily: 'var(--font-fredoka)' }} className="text-emerald-600 font-medium">Haven</span> v0.1.0 · Made in Australia
+          </p>
+          <p>
+            <a href="/privacy" className="hover:text-gray-600 underline underline-offset-2">Privacy Policy</a>
+            {' · '}
+            <a href="mailto:hello@familyhaven.app" className="hover:text-gray-600 underline underline-offset-2">Contact</a>
+          </p>
+        </div>
       </div>
 
       {/* Logout Modal */}

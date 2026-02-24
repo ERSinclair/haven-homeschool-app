@@ -28,7 +28,7 @@ export default function Home() {
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-emerald-50"></div>
         <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-100 rounded-full blur-3xl opacity-40 -translate-y-1/2 translate-x-1/2"></div>
         
-        <div className="relative max-w-4xl mx-auto px-4 pt-12 pb-16 sm:pt-20 sm:pb-24">
+        <div className="relative max-w-4xl mx-auto px-4 pt-8 pb-10 sm:pt-14 sm:pb-16">
           {/* Header with Sign In */}
           <div className="flex justify-end mb-4">
             <Link 
@@ -40,7 +40,7 @@ export default function Home() {
           </div>
 
           {/* Haven wordmark — matches discover page */}
-          <div className="text-center mb-24 pt-8">
+          <div className="text-center mb-6 pt-2">
             <span
               className="font-bold text-emerald-600 text-4xl"
               style={{ fontFamily: 'var(--font-fredoka)' }}

@@ -130,14 +130,14 @@ const DOT_COLORS: Record<CalItem['type'], string> = {
   hosting:   'bg-emerald-500',
   attending: 'bg-blue-400',
   circle:    'bg-violet-400',
-  note:      'bg-amber-400',
+  note:      'bg-emerald-500',
 };
 
 const LABEL_COLORS: Record<CalItem['type'], string> = {
   hosting:   'bg-emerald-100 text-emerald-800 border-emerald-200',
   attending: 'bg-blue-100 text-blue-800 border-blue-200',
   circle:    'bg-violet-100 text-violet-800 border-violet-200',
-  note:      'bg-amber-100 text-amber-800 border-amber-200',
+  note:      'bg-emerald-100 text-emerald-800 border-emerald-200',
 };
 
 const TYPE_LABELS: Record<CalItem['type'], string> = {
@@ -501,29 +501,13 @@ function CalendarContent() {
 
           <AppHeader />
 
-          {/* Top actions */}
-          <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
-            <Link
-              href="/events?create=1"
-              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-center bg-emerald-600 text-white shadow-sm"
-            >
-              + Add event
-            </Link>
-            <button
-              onClick={() => downloadICS(items)}
-              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
-            >
-              Export .ics
-            </button>
-          </div>
-
           {/* Upcoming strip */}
           {upcoming.length === 0 && (
             <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-4 mb-5 flex items-center gap-3">
               <div className="text-2xl">🌿</div>
               <div className="flex-1">
                 <p className="text-sm font-semibold text-gray-700">Nothing planned this week</p>
-                <p className="text-xs text-gray-500 mt-0.5">Browse events or add a personal note to a day below</p>
+                <p className="text-xs text-gray-500 mt-0.5">Browse events to add them to your calendar</p>
               </div>
               <Link href="/events" className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex-shrink-0">
                 Browse
@@ -635,7 +619,7 @@ function CalendarContent() {
                 <p className="text-sm font-semibold text-gray-700">{formatDateLong(selectedDate)}</p>
                 <button
                   onClick={startAddNote}
-                  className="text-sm font-medium text-amber-600 hover:text-amber-700 flex items-center gap-1"
+                  className="text-sm font-medium text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -646,13 +630,13 @@ function CalendarContent() {
 
               {/* Note creation / edit form */}
               {addingNote && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-3 space-y-3">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-3 space-y-3">
                   <input
                     type="text"
                     value={noteTitle}
                     onChange={e => setNoteTitle(e.target.value)}
                     placeholder="Title (optional)"
-                    className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 bg-white"
+                    className="w-full px-3 py-2 border border-emerald-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 bg-white"
                   />
                   <textarea
                     value={noteContent}
@@ -660,11 +644,11 @@ function CalendarContent() {
                     placeholder="What's on your mind for this day?"
                     rows={3}
                     autoFocus
-                    className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 bg-white resize-none"
+                    className="w-full px-3 py-2 border border-emerald-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 bg-white resize-none"
                   />
                   {/* Recurrence picker */}
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-amber-800">Repeats</p>
+                    <p className="text-xs font-medium text-emerald-800">Repeats</p>
                     <div className="flex gap-2 flex-wrap">
                       {(['none', 'weekly', 'monthly', 'yearly'] as const).map(opt => (
                         <button
@@ -673,8 +657,8 @@ function CalendarContent() {
                           onClick={() => setNoteRecurrence(opt)}
                           className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
                             noteRecurrence === opt
-                              ? 'bg-amber-500 text-white border-amber-500'
-                              : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-100'
+                              ? 'bg-emerald-500 text-white border-emerald-500'
+                              : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-100'
                           }`}
                         >
                           {opt === 'none' ? 'Never' : opt.charAt(0).toUpperCase() + opt.slice(1)}
@@ -683,12 +667,12 @@ function CalendarContent() {
                     </div>
                     {noteRecurrence !== 'none' && (
                       <div className="flex items-center gap-2">
-                        <label className="text-xs text-amber-700 whitespace-nowrap">End date (optional)</label>
+                        <label className="text-xs text-emerald-700 whitespace-nowrap">End date (optional)</label>
                         <input
                           type="date"
                           value={noteRecurrenceEnd}
                           onChange={e => setNoteRecurrenceEnd(e.target.value)}
-                          className="flex-1 px-2 py-1 border border-amber-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-amber-400"
+                          className="flex-1 px-2 py-1 border border-emerald-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-emerald-400"
                         />
                       </div>
                     )}
@@ -697,7 +681,7 @@ function CalendarContent() {
                     <button
                       onClick={saveNote}
                       disabled={!noteContent.trim() || savingNote}
-                      className="flex-1 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:bg-gray-200 disabled:text-gray-400 hover:bg-amber-600 transition-colors"
+                      className="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold disabled:bg-gray-200 disabled:text-gray-400 hover:bg-emerald-700 transition-colors"
                     >
                       {savingNote ? 'Saving...' : editingNote ? 'Update note' : 'Save note'}
                     </button>
@@ -714,29 +698,25 @@ function CalendarContent() {
               {dayItems.length === 0 && !addingNote ? (
                 <div className="text-center py-6 bg-white rounded-xl border border-gray-100">
                   <p className="text-gray-400 text-sm">Nothing here yet</p>
-                  <div className="flex gap-3 justify-center mt-2">
-                    <button onClick={startAddNote} className="text-amber-600 text-sm font-medium hover:underline">+ Add note</button>
-                    <Link href="/events?create=1" className="text-emerald-600 text-sm font-medium hover:underline">+ Add event</Link>
-                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {dayItems.map(item => (
                     item.type === 'note' ? (
                       // Note card — editable inline
-                      <div key={item.id} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                      <div key={item.id} className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
                         <div className="flex items-start gap-3">
-                          <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5 bg-amber-400" />
+                          <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5 bg-emerald-500" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              {item.title !== 'Note' && <p className="font-semibold text-amber-900 text-sm">{item.title}</p>}
+                              {item.title !== 'Note' && <p className="font-semibold text-emerald-900 text-sm">{item.title}</p>}
                               {item.recurrenceRule && (
-                                <span className="text-xs text-amber-600 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+                                <span className="text-xs text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
                                   {item.recurrenceRule === 'weekly' ? 'Weekly' : item.recurrenceRule === 'monthly' ? 'Monthly' : 'Yearly'}
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-amber-800 mt-0.5 whitespace-pre-wrap">{item.description}</p>
+                            <p className="text-sm text-emerald-800 mt-0.5 whitespace-pre-wrap">{item.description}</p>
                           </div>
                           <div className="flex gap-2 flex-shrink-0">
                             <button
@@ -744,7 +724,7 @@ function CalendarContent() {
                                 const note = notes.find(n => n.id === item.noteId);
                                 if (note) startEditNote(note);
                               }}
-                              className="text-amber-500 hover:text-amber-700 text-xs font-medium"
+                              className="text-emerald-600 hover:text-emerald-700 text-xs font-medium"
                             >
                               Edit
                             </button>

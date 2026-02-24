@@ -16,6 +16,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import AdminBadge from '@/components/AdminBadge';
 import { submitBugReport, submitFeedback } from '@/lib/feedback';
 import { registerPush } from '@/lib/push';
+import ReportBlockModal from '@/components/ReportBlockModal';
 
 type Profile = {
   id: string;
@@ -75,6 +76,7 @@ export default function ProfilePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [isViewingOtherUser, setIsViewingOtherUser] = useState(false);
+  const [reportBlockMode, setReportBlockMode] = useState<'report' | 'block' | null>(null);
   const [notifCount, setNotifCount] = useState(0);
   const router = useRouter();
 
@@ -485,29 +487,31 @@ export default function ProfilePage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
-        {/* Header with conditional back button */}
-        {isEditing ? (
-          <AppHeader onBack={() => setIsEditing(false)} />
-        ) : isViewingOtherUser ? (
-          <AppHeader onBack={() => router.back()} />
-        ) : (
-          <AppHeader
-            left={
-              <Link href="/settings" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors">
-                Settings
-              </Link>
-            }
-          />
-        )}
+        {/* Header — pulled out of px-4 so it sits flush with the edge like other pages */}
+        <div className="-mx-4">
+          {isEditing ? (
+            <AppHeader onBack={() => setIsEditing(false)} />
+          ) : isViewingOtherUser ? (
+            <AppHeader onBack={() => router.back()} />
+          ) : (
+            <AppHeader
+              left={
+                <Link href="/settings" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors">
+                  Settings
+                </Link>
+              }
+            />
+          )}
+        </div>
 
         {/* Nav chips — Calendar, Connections, Education, Board */}
         {!isEditing && !isViewingOtherUser && (
           <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
-            <Link href="/calendar" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
-              Calendar
-            </Link>
             <Link href="/connections" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Connections
+            </Link>
+            <Link href="/calendar" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
+              Calendar
             </Link>
             <Link href="/education" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Education
@@ -570,14 +574,14 @@ export default function ProfilePage() {
 
         {/* Invite card */}
         {!isViewingOtherUser && (
-          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 mb-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-4 shadow-sm">
             <h3 className="font-bold text-lg mb-1 text-gray-900">Know someone who would like to join our community?</h3>
             <p className="text-gray-500 text-sm mb-4">
               Invite families, friends, educators and businesses to Haven and help grow our local communities.
             </p>
             <button
               onClick={handleShare}
-              className="w-full py-2.5 bg-white text-gray-700 font-semibold rounded-xl border border-gray-200 hover:bg-emerald-100 hover:text-emerald-800 hover:border-emerald-200 transition-colors text-sm shadow-sm"
+              className="w-full py-2.5 bg-emerald-50 text-emerald-700 font-semibold rounded-xl border border-emerald-200 hover:bg-emerald-100 hover:text-emerald-800 transition-colors text-sm"
             >
               Share Haven
             </button>
@@ -1058,6 +1062,36 @@ export default function ProfilePage() {
             viewingUserId={user?.id}
           />
         </div>
+
+        {/* Block / Report — only shown when viewing another user's profile */}
+        {isViewingOtherUser && (
+          <div className="flex justify-center gap-6 mb-6 pt-2">
+            <button
+              onClick={() => setReportBlockMode('block')}
+              className="text-xs text-gray-400 hover:text-gray-600"
+            >
+              Block this family
+            </button>
+            <span className="text-gray-200 text-xs">·</span>
+            <button
+              onClick={() => setReportBlockMode('report')}
+              className="text-xs text-gray-400 hover:text-gray-600"
+            >
+              Report
+            </button>
+          </div>
+        )}
+
+        {/* Report/Block modal */}
+        {reportBlockMode && isViewingOtherUser && profile && (
+          <ReportBlockModal
+            targetId={profile.id}
+            targetName={profile.display_name || profile.family_name || 'this family'}
+            mode={reportBlockMode}
+            onClose={() => setReportBlockMode(null)}
+            onBlocked={() => router.back()}
+          />
+        )}
 
         {/* Feedback buttons */}
         <div className="flex gap-3 mb-4">
