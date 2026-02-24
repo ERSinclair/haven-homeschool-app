@@ -503,16 +503,16 @@ export default function ProfilePage() {
         {/* Nav chips — Calendar, Connections, Education, Board */}
         {!isEditing && !isViewingOtherUser && (
           <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
-            <Link href="/calendar" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-center text-gray-500 hover:text-gray-700">
+            <Link href="/calendar" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Calendar
             </Link>
-            <Link href="/connections" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-center text-gray-500 hover:text-gray-700">
+            <Link href="/connections" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Connections
             </Link>
-            <Link href="/education" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-center text-gray-500 hover:text-gray-700">
+            <Link href="/education" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Education
             </Link>
-            <Link href="/board" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-center text-gray-500 hover:text-gray-700">
+            <Link href="/board" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Board
             </Link>
           </div>
@@ -570,7 +570,7 @@ export default function ProfilePage() {
 
         {/* Profile Card */}
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 mt-4">
-          {/* Button row — Edit | Share profile | Notifications */}
+          {/* Button row — Edit | Notifications */}
           {!isEditing && !isViewingOtherUser && (
             <div className="flex items-center justify-center gap-6 pb-4">
               <button
@@ -578,22 +578,6 @@ export default function ProfilePage() {
                 className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
               >
                 Edit
-              </button>
-              <button
-                onClick={async () => {
-                  const shareUrl = `https://familyhaven.app/u/${user?.id}`;
-                  if (navigator.share) {
-                    try {
-                      await navigator.share({ title: `${profile?.display_name || profile?.family_name} on Haven`, text: 'Connect with us on Haven — a community for homeschool families', url: shareUrl });
-                    } catch { /* user cancelled */ }
-                  } else {
-                    await navigator.clipboard.writeText(shareUrl);
-                    toast('Profile link copied!', 'success');
-                  }
-                }}
-                className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
-              >
-                Share profile
               </button>
               <Link href="/notifications" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors flex items-center gap-1">
                 Notifications

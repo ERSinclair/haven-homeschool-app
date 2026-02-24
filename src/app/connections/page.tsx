@@ -637,7 +637,7 @@ export default function ConnectionsPage() {
                             userId={connection.user.id}
                             currentAvatarUrl={connection.user.avatar_url}
                             name={connection.user.family_name || connection.user.display_name}
-                            size="sm"
+                            size="md"
                             editable={false}
                             viewable={true}
                           />

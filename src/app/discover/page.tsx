@@ -1490,7 +1490,7 @@ function EnhancedDiscoverPage() {
                       userId={family.id}
                       currentAvatarUrl={family.avatar_url}
                       name={family.family_name || family.display_name || 'Family'}
-                      size="sm"
+                      size="md"
                       editable={false}
                     />
                     <div className="flex-1 min-w-0">
