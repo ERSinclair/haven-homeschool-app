@@ -604,6 +604,28 @@ export default function EventsPage() {
               referenceId: eventId,
               accessToken: session.access_token,
             });
+            // Email the host
+            try {
+              const hostEmailRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${ev.host_id}&select=email,display_name,family_name`, {
+                headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+              });
+              const myNameRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=display_name,family_name`, {
+                headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+              });
+              if (hostEmailRes.ok && myNameRes.ok) {
+                const [host] = await hostEmailRes.json();
+                const [me] = await myNameRes.json();
+                if (host?.email) {
+                  const attendeeName = me?.display_name || me?.family_name || 'Someone';
+                  const eventDate = new Date(ev.event_date + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'long' });
+                  fetch('/api/email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'rsvp', to: host.email, eventTitle: ev.title, eventDate, attendeeName }),
+                  }).catch(() => {});
+                }
+              }
+            } catch { /* silent */ }
           }
         }
       } else {

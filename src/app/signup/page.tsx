@@ -369,6 +369,13 @@ export default function SignupPage() {
         localStorage.setItem('haven-signup-complete', Date.now().toString());
       }
       
+      // Send welcome email (best-effort, don't block redirect)
+      fetch('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'welcome', to: email, name: firstName || 'there' }),
+      }).catch(() => {});
+
       // Force navigation to welcome screen
       window.location.href = '/welcome?fromSignup=true';
     } catch (err) {

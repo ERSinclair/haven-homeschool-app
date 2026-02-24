@@ -820,6 +820,23 @@ function EnhancedDiscoverPage() {
           referenceId: session.user.id,
           accessToken: session.access_token,
         });
+
+        // Email the receiver
+        try {
+          const emailRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${familyId}&select=email`, {
+            headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+          });
+          if (emailRes.ok) {
+            const [rec] = await emailRes.json();
+            if (rec?.email) {
+              fetch('/api/email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'connection_request', to: rec.email, fromName: senderName }),
+              }).catch(() => {});
+            }
+          }
+        } catch { /* silent — email is best-effort */ }
       }
       
     } catch (error) {
