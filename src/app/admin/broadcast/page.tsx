@@ -61,16 +61,11 @@ export default function BroadcastPage() {
       const session = getStoredSession();
       if (!session?.user) return;
 
-      // History loads from notifications table once it's created via migration
-      setHistory([]);
-      
-      // Future: Uncomment when notifications table is created
-      /*
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      
+
       const res = await fetch(
-        `${supabaseUrl}/rest/v1/notifications?select=*&order=created_at.desc&limit=10`,
+        `${supabaseUrl}/rest/v1/notifications?type=eq.announcement&order=created_at.desc&limit=20`,
         {
           headers: {
             'apikey': supabaseKey!,
@@ -78,14 +73,21 @@ export default function BroadcastPage() {
           },
         }
       );
-      
+
       if (res.ok) {
-        const notifications = await res.json();
-        setHistory(Array.isArray(notifications) ? notifications : []);
+        const data = await res.json();
+        setHistory(Array.isArray(data) ? data.map((n: any) => ({
+          id: n.id,
+          title: n.title || n.content?.substring(0, 50) || 'Broadcast',
+          content: n.content || n.message || '',
+          target_type: n.target_type || 'all',
+          target_value: n.target_value || null,
+          sent_at: n.sent_at || n.created_at,
+          sent_by: n.sent_by || '',
+        })) : []);
       } else {
         setHistory([]);
       }
-      */
     } catch (err) {
       console.error('Failed to load broadcast history:', err);
       setHistory([]);
@@ -284,9 +286,7 @@ export default function BroadcastPage() {
             <h2 className="text-xl font-bold text-gray-900 mb-6">Recent Broadcasts</h2>
             
             {history.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <span className="text-4xl mb-4 block">📢</span>
-                <p>No broadcasts sent yet</p>
+              <div className="text-center py-8 text-gray-500">                <p>No broadcasts sent yet</p>
                 <p className="text-sm mt-1">Your sent messages will appear here</p>
               </div>
             ) : (

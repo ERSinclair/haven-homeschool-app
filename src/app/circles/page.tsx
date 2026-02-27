@@ -11,6 +11,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 import SimpleLocationPicker from '@/components/SimpleLocationPicker';
 import { distanceKm } from '@/lib/geocode';
+import ProfileCardModal from '@/components/ProfileCardModal';
 import { loadSearchRadius } from '@/lib/preferences';
 import { CirclesPageSkeleton } from '@/components/SkeletonLoader';
 
@@ -70,6 +71,7 @@ export default function CirclesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newCircleLocation, setNewCircleLocation] = useState<{ name: string; address: string; lat: number; lng: number } | null>(null);
   const [newCircleLocationError, setNewCircleLocationError] = useState(false);
@@ -716,9 +718,7 @@ export default function CirclesPage() {
 
               {/* My Circles list — hidden when showing invitations */}
               {!showCircleInvitations && circles.length === 0 && (
-                <div className="text-center py-12 px-6">
-                  <div className="text-4xl mb-3">🔵</div>
-                  <p className="font-semibold text-gray-800 mb-1">You're not in any circles yet</p>
+                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">You're not in any circles yet</p>
                   <p className="text-sm text-gray-500">Circles are groups where families connect around shared interests — co-ops, subjects, local meetups. Find one to join below.</p>
                 </div>
               )}
@@ -783,15 +783,11 @@ export default function CirclesPage() {
                 });
                 if (filtered.length === 0) return (
                   discoverSearch ? (
-                    <div className="text-center py-10 px-6">
-                      <div className="text-3xl mb-2">🔍</div>
-                      <p className="font-semibold text-gray-700 mb-1">No circles match that search</p>
+                    <div className="text-center py-10 px-6">                      <p className="font-semibold text-gray-700 mb-1">No circles match that search</p>
                       <p className="text-sm text-gray-500">Try a different term, or create a new circle.</p>
                     </div>
                   ) : (
-                    <div className="text-center py-12 px-6">
-                      <div className="text-4xl mb-3">🌀</div>
-                      <p className="font-semibold text-gray-800 mb-1">No circles yet in your area</p>
+                    <div className="text-center py-12 px-6">                      <p className="font-semibold text-gray-800 mb-1">No circles yet in your area</p>
                       <p className="text-sm text-gray-500">Start the first one — a local co-op, a study group, a sports circle. Your community will find you.</p>
                     </div>
                   )
@@ -953,6 +949,12 @@ export default function CirclesPage() {
 
         <div className="h-24"></div>
       </div>
+      {profileCardUserId && (
+        <ProfileCardModal
+          userId={profileCardUserId}
+          onClose={() => setProfileCardUserId(null)}
+        />
+      )}
     </ProtectedRoute>
   );
 }

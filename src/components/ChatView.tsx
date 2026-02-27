@@ -49,6 +49,8 @@ export interface ChatViewProps {
   onMessageClick?: (msgId: string) => void;
   /** Message IDs to render with a selection ring */
   selectedMessageIds?: string[];
+  /** Called when user taps another user's avatar */
+  onAvatarPress?: (senderId: string) => void;
 }
 
 function formatTime(ts: string): string {
@@ -83,6 +85,7 @@ export default function ChatView({
   onLongPress,
   onMessageClick,
   selectedMessageIds,
+  onAvatarPress,
 }: ChatViewProps) {
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -99,9 +102,16 @@ export default function ChatView({
   const fileRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to bottom when new messages arrive or trigger changes
+  // Scroll to bottom on initial load (instant) and on new messages (smooth)
+  const isFirstRender = useRef(true);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isFirstRender.current) {
+      // Instant on first render so chat always opens at bottom
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
+      isFirstRender.current = false;
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages.length, scrollTrigger]);
 
   const handleSend = useCallback(async () => {
@@ -200,7 +210,10 @@ export default function ChatView({
               >
                 {/* Avatar — shown for others only */}
                 {!isMe && (
-                  <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 flex-shrink-0 self-end overflow-hidden">
+                  <div
+                    className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 flex-shrink-0 self-end overflow-hidden cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); onAvatarPress?.(msg.sender_id); }}
+                  >
                     {avatarUrl
                       ? <img src={avatarUrl} className="w-7 h-7 rounded-full object-cover" alt="" />
                       : senderName[0]?.toUpperCase() || '?'

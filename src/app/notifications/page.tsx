@@ -314,9 +314,7 @@ export default function NotificationsPage() {
 
           {/* Empty state */}
           {displayed.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="text-4xl mb-3">🔔</div>
-              <h3 className="font-semibold text-gray-900 mb-1">
+            <div className="text-center py-16">              <h3 className="font-semibold text-gray-900 mb-1">
                 {filter === 'unread' ? 'All caught up' : 'No notifications yet'}
               </h3>
               <p className="text-gray-500 text-sm">

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
+import ImageCropModal from '@/components/ImageCropModal';
 
 type Props = {
   event: any;
@@ -29,26 +30,34 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
   const [confirmCancelEvent, setConfirmCancelEvent] = useState(false);
   const [cancellingEvent, setCancellingEvent] = useState(false);
   const [uploadingEventCover, setUploadingEventCover] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const uploadEventCover = async (file: File) => {
+  const handleCoverFileSelected = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => setCropSrc(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const uploadEventCover = async (blob: Blob) => {
+    setCropSrc(null);
     if (uploadingEventCover) return;
     setUploadingEventCover(true);
     try {
       const session = getStoredSession();
       if (!session) return;
-      const ext = file.name.split('.').pop() || 'jpg';
-      const path = `event-covers/${event.id}-${Date.now()}.${ext}`;
+      const path = `event-covers/${event.id}-${Date.now()}.jpg`;
       const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/event-files/${path}`, {
         method: 'POST',
         headers: {
           'apikey': supabaseKey!,
           'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': file.type || 'image/jpeg',
+          'Content-Type': 'image/jpeg',
+          'x-upsert': 'true',
         },
-        body: file,
+        body: blob,
       });
       if (!uploadRes.ok) { toast('Upload failed', 'error'); return; }
       const coverUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}`;
@@ -115,6 +124,7 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
   };
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
         <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
@@ -191,7 +201,7 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
                 <div className="flex gap-2">
                   <label className="flex-1 py-2 text-center text-sm font-semibold text-emerald-700 bg-white border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-50 transition-colors">
                     {uploadingEventCover ? 'Uploading...' : 'Change'}
-                    <input type="file" accept="image/*" className="hidden" disabled={uploadingEventCover} onChange={e => { const f = e.target.files?.[0]; if (f) uploadEventCover(f); }} />
+                    <input type="file" accept="image/*" className="hidden" disabled={uploadingEventCover} onChange={e => { const f = e.target.files?.[0]; if (f) handleCoverFileSelected(f); e.target.value = ''; }} />
                   </label>
                   <button onClick={removeEventCover} className="flex-1 py-2 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 transition-colors">Remove</button>
                 </div>
@@ -203,7 +213,7 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
                 ) : (
                   <span className="text-sm text-gray-400">+ Add cover photo</span>
                 )}
-                <input type="file" accept="image/*" className="hidden" disabled={uploadingEventCover} onChange={e => { const f = e.target.files?.[0]; if (f) uploadEventCover(f); }} />
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingEventCover} onChange={e => { const f = e.target.files?.[0]; if (f) handleCoverFileSelected(f); e.target.value = ''; }} />
               </label>
             )}
           </div>
@@ -242,5 +252,16 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
         </div>
       </div>
     </div>
+
+      {cropSrc && (
+        <ImageCropModal
+          imageSrc={cropSrc}
+          aspect={16 / 9}
+          title="Crop cover photo"
+          onConfirm={(blob) => uploadEventCover(blob)}
+          onCancel={() => setCropSrc(null)}
+        />
+      )}
+    </>
   );
 }

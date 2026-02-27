@@ -12,6 +12,7 @@ import AvatarUpload from '@/components/AvatarUpload';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ChatView, { ChatMessage } from '@/components/ChatView';
+import ProfileCardModal from '@/components/ProfileCardModal';
 
 type Conversation = {
   id: string;
@@ -49,6 +50,7 @@ function MessagesContent() {
   const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
@@ -1413,6 +1415,7 @@ function MessagesContent() {
 
         <div className="flex-1 overflow-hidden max-w-md mx-auto w-full">
           <ChatView
+            onAvatarPress={(uid) => setProfileCardUserId(uid)}
             messages={messages.map(m => ({
               ...m,
               sender_profile: m.sender_id !== userId
@@ -2293,6 +2296,13 @@ function MessagesContent() {
       {/* Bottom spacing for mobile nav */}
       <div className="h-20"></div>
     </div>
+      {profileCardUserId && (
+        <ProfileCardModal
+          userId={profileCardUserId}
+          onClose={() => setProfileCardUserId(null)}
+          currentUserId={userId || ''}
+        />
+      )}
     </ProtectedRoute>
   );
 }

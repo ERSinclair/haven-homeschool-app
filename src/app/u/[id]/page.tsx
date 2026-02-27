@@ -119,9 +119,7 @@ export default function PublicProfilePage() {
   );
 
   if (notFound) return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col items-center justify-center px-6 text-center">
-      <p className="text-4xl mb-4">🔍</p>
-      <h1 className="text-xl font-bold text-gray-900 mb-2">Profile not found</h1>
+    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col items-center justify-center px-6 text-center">      <h1 className="text-xl font-bold text-gray-900 mb-2">Profile not found</h1>
       <p className="text-gray-500 text-sm mb-6">This profile may have been removed or the link is incorrect.</p>
       <Link href="/" className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700">
         Go to Haven

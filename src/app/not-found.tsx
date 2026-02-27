@@ -8,9 +8,7 @@ export default function NotFound() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto px-4 pt-2 pb-8">
         <AppHeader />
-        <div className="flex flex-col items-center justify-center py-20 text-center px-6">
-          <div className="text-6xl mb-4">🗺️</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Page not found</h1>
+        <div className="flex flex-col items-center justify-center py-20 text-center px-6">          <h1 className="text-2xl font-bold text-gray-900 mb-2">Page not found</h1>
           <p className="text-gray-500 mb-8 text-sm leading-relaxed">
             Looks like this page took a wrong turn somewhere. It might have moved or never existed.
           </p>

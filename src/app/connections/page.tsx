@@ -555,15 +555,11 @@ export default function ConnectionsPage() {
           <div className="space-y-4">
             {filteredConnections.length === 0 ? (
               searchTerm ? (
-                <div className="text-center py-10 px-6">
-                  <div className="text-3xl mb-2">🔍</div>
-                  <p className="font-semibold text-gray-700 mb-1">No connections match &ldquo;{searchTerm}&rdquo;</p>
+                <div className="text-center py-10 px-6">                  <p className="font-semibold text-gray-700 mb-1">No connections match &ldquo;{searchTerm}&rdquo;</p>
                   <p className="text-sm text-gray-500">Try a different name.</p>
                 </div>
               ) : (
-                <div className="text-center py-12 px-6">
-                  <div className="text-4xl mb-3">🤝</div>
-                  <p className="font-semibold text-gray-800 mb-1">No connections yet</p>
+                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">No connections yet</p>
                   <p className="text-sm text-gray-500">Head to Discover to find families in your area and send a connection request.</p>
                 </div>
               )

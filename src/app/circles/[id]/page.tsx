@@ -11,6 +11,7 @@ import ImageCropModal from '@/components/ImageCropModal';
 import { createNotification } from '@/lib/notifications';
 import EmojiPicker from '@/components/EmojiPicker';
 import ChatView, { ChatMessage as ChatViewMessage } from '@/components/ChatView';
+import ProfileCardModal from '@/components/ProfileCardModal';
 import MessageContextMenu from '@/components/MessageContextMenu';
 
 type Circle = {
@@ -151,6 +152,7 @@ export default function CirclePage() {
   // New state for modals
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null);
   const [adminLoading, setAdminLoading] = useState(false);
   
   // Edit circle state
@@ -1137,6 +1139,7 @@ export default function CirclePage() {
       <div className="flex-1 overflow-hidden max-w-md mx-auto w-full">
         {activeTab === 'chat' ? (
           <ChatView
+            onAvatarPress={(uid) => setProfileCardUserId(uid)}
             messages={messages as ChatViewMessage[]}
             currentUserId={currentUserId}
             reactions={circleReactions}
@@ -1196,7 +1199,7 @@ export default function CirclePage() {
                 <div key={member.id} className="flex items-center justify-between bg-white rounded-xl p-4 shadow-sm">
                   <div 
                     className="flex items-center gap-3 flex-1 cursor-pointer"
-                    onClick={() => setSelectedMember(member)}
+                    onClick={() => setProfileCardUserId(member.member_id)}
                   >
                     <AvatarUpload
                       userId={member.member_id}
@@ -1634,9 +1637,7 @@ export default function CirclePage() {
                   ))}
                 </div>
               ) : boardPosts.length === 0 ? (
-                <div className="text-center py-12 px-6">
-                  <div className="text-4xl mb-3">📋</div>
-                  <p className="font-semibold text-gray-800 mb-1">Nothing posted yet</p>
+                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">Nothing posted yet</p>
                   <p className="text-sm text-gray-500">Be the first to share something with the circle.</p>
                 </div>
               ) : (
@@ -2034,6 +2035,14 @@ export default function CirclePage() {
       )}
 
       {/* Member Profile Modal */}
+      {profileCardUserId && (
+        <ProfileCardModal
+          userId={profileCardUserId}
+          onClose={() => setProfileCardUserId(null)}
+          currentUserId={currentUserId || ''}
+        />
+      )}
+
       {selectedMember && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">

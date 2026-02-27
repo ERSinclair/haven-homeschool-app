@@ -11,6 +11,7 @@ import AppHeader from '@/components/AppHeader';
 import CreateEventModal from '@/components/events/CreateEventModal';
 import SimpleLocationPicker from '@/components/SimpleLocationPicker';
 import EventSettingsModal from '@/components/events/EventSettingsModal';
+import ProfileCardModal from '@/components/ProfileCardModal';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { createNotification } from '@/lib/notifications';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
@@ -92,6 +93,7 @@ export default function EventsPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   
   // Event settings modal state
@@ -1363,6 +1365,7 @@ export default function EventsPage() {
         {eventDetailTab === 'chat' && (
           <div className="flex-1 overflow-hidden max-w-md mx-auto w-full">
             <ChatView
+            onAvatarPress={(uid) => setProfileCardUserId(uid)}
               messages={eventChatMessages.map((msg: any) => ({
                 ...msg,
                 sender_profile: chatSenderProfiles[msg.sender_id] ?? null,
@@ -1699,19 +1702,41 @@ export default function EventsPage() {
             <button
               key={event.id}
               onClick={() => setSelectedEvent(event)}
-              className={`w-full rounded-xl p-3 text-left transition-colors ${
-                style === 'hosting' ? 'bg-emerald-50 border border-emerald-200 hover:bg-emerald-100' :
-                style === 'going'   ? 'bg-blue-50 border border-blue-100 hover:bg-blue-100' :
-                                     'bg-gray-50 border border-gray-200 hover:bg-gray-100'
-              }`}
+              className="w-full bg-white rounded-xl shadow-sm text-left hover:shadow-md hover:border-gray-200 active:scale-[0.99] transition-all border border-gray-100 overflow-hidden"
             >
-              <div className="flex items-start justify-between gap-2">
-                <span className={`font-medium text-sm truncate ${style === 'past' ? 'text-gray-600' : 'text-gray-900'}`}>{event.title}</span>
-                <span className={`text-xs flex-shrink-0 ${style === 'hosting' ? 'text-emerald-600' : style === 'going' ? 'text-blue-500' : 'text-gray-400'}`}>{formatDate(event.event_date)}</span>
-              </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                {event.location_name && <p className="text-xs text-gray-500 truncate">{event.location_name}</p>}
-                {event.is_private && <span className="text-xs text-gray-400 flex-shrink-0">Private</span>}
+              {event.cover_image_url && (
+                <div className="relative h-20 w-full">
+                  <img src={event.cover_image_url} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+                </div>
+              )}
+              <div className="flex items-start gap-2.5 p-3">
+                {/* Date block */}
+                <div className="flex-shrink-0 w-10 h-10 rounded-lg flex flex-col items-center justify-center border bg-emerald-50 border-emerald-100">
+                  <span className="text-xs font-bold leading-none text-emerald-700">
+                    {new Date(event.event_date + 'T12:00:00').toLocaleDateString('en-AU', { month: 'short' }).toUpperCase()}
+                  </span>
+                  <span className="text-sm font-bold leading-tight text-emerald-900">
+                    {new Date(event.event_date + 'T12:00:00').getDate()}
+                  </span>
+                </div>
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 overflow-hidden mb-0.5">
+                    <h3 className={`font-semibold text-sm leading-tight truncate min-w-0 ${style === 'past' ? 'text-gray-500' : 'text-gray-900'}`}>{event.title}</h3>
+                    {event.is_private && <span className="text-xs text-gray-400 flex-shrink-0">Private</span>}
+                  </div>
+                  <p className="text-xs text-gray-500 truncate mb-0.5">
+                    {formatTime(event.event_time)}{event.location_name ? ` · ${event.location_name}` : ''}
+                  </p>
+                  <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-semibold ${
+                    style === 'hosting' ? 'bg-emerald-100 text-emerald-700' :
+                    style === 'going'   ? 'bg-blue-100 text-blue-700' :
+                                         'bg-gray-100 text-gray-500'
+                  }`}>
+                    {style === 'hosting' ? 'Hosting' : style === 'going' ? 'Going' : 'Past'}
+                  </span>
+                </div>
               </div>
             </button>
           );
@@ -1759,14 +1784,17 @@ export default function EventsPage() {
                     if (daysAway > 14) return null;
                     const label = daysAway === 0 ? 'Today!' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway} days`;
                     return (
-                      <div className="bg-emerald-600 text-white rounded-2xl p-4 mb-4 flex items-center gap-3">
-                        <div className="text-2xl">📅</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-emerald-200 uppercase tracking-wide">{label}</p>
-                          <p className="font-bold truncate">{next.title}</p>
-                          {next.location_name && <p className="text-sm text-emerald-200 truncate">{next.location_name}</p>}
+                      <div className="bg-white border border-emerald-200 rounded-2xl p-4 mb-4 flex items-center gap-3 shadow-sm">
+                        <div className="flex-shrink-0 w-10 h-10 bg-emerald-50 rounded-lg flex flex-col items-center justify-center border border-emerald-100">
+                          <span className="text-xs font-bold text-emerald-700 leading-none">{new Date(next.event_date + 'T12:00:00').toLocaleDateString('en-AU', { month: 'short' }).toUpperCase()}</span>
+                          <span className="text-sm font-bold text-emerald-900 leading-tight">{new Date(next.event_date + 'T12:00:00').getDate()}</span>
                         </div>
-                        <button onClick={() => setSelectedEvent(next)} className="text-xs font-semibold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg flex-shrink-0">View</button>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">{label}</p>
+                          <p className="font-bold text-gray-900 truncate text-sm">{next.title}</p>
+                          {next.location_name && <p className="text-xs text-gray-500 truncate">{next.location_name}</p>}
+                        </div>
+                        <button onClick={() => setSelectedEvent(next)} className="text-xs font-semibold bg-emerald-600 text-white px-3 py-1.5 rounded-lg flex-shrink-0 hover:bg-emerald-700">View</button>
                       </div>
                     );
                   })()}
@@ -1951,9 +1979,7 @@ export default function EventsPage() {
             <p className="text-center text-sm text-gray-400 py-4">Tap a day to see events</p>
           );
           if (displayEvents.length === 0) return (
-            <div className="text-center py-12 px-6">
-              <div className="text-4xl mb-3">📅</div>
-              <p className="font-semibold text-gray-800 mb-1">No events nearby yet</p>
+            <div className="text-center py-12 px-6">              <p className="font-semibold text-gray-800 mb-1">No events nearby yet</p>
               <p className="text-sm text-gray-500">Be the first to organise something — a park day, a study session, a field trip. It only takes a minute.</p>
               <button
                 onClick={() => setShowCreateModal(true)}
@@ -1964,44 +1990,53 @@ export default function EventsPage() {
             </div>
           );
           return (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {displayEvents.map((event, idx) => (
               <button
                 key={`${event.id}-${event.event_date}-${idx}`}
                 onClick={() => setSelectedEvent(event)}
-                className="w-full bg-white rounded-xl shadow-sm p-3 text-left hover:shadow-md hover:border-gray-200 active:scale-[0.99] transition-all border border-gray-100"
+                className="w-full bg-white rounded-xl shadow-sm text-left hover:shadow-md hover:border-gray-200 active:scale-[0.99] transition-all border border-gray-100 overflow-hidden"
               >
-                {/* Category + status */}
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${categoryColors[event.category]}`}>
-                    {categoryLabels[event.category]}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {event.user_rsvp && <span className="text-emerald-600 text-xs font-semibold">✓ Going</span>}
-                    {event.user_waitlist && <span className="text-amber-600 text-xs font-semibold">Waitlisted</span>}
-                    {event.max_attendees && !event.user_rsvp && !event.user_waitlist && (event.rsvp_count || 0) >= event.max_attendees && (
-                      <span className="text-xs font-semibold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Full</span>
-                    )}
+                {/* Banner image — only if event has one */}
+                {event.cover_image_url && (
+                  <div className="relative h-20 w-full">
+                    <img src={event.cover_image_url} alt="" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
                   </div>
-                </div>
-                {/* Title */}
-                <h3 className="font-semibold text-gray-900 text-sm mb-1 leading-snug">{event.title}</h3>
-                {/* Date · location on one line */}
-                <p className="text-xs text-gray-500 mb-1">
-                  {formatDate(event.event_date)} · {formatTime(event.event_time)}
-                  {event.location_name && ` · ${event.location_name}`}
-                  {!event.location_name && ' · Location TBA'}
-                  {userLocation && event.latitude && event.longitude && (
-                    <span className="text-emerald-600 font-medium"> · {calculateDistance(userLocation.lat, userLocation.lng, event.latitude, event.longitude).toFixed(1)}km</span>
-                  )}
-                </p>
-                {/* Footer */}
-                <div className="flex justify-between text-xs text-gray-400">
-                  <span>By {event.host?.name}</span>
-                  <span>
-                    {event.rsvp_count || 0} going
-                    {(event.waitlist_count || 0) > 0 && ` · ${event.waitlist_count} waiting`}
-                  </span>
+                )}
+                <div className="flex items-start gap-2.5 p-3">
+                  {/* Date block */}
+                  <div className="flex-shrink-0 w-10 h-10 bg-emerald-50 rounded-lg flex flex-col items-center justify-center border border-emerald-100">
+                    <span className="text-xs font-bold text-emerald-700 leading-none">{new Date(event.event_date + 'T12:00:00').toLocaleDateString('en-AU', { month: 'short' }).toUpperCase()}</span>
+                    <span className="text-sm font-bold text-emerald-900 leading-tight">{new Date(event.event_date + 'T12:00:00').getDate()}</span>
+                  </div>
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    {/* Title + status badge */}
+                    <div className="flex items-center gap-1.5 overflow-hidden mb-0.5">
+                      <h3 className="font-semibold text-gray-900 text-sm leading-tight truncate min-w-0">{event.title}</h3>
+                      {event.user_rsvp && <span className="text-emerald-600 text-xs font-semibold flex-shrink-0">✓</span>}
+                      {event.max_attendees && !event.user_rsvp && !event.user_waitlist && (event.rsvp_count || 0) >= event.max_attendees && (
+                        <span className="text-xs font-semibold bg-red-100 text-red-600 px-1 py-0.5 rounded flex-shrink-0">Full</span>
+                      )}
+                    </div>
+                    {/* Time + location */}
+                    <p className="text-xs text-gray-500 truncate mb-0.5">
+                      {formatTime(event.event_time)}
+                      {event.location_name ? ` · ${event.location_name}` : ' · Location TBA'}
+                      {userLocation && event.latitude && event.longitude && (
+                        <span className="text-emerald-600 font-medium"> · {calculateDistance(userLocation.lat, userLocation.lng, event.latitude, event.longitude).toFixed(1)}km</span>
+                      )}
+                    </p>
+                    {/* Category + host + count */}
+                    <div className="flex items-center gap-1.5">
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0 ${categoryColors[event.category]}`}>
+                        {categoryLabels[event.category]}
+                      </span>
+                      <span className="text-xs text-gray-400 truncate">By {event.host?.name}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0 ml-auto">{event.rsvp_count || 0} going</span>
+                    </div>
+                  </div>
                 </div>
               </button>
             ))}
@@ -2610,6 +2645,12 @@ export default function EventsPage() {
       {/* Bottom spacing for mobile nav */}
       <div className="h-20"></div>
     </div>
+      {profileCardUserId && (
+        <ProfileCardModal
+          userId={profileCardUserId}
+          onClose={() => setProfileCardUserId(null)}
+        />
+      )}
     </ProtectedRoute>
   );
 }

@@ -152,9 +152,7 @@ function SearchContent() {
 
           {/* Prompt */}
           {!loading && !searched && (
-            <div className="text-center py-12 text-gray-400">
-              <p className="text-4xl mb-3">🔍</p>
-              <p className="text-sm">Search across all families, events and circles</p>
+            <div className="text-center py-12 text-gray-400">              <p className="text-sm">Search across all families, events and circles</p>
             </div>
           )}
 

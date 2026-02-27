@@ -184,9 +184,7 @@ export default function AdminManagement() {
             
             <div className="p-6">
               {admins.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <span className="text-4xl mb-4 block">👑</span>
-                  <p>No admins found</p>
+                <div className="text-center py-8 text-gray-500">                  <p>No admins found</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -234,9 +232,7 @@ export default function AdminManagement() {
             
             <div className="p-6 max-h-96 overflow-y-auto">
               {nonAdmins.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <span className="text-4xl mb-4 block">👥</span>
-                  <p>No regular users found</p>
+                <div className="text-center py-8 text-gray-500">                  <p>No regular users found</p>
                 </div>
               ) : (
                 <div className="space-y-4">

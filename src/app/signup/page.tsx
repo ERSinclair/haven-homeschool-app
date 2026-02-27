@@ -39,6 +39,7 @@ export default function SignupPage() {
   
   // Step 3: Additional fields
   const [bio, setBio] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [businessName, setBusinessName] = useState('');
   const [showBusinessName, setShowBusinessName] = useState(false);
   
@@ -1716,9 +1717,25 @@ export default function SignupPage() {
               </div>
 
               <div>
-                <button
+                              <div className="flex items-start gap-3 mb-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <input
+                  type="checkbox"
+                  id="acceptTerms"
+                  checked={acceptedTerms}
+                  onChange={e => setAcceptedTerms(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 flex-shrink-0"
+                />
+                <label htmlFor="acceptTerms" className="text-xs text-gray-600 leading-relaxed cursor-pointer">
+                  I agree to Haven&apos;s{' '}
+                  <a href="/terms" target="_blank" className="text-emerald-600 underline hover:text-emerald-700">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="/privacy" target="_blank" className="text-emerald-600 underline hover:text-emerald-700">Privacy Policy</a>.
+                  I confirm I am 18 or older.
+                </label>
+              </div>
+              <button
                   onClick={handleSaveProfile}
-                  disabled={loading || !bio.trim()}
+                  disabled={loading || !bio.trim() || !acceptedTerms}
                   className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {loading ? 'Creating your account...' : 'Create Account & Finish'}
@@ -1743,9 +1760,25 @@ export default function SignupPage() {
                 </div>
               </div>
               <div>
-                <button
+                              <div className="flex items-start gap-3 mb-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <input
+                  type="checkbox"
+                  id="acceptTerms"
+                  checked={acceptedTerms}
+                  onChange={e => setAcceptedTerms(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 flex-shrink-0"
+                />
+                <label htmlFor="acceptTerms" className="text-xs text-gray-600 leading-relaxed cursor-pointer">
+                  I agree to Haven&apos;s{' '}
+                  <a href="/terms" target="_blank" className="text-emerald-600 underline hover:text-emerald-700">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="/privacy" target="_blank" className="text-emerald-600 underline hover:text-emerald-700">Privacy Policy</a>.
+                  I confirm I am 18 or older.
+                </label>
+              </div>
+              <button
                   onClick={handleSaveProfile}
-                  disabled={loading || !bio.trim()}
+                  disabled={loading || !bio.trim() || !acceptedTerms}
                   className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {loading ? 'Creating your account...' : 'Create Account & Finish'}
@@ -1922,9 +1955,25 @@ export default function SignupPage() {
               </div>
 
               <div>
-                <button
+                              <div className="flex items-start gap-3 mb-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <input
+                  type="checkbox"
+                  id="acceptTerms"
+                  checked={acceptedTerms}
+                  onChange={e => setAcceptedTerms(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 flex-shrink-0"
+                />
+                <label htmlFor="acceptTerms" className="text-xs text-gray-600 leading-relaxed cursor-pointer">
+                  I agree to Haven&apos;s{' '}
+                  <a href="/terms" target="_blank" className="text-emerald-600 underline hover:text-emerald-700">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="/privacy" target="_blank" className="text-emerald-600 underline hover:text-emerald-700">Privacy Policy</a>.
+                  I confirm I am 18 or older.
+                </label>
+              </div>
+              <button
                   onClick={handleSaveProfile}
-                  disabled={loading || !bio.trim() || !customDescriptions.some(desc => desc.trim())}
+                  disabled={loading || !bio.trim() || !customDescriptions.some(desc => desc.trim()) || !acceptedTerms}
                   className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {loading ? 'Creating your account...' : 'Create Account & Finish'}
@@ -2011,9 +2060,25 @@ export default function SignupPage() {
               </div>
 
               <div>
-                <button
+                              <div className="flex items-start gap-3 mb-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <input
+                  type="checkbox"
+                  id="acceptTerms"
+                  checked={acceptedTerms}
+                  onChange={e => setAcceptedTerms(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 flex-shrink-0"
+                />
+                <label htmlFor="acceptTerms" className="text-xs text-gray-600 leading-relaxed cursor-pointer">
+                  I agree to Haven&apos;s{' '}
+                  <a href="/terms" target="_blank" className="text-emerald-600 underline hover:text-emerald-700">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="/privacy" target="_blank" className="text-emerald-600 underline hover:text-emerald-700">Privacy Policy</a>.
+                  I confirm I am 18 or older.
+                </label>
+              </div>
+              <button
                   onClick={handleSaveProfile}
-                  disabled={loading || !bio.trim()}
+                  disabled={loading || !bio.trim() || !acceptedTerms}
                   className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {loading ? 'Creating your account...' : 'Create Account & Finish'}

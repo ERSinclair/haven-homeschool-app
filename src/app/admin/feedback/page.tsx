@@ -214,9 +214,7 @@ export default function FeedbackAdmin() {
         {/* Feedback List */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           {filteredFeedback.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="text-4xl mb-4">💡</div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Feedback</h3>
+            <div className="p-8 text-center">              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Feedback</h3>
               <p className="text-gray-600">No feedback matches your current filters.</p>
             </div>
           ) : (

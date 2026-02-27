@@ -1189,7 +1189,7 @@ function EnhancedDiscoverPage() {
         {/* Education approach chips — only shown when Home Ed filter is active */}
         {activeTab === 'family' && familyStatusFilter === 'new' && (
           <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
-            {(['all', 'Classical', 'Charlotte Mason', 'Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Faith-based', 'Online/Virtual', 'Unit Study'] as const).map(approach => (
+            {(['all', 'Eclectic', 'Relaxed', 'Charlotte Mason', 'Classical', 'Unschooling', 'Montessori', 'Waldorf/Steiner', 'Faith-based', 'Unit Study', 'Online/Virtual'] as const).map(approach => (
               <button
                 key={approach}
                 onClick={() => setApproachFilter(approach)}
@@ -1428,49 +1428,41 @@ function EnhancedDiscoverPage() {
           <div className="space-y-2">
             {filteredFamilies.length === 0 ? (
               activeTab === 'playgroup' ? (
-                <div className="text-center py-12 px-6">
-                  <div className="text-4xl mb-3">👶</div>
-                  <p className="font-semibold text-gray-800 mb-1">No playgroups nearby yet</p>
+                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">No playgroups nearby yet</p>
                   <p className="text-sm text-gray-500 mb-4">Run a playgroup? Sign up and list it here so local families can find you.</p>
                   <button
                     onClick={handleShare}
-                    className="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-emerald-700 active:scale-[0.97] transition-all"
+                    className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all"
                   >
                     Share Haven
                   </button>
                 </div>
               ) : activeTab === 'teacher' ? (
-                <div className="text-center py-12 px-6">
-                  <div className="text-4xl mb-3">📚</div>
-                  <p className="font-semibold text-gray-800 mb-1">No teachers nearby yet</p>
+                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">No teachers nearby yet</p>
                   <p className="text-sm text-gray-500 mb-4">Know a tutor or educator? Share Haven with them.</p>
                   <button
                     onClick={handleShare}
-                    className="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-emerald-700 active:scale-[0.97] transition-all"
+                    className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all"
                   >
                     Share Haven
                   </button>
                 </div>
               ) : activeTab === 'business' ? (
-                <div className="text-center py-12 px-6">
-                  <div className="text-4xl mb-3">🏪</div>
-                  <p className="font-semibold text-gray-800 mb-1">No businesses nearby yet</p>
+                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">No businesses nearby yet</p>
                   <p className="text-sm text-gray-500 mb-4">Homeschool-friendly businesses will appear here as Haven grows in your area.</p>
                   <button
                     onClick={handleShare}
-                    className="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-emerald-700 active:scale-[0.97] transition-all"
+                    className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all"
                   >
                     Share Haven
                   </button>
                 </div>
               ) : (
-                <div className="text-center py-12 px-6">
-                  <div className="text-4xl mb-3">🌱</div>
-                  <p className="font-semibold text-gray-800 mb-1">You're one of the first!</p>
+                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">You're one of the first!</p>
                   <p className="text-sm text-gray-500 mb-4">Haven is just getting started in your area. Every community starts with one connection.</p>
                   <button
                     onClick={handleShare}
-                    className="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-emerald-700 active:scale-[0.97] transition-all"
+                    className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all"
                   >
                     Share Haven
                   </button>
@@ -1502,11 +1494,16 @@ function EnhancedDiscoverPage() {
                 {filteredFamilies.map((family) => (
                 <div
                   key={family.id}
-                  className="w-full bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-gray-200 active:scale-[0.99] transition-all"
+                  className={`w-full bg-white rounded-xl shadow-sm border-l-4 border border-gray-100 hover:shadow-md active:scale-[0.99] transition-all overflow-hidden ${
+                    family.user_type === 'teacher' ? 'border-l-blue-400' :
+                    family.user_type === 'business' || family.user_type === 'facility' ? 'border-l-amber-400' :
+                    family.user_type === 'playgroup' ? 'border-l-purple-400' :
+                    'border-l-emerald-400'
+                  }`}
                 >
                   {/* Top row: avatar + info */}
                   <div
-                    className="flex items-start gap-3 cursor-pointer mb-2.5"
+                    className="flex items-start gap-3 cursor-pointer p-3 pb-2"
                     onClick={() => setSelectedFamilyDetails(family)}
                   >
                     <AvatarUpload
@@ -1518,46 +1515,51 @@ function EnhancedDiscoverPage() {
                     />
                     <div className="flex-1 min-w-0">
                       {/* Name + badges */}
-                      <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                        <h3 className="font-semibold text-gray-900 text-sm leading-tight">
+                      <div className="flex items-center gap-1.5 overflow-hidden mb-0.5">
+                        <h3 className="font-semibold text-emerald-600 text-sm leading-tight truncate min-w-0">
                           {family.display_name || family.family_name.split(' ')[0] || family.family_name}
                         </h3>
                         <AdminBadge adminLevel={family.admin_level || null} />
-                        {family.is_verified && <span className="text-green-500 text-xs">✓</span>}
+                        {family.is_verified && <span className="text-emerald-500 text-xs font-bold">✓</span>}
                         {family.user_type === 'teacher' && (
                           <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">Teacher</span>
                         )}
                         {(family.user_type === 'business' || family.user_type === 'facility') && (
                           <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded">Business</span>
                         )}
+                        {family.user_type === 'playgroup' && (
+                          <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs font-semibold rounded">Playgroup</span>
+                        )}
                       </div>
                       {/* Location + online */}
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <p className="text-xs text-gray-500 truncate">{family.location_name}</p>
-                        {family.is_online && <div className="w-1.5 h-1.5 bg-green-500 rounded-full flex-shrink-0" />}
+                      <div className="flex items-center gap-1 mb-1">
+                        <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        <p className="text-xs text-gray-400 truncate">{family.location_name}</p>
+                        {family.is_online && <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full flex-shrink-0 ml-1" />}
                         {!family.is_online && family.last_active && (
-                          <span className="text-xs text-gray-400 flex-shrink-0">· {formatLastActive(family.last_active)}</span>
+                          <span className="text-xs text-gray-400 flex-shrink-0 ml-0.5">· {formatLastActive(family.last_active)}</span>
                         )}
                       </div>
                       {/* Kids ages (families) */}
                       {(!family.user_type || family.user_type === 'family') && family.kids_ages && family.kids_ages.length > 0 && (
                         <div className="flex items-center gap-1 mb-1">
                           {family.kids_ages.map((age, index) => (
-                            <div key={index} className="w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center">
-                              <span className="text-xs font-medium text-emerald-700" style={{ fontSize: '10px' }}>{age}</span>
+                            <div key={index} className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-200">
+                              <span className="font-semibold text-emerald-700" style={{ fontSize: '10px' }}>{age}</span>
                             </div>
                           ))}
                         </div>
                       )}
                       {/* Ages served (playgroups) */}
                       {family.user_type === 'playgroup' && family.kids_ages && family.kids_ages.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1 mb-1">
-                          <span className="text-xs text-gray-400">Ages:</span>
-                          {family.kids_ages.sort((a: number, b: number) => a - b).map((age: number, index: number) => (
-                            <span key={index} className="px-1.5 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full border border-purple-100">
+                        <div className="flex items-center gap-1 mb-1 overflow-hidden">
+                          <span className="text-xs text-gray-400 flex-shrink-0">Ages:</span>
+                          {family.kids_ages.sort((a: number, b: number) => a - b).slice(0, 4).map((age: number, index: number) => (
+                            <span key={index} className="px-1.5 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full border border-purple-100 flex-shrink-0">
                               {age === 5 ? '5+' : `${age}–${age + 1}`}
                             </span>
                           ))}
+                          {family.kids_ages.length > 4 && <span className="text-xs text-gray-400 flex-shrink-0">+{family.kids_ages.length - 4}</span>}
                         </div>
                       )}
                       {/* Approach chips */}
@@ -1593,17 +1595,17 @@ function EnhancedDiscoverPage() {
                   </div>
 
                   {/* Bottom row: actions */}
-                  <div className="flex items-center gap-1.5 pt-2 border-t border-gray-50">
+                  <div className="flex items-center gap-2 px-3 pb-3 pt-2 border-t border-gray-50">
                     <button
                       onClick={() => sendConnectionRequest(family.id)}
                       disabled={getConnectionButtonState(family.id).disabled}
-                      className={`flex-1 py-1 rounded-lg font-semibold transition-colors text-xs ${getConnectionButtonState(family.id).style}`}
+                      className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors text-xs ${getConnectionButtonState(family.id).style}`}
                     >
                       {getConnectionButtonState(family.id).text}
                     </button>
                     <button
                       onClick={() => setSelectedFamily(family)}
-                      className="flex-1 py-1 bg-white text-gray-600 border border-gray-200 rounded-lg font-semibold hover:bg-gray-50 transition-colors text-xs"
+                      className="flex-1 py-1.5 bg-white text-emerald-600 border border-emerald-200 rounded-lg font-semibold hover:bg-emerald-50 transition-colors text-xs"
                     >
                       Message
                     </button>
@@ -1809,7 +1811,7 @@ function EnhancedDiscoverPage() {
               </button>
               <Link
                 href="/circles"
-                className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 text-center"
+                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 text-center"
                 onClick={() => {
                   setShowCircleModal(false);
                   setSelectedFamily(null);
@@ -1825,117 +1827,90 @@ function EnhancedDiscoverPage() {
       {/* User Details Modal */}
       {selectedFamilyDetails && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
-            {/* Header */}
-            <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold text-gray-900">Profile Details</h2>
-                <button
-                  onClick={() => setSelectedFamilyDetails(null)}
-                  className="text-gray-400 hover:text-gray-600 text-2xl"
-                >
-                  ×
-                </button>
-              </div>
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[85vh] overflow-y-auto">
+
+            {/* Close button */}
+            <div className="sticky top-0 bg-white rounded-t-2xl flex justify-end px-4 pt-3 pb-0 z-10">
+              <button onClick={() => setSelectedFamilyDetails(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 text-xl leading-none">&times;</button>
             </div>
-            
-            {/* Content */}
-            <div className="p-6">
-              {/* User Info */}
-              <div className="flex items-start gap-4 mb-6">
+
+            {/* Avatar + identity — centered hero */}
+            <div className="flex flex-col items-center px-6 pb-4 pt-2">
+              <div className="mb-3">
                 <AvatarUpload
                   userId={selectedFamilyDetails.id}
                   currentAvatarUrl={selectedFamilyDetails.avatar_url}
                   name={selectedFamilyDetails.family_name || selectedFamilyDetails.display_name || 'Family'}
-                  size="lg"
+                  size="xl"
                   editable={false}
                   viewable={true}
                 />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-xl font-semibold text-emerald-600">
-                      {selectedFamilyDetails.display_name || selectedFamilyDetails.family_name.split(' ')[0] || selectedFamilyDetails.family_name}
-                    </h3>
-                    <AdminBadge adminLevel={selectedFamilyDetails.admin_level || null} size="md" />
-                    {selectedFamilyDetails.is_verified && <span className="text-green-500 text-lg">✓</span>}
-                  </div>
-                  {selectedFamilyDetails.username && (
-                    <p className="text-gray-600 mb-2">@{selectedFamilyDetails.username}</p>
-                  )}
-                  {getUserTypeBadge(selectedFamilyDetails.user_type) && (
-                    <span className={`inline-block px-3 py-0.5 text-xs font-semibold rounded-full mb-2 ${getUserTypeBadge(selectedFamilyDetails.user_type)!.style}`}>
-                      {getUserTypeBadge(selectedFamilyDetails.user_type)!.label}
-                    </span>
-                  )}
-                  <p className="text-sm text-gray-500">
-                    Joined {new Date(selectedFamilyDetails.created_at).toLocaleDateString('en-AU', { 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}
-                  </p>
-                </div>
               </div>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-xl font-bold text-emerald-600">
+                  {selectedFamilyDetails.display_name || selectedFamilyDetails.family_name.split(' ')[0] || selectedFamilyDetails.family_name}
+                </h3>
+                <AdminBadge adminLevel={selectedFamilyDetails.admin_level || null} size="md" />
+                {selectedFamilyDetails.is_verified && <span className="text-emerald-500 font-bold">✓</span>}
+              </div>
+              {getUserTypeBadge(selectedFamilyDetails.user_type) && (
+                <span className={`inline-block px-3 py-0.5 text-xs font-semibold rounded-full mb-1 ${getUserTypeBadge(selectedFamilyDetails.user_type)!.style}`}>
+                  {getUserTypeBadge(selectedFamilyDetails.user_type)!.label}
+                </span>
+              )}
+              <div className="flex items-center gap-1.5 text-sm text-gray-400">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                <span>{selectedFamilyDetails.location_name}</span>
+                {selectedFamilyDetails.is_online && <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full ml-1" />}
+                {!selectedFamilyDetails.is_online && selectedFamilyDetails.last_active && (
+                  <span className="text-gray-400">· {formatLastActive(selectedFamilyDetails.last_active)}</span>
+                )}
+              </div>
+            </div>
 
-              {/* Location */}
-              <div className="mb-6">
-                <h4 className="font-semibold text-gray-900 mb-2">Location</h4>
-                <div className="flex items-center gap-2">
-                  <p className="text-gray-700">{selectedFamilyDetails.location_name}</p>
-                  {/* Online status indicator */}
-                  {selectedFamilyDetails.is_online && (
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  )}
-                  {/* Last active status */}
-                  {!selectedFamilyDetails.is_online && selectedFamilyDetails.last_active && (
-                    <span className="text-xs text-gray-500">• {formatLastActive(selectedFamilyDetails.last_active)}</span>
-                  )}
-                </div>
-              </div>
+            <div className="px-6 pb-6 space-y-5">
 
               {/* Children */}
               {selectedFamilyDetails.kids_ages && selectedFamilyDetails.kids_ages.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="font-semibold text-gray-900 mb-3">Children</h4>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Children</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedFamilyDetails.kids_ages.map((age, index) => (
-                      <div key={index} className="bg-emerald-50 border border-emerald-200 rounded-full px-3 py-2">
-                        <span className="text-emerald-700 font-medium">{age} years old</span>
+                      <div key={index} className="bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
+                        <span className="text-emerald-700 font-semibold text-sm">{age} yrs</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Homeschool approach */}
+              {/* Approach */}
               {(!selectedFamilyDetails.user_type || selectedFamilyDetails.user_type === 'family') && selectedFamilyDetails.homeschool_approaches && selectedFamilyDetails.homeschool_approaches.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="font-semibold text-gray-900 mb-3">Approach</h4>
-                  <div className="flex flex-wrap gap-2">
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Approach</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {selectedFamilyDetails.homeschool_approaches.map((a, i) => (
-                      <span key={i} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-200">{a}</span>
+                      <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100">{a}</span>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* About Us */}
+              {/* About */}
               {selectedFamilyDetails.bio && (
-                <div className="mb-6">
-                  <h4 className="font-semibold text-gray-900 mb-2">About Us</h4>
-                  <p className="text-gray-700 leading-relaxed">{selectedFamilyDetails.bio}</p>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">About</p>
+                  <p className="text-gray-600 leading-relaxed text-sm">{selectedFamilyDetails.bio}</p>
                 </div>
               )}
 
               {/* Interests */}
               {selectedFamilyDetails.interests && selectedFamilyDetails.interests.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="font-semibold text-gray-900 mb-3">Interests</h4>
-                  <div className="flex flex-wrap gap-2">
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Interests</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {selectedFamilyDetails.interests.map((interest, index) => (
-                      <span key={index} className="px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-sm font-medium border border-purple-200">
-                        {interest}
-                      </span>
+                      <span key={index} className="px-2.5 py-1 bg-purple-50 text-purple-700 rounded-full text-sm font-medium border border-purple-100">{interest}</span>
                     ))}
                   </div>
                 </div>
@@ -1985,33 +1960,29 @@ function EnhancedDiscoverPage() {
                 </>
               )}
 
-              {/* Action Buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => sendConnectionRequest(selectedFamilyDetails.id)}
-                  disabled={getConnectionButtonState(selectedFamilyDetails.id).disabled}
-                  className={`flex-1 px-2 py-2 rounded-xl font-semibold transition-colors text-sm ${getConnectionButtonState(selectedFamilyDetails.id).style}`}
-                >
-                  {getConnectionButtonState(selectedFamilyDetails.id).text}
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedFamily(selectedFamilyDetails);
-                    setSelectedFamilyDetails(null);
-                  }}
-                  className="flex-1 px-2 py-2 bg-white text-gray-700 border border-gray-200 rounded-xl font-semibold hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 active:scale-[0.98] transition-all text-sm"
-                >
-                  Message
-                </button>
-                <button
-                  onClick={() => {
-                    window.location.href = `/profile?user=${selectedFamilyDetails.id}`;
-                  }}
-                  className="flex-1 px-2 py-2 bg-white text-gray-700 border border-gray-200 rounded-xl font-semibold hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 active:scale-[0.98] transition-all text-sm"
-                >
-                  Profile
-                </button>
-              </div>
+            </div>
+
+            {/* Action Buttons — sticky footer */}
+            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-2">
+              <button
+                onClick={() => sendConnectionRequest(selectedFamilyDetails.id)}
+                disabled={getConnectionButtonState(selectedFamilyDetails.id).disabled}
+                className={`flex-1 py-2.5 rounded-xl font-semibold transition-colors text-sm ${getConnectionButtonState(selectedFamilyDetails.id).style}`}
+              >
+                {getConnectionButtonState(selectedFamilyDetails.id).text}
+              </button>
+              <button
+                onClick={() => { setSelectedFamily(selectedFamilyDetails); setSelectedFamilyDetails(null); }}
+                className="flex-1 py-2.5 bg-white text-emerald-700 border border-emerald-200 rounded-xl font-semibold hover:bg-emerald-50 active:scale-[0.98] transition-all text-sm"
+              >
+                Message
+              </button>
+              <button
+                onClick={() => { window.location.href = `/u/${selectedFamilyDetails.id}`; }}
+                className="flex-1 py-2.5 bg-white text-gray-600 border border-gray-200 rounded-xl font-semibold hover:bg-gray-50 active:scale-[0.98] transition-all text-sm"
+              >
+                Profile
+              </button>
             </div>
           </div>
         </div>
@@ -2048,9 +2019,7 @@ function EnhancedDiscoverPage() {
             
             <div className="flex-1 overflow-y-auto p-4">
               {getHiddenFamiliesDetails().length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="text-4xl mb-2">👻</div>
-                  <h4 className="font-semibold text-gray-900 mb-2">No Hidden Families</h4>
+                <div className="text-center py-12">                  <h4 className="font-semibold text-gray-900 mb-2">No Hidden Families</h4>
                   <p className="text-gray-600 text-sm">All families are currently visible on your discover page.</p>
                 </div>
               ) : (
@@ -2079,7 +2048,7 @@ function EnhancedDiscoverPage() {
                         </div>
                         <button
                           onClick={() => unhideFamily(family.id)}
-                          className="px-3 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 text-sm"
+                          className="px-3 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 text-sm"
                         >
                           Unhide
                         </button>
@@ -2104,7 +2073,7 @@ function EnhancedDiscoverPage() {
                       clearHiddenFamilies();
                       setShowHiddenModal(false);
                     }}
-                    className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800"
+                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
                   >
                     Unhide All
                   </button>

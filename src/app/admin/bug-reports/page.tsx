@@ -212,9 +212,7 @@ export default function BugReportsAdmin() {
         {/* Reports List */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           {filteredReports.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="text-4xl mb-4">🐛</div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Bug Reports</h3>
+            <div className="p-8 text-center">              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Bug Reports</h3>
               <p className="text-gray-600">No bug reports match your current filters.</p>
             </div>
           ) : (
