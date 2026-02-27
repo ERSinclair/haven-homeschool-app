@@ -101,51 +101,73 @@ export default function ImageCropModal({
   }, [scale, naturalSize, clamp]);
 
   // ── Touch (drag + pinch) ──────────────────────────────────────
+  // React registers JSX touch handlers as passive, which prevents e.preventDefault()
+  // from working (breaking scroll on iOS). We attach non-passive native listeners
+  // imperatively via a ref instead.
+  const cropBoxRef = useRef<HTMLDivElement>(null);
   const pinch = useRef<{ dist: number; startScale: number; stx: number; sty: number } | null>(null);
   const touchDrag = useRef<{ sx: number; sy: number; stx: number; sty: number } | null>(null);
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    e.preventDefault();
-    if (e.touches.length === 1) {
-      touchDrag.current = { sx: e.touches[0].clientX, sy: e.touches[0].clientY, stx: tx, sty: ty };
-      pinch.current = null;
-    } else if (e.touches.length === 2) {
-      touchDrag.current = null;
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      pinch.current = { dist, startScale: scale, stx: tx, sty: ty };
-    }
-  };
+  // Handler refs hold fresh closures each render; stable wrappers below call through them.
+  const touchStartHandlerRef = useRef<(e: TouchEvent) => void>(() => {});
+  const touchMoveHandlerRef = useRef<(e: TouchEvent) => void>(() => {});
 
-  const onTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault();
-    if (e.touches.length === 1 && touchDrag.current) {
-      const dx = e.touches[0].clientX - touchDrag.current.sx;
-      const dy = e.touches[0].clientY - touchDrag.current.sy;
-      const clamped = clamp(touchDrag.current.stx + dx, touchDrag.current.sty + dy, scale, naturalSize.w, naturalSize.h);
-      setTx(clamped.x);
-      setTy(clamped.y);
-    } else if (e.touches.length === 2 && pinch.current) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const ratio = dist / pinch.current.dist;
-      const min = minScale(naturalSize.w, naturalSize.h);
-      const newScale = Math.min(6, Math.max(min, pinch.current.startScale * ratio));
-      const clamped = clamp(pinch.current.stx, pinch.current.sty, newScale, naturalSize.w, naturalSize.h);
-      setScale(newScale);
-      setTx(clamped.x);
-      setTy(clamped.y);
-    }
-  };
+  // Keep handler refs up to date with latest state values (runs every render)
+  useEffect(() => {
+    touchStartHandlerRef.current = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        touchDrag.current = { sx: e.touches[0].clientX, sy: e.touches[0].clientY, stx: tx, sty: ty };
+        pinch.current = null;
+      } else if (e.touches.length === 2) {
+        touchDrag.current = null;
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        pinch.current = { dist, startScale: scale, stx: tx, sty: ty };
+      }
+    };
+    touchMoveHandlerRef.current = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && touchDrag.current) {
+        const dx = e.touches[0].clientX - touchDrag.current.sx;
+        const dy = e.touches[0].clientY - touchDrag.current.sy;
+        const clamped = clamp(touchDrag.current.stx + dx, touchDrag.current.sty + dy, scale, naturalSize.w, naturalSize.h);
+        setTx(clamped.x);
+        setTy(clamped.y);
+      } else if (e.touches.length === 2 && pinch.current) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const ratio = dist / pinch.current.dist;
+        const min = minScale(naturalSize.w, naturalSize.h);
+        const newScale = Math.min(6, Math.max(min, pinch.current.startScale * ratio));
+        const clamped = clamp(pinch.current.stx, pinch.current.sty, newScale, naturalSize.w, naturalSize.h);
+        setScale(newScale);
+        setTx(clamped.x);
+        setTy(clamped.y);
+      }
+    };
+  }); // no deps — runs every render to capture fresh closure
 
-  const onTouchEnd = () => {
-    touchDrag.current = null;
-    pinch.current = null;
-  };
+  // Attach once with passive:false so preventDefault() actually works
+  useEffect(() => {
+    const el = cropBoxRef.current;
+    if (!el) return;
+    const ts = (e: TouchEvent) => touchStartHandlerRef.current(e);
+    const tm = (e: TouchEvent) => touchMoveHandlerRef.current(e);
+    const te = () => { touchDrag.current = null; pinch.current = null; };
+    el.addEventListener('touchstart', ts, { passive: false });
+    el.addEventListener('touchmove',  tm, { passive: false });
+    el.addEventListener('touchend',   te);
+    return () => {
+      el.removeEventListener('touchstart', ts);
+      el.removeEventListener('touchmove',  tm);
+      el.removeEventListener('touchend',   te);
+    };
+  }, []); // empty — stable wrappers never change
 
   // ── Scroll to zoom (desktop) ──────────────────────────────────
   const onWheel = (e: React.WheelEvent) => {
@@ -264,10 +286,8 @@ export default function ImageCropModal({
         }}>
           {/* Crop box */}
           <div
+            ref={cropBoxRef}
             onMouseDown={onMouseDown}
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
             onWheel={onWheel}
             style={{
               width: cropW,

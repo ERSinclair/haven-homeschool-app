@@ -57,6 +57,8 @@ export default function SignupPage() {
 
   // Business-specific
   const [businessContact, setBusinessContact] = useState('');
+  // Playgroup-specific
+  const [playgroupAges, setPlaygroupAges] = useState<string[]>([]);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -68,6 +70,8 @@ export default function SignupPage() {
   useEffect(() => {
     if (userType === 'family') {
       setStatus(['considering']);
+    } else if (userType === 'playgroup') {
+      setStatus([]);
     } else if (userType === 'teacher') {
       setStatus(['math']);
     } else if (userType === 'business') {
@@ -273,41 +277,52 @@ export default function SignupPage() {
       // Step 2: Create the profile (INSERT since no auto-trigger)
       const profileData = {
         id: authData.user.id,  // Add user ID for INSERT
-        user_type: userType, // family, teacher, or business
-        family_name: userType === 'business' && businessName.trim() 
+        user_type: userType, // family, playgroup, teacher, or business
+        family_name: userType === 'business' && businessName.trim()
           ? businessName.trim()
-          : `${firstName} ${lastName}`.trim(),     // Business name or full name for family_name (admin/user only)
+          : userType === 'playgroup'
+            ? firstName.trim()
+            : `${firstName} ${lastName}`.trim(),
         display_name: userType === 'business' && businessName.trim()
           ? businessName.trim()
-          : firstName,    // Business name or first name for public display
+          : userType === 'playgroup'
+            ? firstName.trim()
+            : firstName,
         email,
         username,
         location_name: location.trim(),
-        location_lat: null, // Not using exact coordinates for profiles
+        location_lat: null,
         location_lng: null,
-        kids_ages: userType === 'family' 
+        kids_ages: userType === 'family'
           ? children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18)
-          : userType === 'teacher' && relationship.includes('no-kids')
-            ? []
-            : userType === 'teacher'
-              ? children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18)
-              : [],
+          : userType === 'playgroup'
+            // Store min age of each selected bracket e.g. '0-1' → 0, '1-2' → 1
+            ? playgroupAges.map(a => parseInt(a)).filter(n => !isNaN(n))
+            : userType === 'teacher' && relationship.includes('no-kids')
+              ? []
+              : userType === 'teacher'
+                ? children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18)
+                : [],
         bio: userType === 'family'
           ? bio
-          : userType === 'teacher'
-            ? (bio || (relationship.includes('no-kids') ? 'Teacher (no children)' : 'Teacher'))
-            : userType === 'business'
-              ? bio
-              : children.map(c => c.age.trim()).filter(item => item).join(', '),
+          : userType === 'playgroup'
+            ? bio
+            : userType === 'teacher'
+              ? (bio || (relationship.includes('no-kids') ? 'Teacher (no children)' : 'Teacher'))
+              : userType === 'business'
+                ? bio
+                : children.map(c => c.age.trim()).filter(item => item).join(', '),
         status: userType === 'family'
-          ? (status.includes('other') && customDescriptions.some(desc => desc.trim()) 
+          ? (status.includes('other') && customDescriptions.some(desc => desc.trim())
             ? customDescriptions.filter(desc => desc.trim()).join(', ')
             : (status.filter(s => s !== 'other').length > 0 ? status.filter(s => s !== 'other')[0] : 'considering'))
+          : userType === 'playgroup'
+            ? 'playgroup'
           : userType === 'teacher'
             ? (customDescriptions.some(desc => desc.trim())
               ? customDescriptions.filter(desc => desc.trim()).join(', ')
               : 'teacher')
-            : (status.includes('other') && customDescriptions.some(desc => desc.trim()) 
+            : (status.includes('other') && customDescriptions.some(desc => desc.trim())
               ? customDescriptions.filter(desc => desc.trim()).join(', ')
               : (status.filter(s => s !== 'other').length > 0 ? status.filter(s => s !== 'other')[0] : 'considering')),
         contact_methods: contactMethods,
@@ -414,6 +429,9 @@ export default function SignupPage() {
   };
 
   const isStep2Valid = () => {
+    if (userType === 'playgroup') {
+      return firstName.trim() && username.trim() && usernameAvailable === true && location.split(',')[0]?.trim() && !checkingUsername;
+    }
     return firstName.trim() && lastName.trim() && username.trim() && 
            usernameAvailable === true && location.split(',')[0]?.trim() && 
            status.length > 0 && !checkingUsername;
@@ -422,6 +440,9 @@ export default function SignupPage() {
   const isStep3Valid = () => {
     if (userType === 'family') {
       return children.every(c => c.age !== '' && parseInt(c.age) >= 0 && parseInt(c.age) <= 18);
+    }
+    if (userType === 'playgroup') {
+      return true; // ages served are optional
     }
     if (userType === 'teacher') {
       // Valid if either "no kids" is selected OR all children have valid ages
@@ -436,6 +457,9 @@ export default function SignupPage() {
 
   const isStep4Valid = () => {
     if (userType === 'family') {
+      return bio.trim() !== '';
+    }
+    if (userType === 'playgroup') {
       return bio.trim() !== '';
     }
     if (userType === 'teacher') {
@@ -481,12 +505,14 @@ export default function SignupPage() {
     if (stepNum === 2) return 'About you';
     if (stepNum === 3) {
       if (userType === 'family') return 'Kids';
+      if (userType === 'playgroup') return 'Ages';
       if (userType === 'teacher') return 'Kids';
       if (userType === 'business') return 'Services';
       return 'Finish';
     }
     if (stepNum === 4) {
       if (userType === 'family') return 'About Us';
+      if (userType === 'playgroup') return 'About Us';
       if (userType === 'teacher') return 'Details';
       if (userType === 'business') return 'Details';
       return 'Finish';
@@ -627,8 +653,8 @@ export default function SignupPage() {
                   <p className="text-sm font-medium text-gray-700 text-center mb-3">
                     {userType ? 'Joining as' : 'I am joining as a...'}
                   </p>
-                  <div className="flex gap-2 mb-4 justify-center">
-                    {(['family', 'teacher', 'business'] as const).map((type) => (
+                  <div className="flex gap-2 mb-4 justify-center flex-wrap">
+                    {(['family', 'playgroup', 'teacher', 'business'] as const).map((type) => (
                       <button
                         key={type}
                         type="button"
@@ -919,6 +945,105 @@ export default function SignupPage() {
                     Continue
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: About you - Playgroup */}
+          {step === 2 && userType === 'playgroup' && (
+            <div>
+              <div className="space-y-4">
+                <div>
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                    placeholder="Group name (e.g. Little Explorers Playgroup)"
+                  />
+                </div>
+                <div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => {
+                        const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                        setUsername(value);
+                      }}
+                      className={`w-full p-3.5 border rounded-xl focus:ring-2 pr-10 ${
+                        usernameAvailable === false
+                          ? 'border-red-300 focus:ring-red-500'
+                          : username && username.length >= 3 && usernameAvailable === true
+                          ? 'border-green-300 focus:ring-green-500'
+                          : 'border-gray-200 focus:ring-emerald-500'
+                      }`}
+                      placeholder="Handle (e.g. littleexplorers)"
+                      minLength={3}
+                      maxLength={20}
+                    />
+                    {checkingUsername && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <div className="w-5 h-5 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                    {!checkingUsername && usernameAvailable === true && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-600">✓</div>
+                    )}
+                    {!checkingUsername && usernameAvailable === false && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-600">✗</div>
+                    )}
+                  </div>
+                  {username && username.length < 3 && (
+                    <p className="text-sm text-gray-500 mt-1">Handle must be at least 3 characters</p>
+                  )}
+                </div>
+                <div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={location.split(',')[0]?.trim() || ''}
+                      onChange={(e) => {
+                        const town = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase();
+                        const state = location.split(',')[1]?.trim() || 'VIC';
+                        setLocation(`${town}, ${state}`);
+                        setLocationData({ name: town, address: `${town}, ${state}`, lat: -38.3305, lng: 144.3256 });
+                      }}
+                      placeholder="Town/Suburb"
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <select
+                      value={location.split(',')[1]?.trim() || 'VIC'}
+                      onChange={(e) => {
+                        const town = location.split(',')[0]?.trim() || '';
+                        setLocation(`${town}, ${e.target.value}`);
+                        setLocationData({ name: town, address: `${town}, ${e.target.value}`, lat: -38.3305, lng: 144.3256 });
+                      }}
+                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="VIC">VIC</option>
+                      <option value="NSW">NSW</option>
+                      <option value="QLD">QLD</option>
+                      <option value="WA">WA</option>
+                      <option value="SA">SA</option>
+                      <option value="TAS">TAS</option>
+                      <option value="ACT">ACT</option>
+                      <option value="NT">NT</option>
+                    </select>
+                  </div>
+                  {location && location.includes(',') && location.split(',')[0].trim() && (
+                    <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="text-sm font-medium text-emerald-900">{location}</div>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setStep(3)}
+                  disabled={!firstName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || checkingUsername}
+                  className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
+                >
+                  Continue
+                </button>
               </div>
             </div>
           )}
@@ -1540,6 +1665,39 @@ export default function SignupPage() {
             </div>
           )}
 
+          {/* Step 3: Ages served - Playgroup */}
+          {step === 3 && userType === 'playgroup' && (
+            <div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">What ages does your group cater to? (optional)</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['0–1', '1–2', '2–3', '3–4', '4–5', '5+'].map(age => (
+                      <button
+                        key={age}
+                        type="button"
+                        onClick={() => setPlaygroupAges(prev => prev.includes(age) ? prev.filter(a => a !== age) : [...prev, age])}
+                        className={`py-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                          playgroupAges.includes(age)
+                            ? 'border-purple-600 bg-purple-50 text-purple-700'
+                            : 'border-gray-200 text-gray-600 hover:border-purple-300'
+                        }`}
+                      >
+                        {age} yrs
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setStep(4)}
+                  className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Step 4: Family Bio - Families */}
           {step === 4 && userType === 'family' && (
             <div>
@@ -1557,6 +1715,33 @@ export default function SignupPage() {
                 </div>
               </div>
 
+              <div>
+                <button
+                  onClick={handleSaveProfile}
+                  disabled={loading || !bio.trim()}
+                  className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
+                >
+                  {loading ? 'Creating your account...' : 'Create Account & Finish'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: About your group - Playgroup */}
+          {step === 4 && userType === 'playgroup' && (
+            <div>
+              <div className="space-y-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">Tell families about your playgroup</label>
+                  <textarea
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
+                    rows={6}
+                    placeholder="When do you meet, what do you do, how can families join? Any other details you'd like parents to know..."
+                  />
+                </div>
+              </div>
               <div>
                 <button
                   onClick={handleSaveProfile}

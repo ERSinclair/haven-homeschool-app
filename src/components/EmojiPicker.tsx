@@ -34,7 +34,7 @@ export default function EmojiPicker({ onSelect, onClose, position = 'above' }: E
   return (
     <div
       ref={ref}
-      className={`absolute ${position === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'} left-0 z-50 bg-white border border-gray-200 rounded-2xl shadow-xl p-3 w-72 max-h-72 overflow-y-auto`}
+      className={`absolute ${position === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'} left-0 z-overlay bg-white border border-gray-200 rounded-2xl shadow-xl p-3 w-72 max-h-72 overflow-y-auto`}
     >
       <div className="space-y-2">
         {EMOJI_GROUPS.map(group => (

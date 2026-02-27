@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { getCached, setCached } from '@/lib/pageCache';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
@@ -8,9 +9,24 @@ import { toast } from '@/lib/toast';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
+import SimpleLocationPicker from '@/components/SimpleLocationPicker';
 import { distanceKm } from '@/lib/geocode';
 import { loadSearchRadius } from '@/lib/preferences';
 import { CirclesPageSkeleton } from '@/components/SkeletonLoader';
+
+type CircleInvitation = {
+  id: string;
+  circle_id: string;
+  circle_name: string;
+  circle_description?: string;
+  circle_emoji: string;
+  circle_color: string;
+  inviter_id: string;
+  inviter_name: string;
+  inviter_avatar_url?: string;
+  created_at: string;
+  status: 'pending' | 'accepted' | 'declined';
+};
 
 type Circle = {
   id: string;
@@ -39,7 +55,9 @@ type DiscoverCircle = {
   created_at: string;
   created_by: string;
   cover_image_url?: string | null;
-  creator?: { location_lat?: number; location_lng?: number };
+  location_name?: string | null;
+  location_lat?: number | null;
+  location_lng?: number | null;
   isMember?: boolean;
   isJoining?: boolean;
 };
@@ -53,6 +71,19 @@ export default function CirclesPage() {
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [newCircleLocation, setNewCircleLocation] = useState<{ name: string; address: string; lat: number; lng: number } | null>(null);
+  const [newCircleLocationError, setNewCircleLocationError] = useState(false);
+  const [newCircleCoverFile, setNewCircleCoverFile] = useState<File | null>(null);
+  const [newCircleCoverPreview, setNewCircleCoverPreview] = useState<string | null>(null);
+
+  const handleNewCircleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNewCircleCoverFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setNewCircleCoverPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
   const [newCircleData, setNewCircleData] = useState({
     name: '',
     description: '',
@@ -62,6 +93,12 @@ export default function CirclesPage() {
 
   // Main tabs
   const [mainTab, setMainTab] = useState<'my' | 'discover'>('my');
+
+  // Circle invitations inline
+  const [showCircleInvitations, setShowCircleInvitations] = useState(false);
+  const [circleInvitations, setCircleInvitations] = useState<CircleInvitation[]>([]);
+  const [loadingCircleInvitations, setLoadingCircleInvitations] = useState(false);
+  const [processingCircleInvite, setProcessingCircleInvite] = useState<string | null>(null);
 
   // Discover tab state
   const [discoverCircles, setDiscoverCircles] = useState<DiscoverCircle[]>([]);
@@ -88,7 +125,7 @@ export default function CirclesPage() {
         if (p?.location_lat && p?.location_lng) setDiscoverUserLocation({ lat: p.location_lat, lng: p.location_lng });
       }
 
-      const circlesRes = await fetch(`${supabaseUrl}/rest/v1/circles?is_public=eq.true&select=*,creator:created_by(location_lat,location_lng)&order=member_count.desc,created_at.desc`, { headers });
+      const circlesRes = await fetch(`${supabaseUrl}/rest/v1/circles?is_public=eq.true&select=*&order=member_count.desc,created_at.desc`, { headers });
       if (!circlesRes.ok) throw new Error();
       const allCircles: DiscoverCircle[] = await circlesRes.json();
 
@@ -148,7 +185,94 @@ export default function CirclesPage() {
     }
   }, [mainTab]);
 
+  // Load circle invitations when that view is opened
+  useEffect(() => {
+    if (!showCircleInvitations) return;
+    const load = async () => {
+      setLoadingCircleInvitations(true);
+      try {
+        const session = getStoredSession();
+        if (!session?.user) return;
+        const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+        const invRes = await fetch(
+          `${supabaseUrl}/rest/v1/circle_invitations?invitee_id=eq.${session.user.id}&select=*,circles(name,description,emoji,color)&order=created_at.desc`,
+          { headers }
+        );
+        if (!invRes.ok) { setLoadingCircleInvitations(false); return; }
+        const rawInvs = await invRes.json();
+        if (!Array.isArray(rawInvs) || rawInvs.length === 0) { setCircleInvitations([]); setLoadingCircleInvitations(false); return; }
+        const inviterIds = [...new Set<string>(rawInvs.map((i: any) => i.inviter_id))];
+        const profilesRes = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?id=in.(${inviterIds.join(',')})&select=id,family_name,display_name,avatar_url`,
+          { headers }
+        );
+        const profiles = profilesRes.ok ? await profilesRes.json() : [];
+        const profileMap: Record<string, any> = {};
+        profiles.forEach((p: any) => { profileMap[p.id] = p; });
+        setCircleInvitations(rawInvs.map((inv: any) => {
+          const circle = inv.circles || {};
+          const host = profileMap[inv.inviter_id] || {};
+          return {
+            id: inv.id,
+            circle_id: inv.circle_id,
+            circle_name: circle.name || 'Circle',
+            circle_description: circle.description,
+            circle_emoji: circle.emoji || '🔵',
+            circle_color: circle.color || 'blue',
+            inviter_id: inv.inviter_id,
+            inviter_name: host.family_name || host.display_name || 'Someone',
+            inviter_avatar_url: host.avatar_url,
+            created_at: inv.created_at,
+            status: inv.status,
+          };
+        }));
+      } catch (err) {
+        console.error('Error loading circle invitations:', err);
+      } finally {
+        setLoadingCircleInvitations(false);
+      }
+    };
+    load();
+  }, [showCircleInvitations]);
+
+  const handleCircleInvitationAction = async (invitationId: string, action: 'accept' | 'decline') => {
+    setProcessingCircleInvite(invitationId);
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+      const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=ignore-duplicates,return=minimal' };
+      const invitation = circleInvitations.find(i => i.id === invitationId);
+      // Update invitation status (409 = already member = treat as success)
+      const patchRes = await fetch(`${supabaseUrl}/rest/v1/circle_invitations?id=eq.${invitationId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status: action === 'accept' ? 'accepted' : 'declined' }),
+      });
+      if (action === 'accept' && invitation && (patchRes.ok || patchRes.status === 409)) {
+        // Add to circle_members
+        await fetch(`${supabaseUrl}/rest/v1/circle_members`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ circle_id: invitation.circle_id, member_id: session.user.id, role: 'member', joined_at: new Date().toISOString() }),
+        });
+        // Refresh circles list so new circle appears
+        loadCircles();
+      }
+      setCircleInvitations(prev => prev.map(i =>
+        i.id === invitationId ? { ...i, status: action === 'accept' ? 'accepted' : 'declined' } : i
+      ));
+    } catch (err) {
+      console.error('Error handling circle invitation:', err);
+    } finally {
+      setProcessingCircleInvite(null);
+    }
+  };
+
   const loadCircles = async () => {
+    // Show cached circles instantly while refreshing
+    const cached = getCached<Circle[]>('circles:list');
+    if (cached) { setCircles(cached); setLoading(false); }
+
     try {
       const session = getStoredSession();
       if (!session?.user) { router.push('/login'); return; }
@@ -177,6 +301,7 @@ export default function CirclesPage() {
         }));
 
       setCircles(userCircles);
+      setCached('circles:list', userCircles);
     } catch (err) {
       setError('Failed to load circles. Please try again.');
     } finally {
@@ -245,6 +370,7 @@ export default function CirclesPage() {
 
   const createCircle = async () => {
     if (!newCircleData.name.trim()) return;
+    if (!newCircleLocation) { setNewCircleLocationError(true); return; }
     setCreating(true);
     try {
       const session = getStoredSession();
@@ -271,16 +397,19 @@ export default function CirclesPage() {
           created_by: session.user.id,
           member_count: 1,
           last_activity_at: new Date().toISOString(),
+          location_name: newCircleLocation.name,
+          location_lat: newCircleLocation.lat,
+          location_lng: newCircleLocation.lng,
         }),
       });
 
       if (!res.ok) throw new Error('Failed to create circle');
       const [created] = await res.json();
 
-      // Add creator as admin member
+      // Add creator as admin member (ignore duplicate if DB trigger already added them)
       await fetch(`${supabaseUrl}/rest/v1/circle_members`, {
         method: 'POST',
-        headers,
+        headers: { ...headers, 'Prefer': 'return=minimal,resolution=ignore-duplicates' },
         body: JSON.stringify({
           circle_id: created.id,
           member_id: session.user.id,
@@ -289,7 +418,41 @@ export default function CirclesPage() {
         }),
       });
 
+      // Upload cover image if selected
+      if (newCircleCoverFile && created?.id) {
+        const ext = newCircleCoverFile.name.split('.').pop() || 'jpg';
+        const path = `circle-covers/${created.id}/cover.${ext}`;
+        const uploadRes = await fetch(
+          `${supabaseUrl}/storage/v1/object/event-files/${path}`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': newCircleCoverFile.type,
+              'x-upsert': 'true',
+            },
+            body: newCircleCoverFile,
+          }
+        );
+        if (uploadRes.ok) {
+          const coverUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}`;
+          await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${created.id}`, {
+            method: 'PATCH',
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ cover_image_url: coverUrl }),
+          });
+        }
+      }
+
       setNewCircleData({ name: '', description: '', is_public: false });
+      setNewCircleLocation(null);
+      setNewCircleLocationError(false);
+      setNewCircleCoverFile(null);
+      setNewCircleCoverPreview(null);
       setShowCreateModal(false);
       router.push(`/circles/${created.id}`);
     } catch {
@@ -359,7 +522,7 @@ export default function CirclesPage() {
         onTouchStart={onLongPressStart}
         onTouchEnd={onLongPressEnd}
         className={`rounded-xl shadow-sm border p-3 transition-all cursor-pointer active:scale-[0.99] ${
-          isSelected ? 'border-emerald-500 bg-emerald-50' : 'border-gray-100 bg-white hover:shadow-md'
+          isSelected ? 'border-emerald-500 bg-emerald-50' : 'border-gray-100 bg-white hover:shadow-md hover:border-gray-200'
         }`}
       >
         {/* Cover image */}
@@ -454,16 +617,105 @@ export default function CirclesPage() {
           {/* My Circles tab */}
           {mainTab === 'my' && (
             <>
-              {/* Invitations link */}
-              <button
-                onClick={() => router.push('/circles/invitations')}
-                className="w-full mb-3 py-2 px-4 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors text-left flex items-center justify-between"
-              >
-                <span>Circle invitations</span>
-                <span className="text-gray-400">→</span>
-              </button>
+              {/* My Circles / Invitations sub-nav */}
+              <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+                <button
+                  onClick={() => setShowCircleInvitations(false)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${!showCircleInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  My Circles
+                </button>
+                <button
+                  onClick={() => setShowCircleInvitations(true)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${showCircleInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Invitations
+                </button>
+              </div>
 
-              {circles.length === 0 && (
+              {/* Invitations inline view */}
+              {showCircleInvitations && (
+                <div className="mb-6">
+                  {loadingCircleInvitations ? (
+                    <div className="flex justify-center py-10">
+                      <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (() => {
+                    const pending = circleInvitations.filter(i => i.status === 'pending');
+                    const processed = circleInvitations.filter(i => i.status !== 'pending');
+                    if (circleInvitations.length === 0) return (
+                      <div className="text-center py-10">
+                        <p className="font-semibold text-gray-600 mb-1">No invitations</p>
+                        <p className="text-sm text-gray-400">Circle invitations from other families will appear here.</p>
+                      </div>
+                    );
+                    return (
+                      <>
+                        {pending.length > 0 && (
+                          <div className="mb-5">
+                            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+                              Pending
+                              <span className="bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center leading-none">{pending.length}</span>
+                            </h2>
+                            <div className="space-y-3">
+                              {pending.map(inv => (
+                                <div key={inv.id} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+                                  <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-xl flex-shrink-0">{inv.circle_emoji}</div>
+                                    <div className="flex-1 min-w-0">
+                                      <h3 className="font-semibold text-gray-900 text-sm truncate">{inv.circle_name}</h3>
+                                      {inv.circle_description && <p className="text-xs text-gray-400 truncate">{inv.circle_description}</p>}
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-gray-400 mb-3">From {inv.inviter_name}</p>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleCircleInvitationAction(inv.id, 'decline')}
+                                      disabled={processingCircleInvite === inv.id}
+                                      className="flex-1 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                                    >
+                                      {processingCircleInvite === inv.id ? '...' : 'Decline'}
+                                    </button>
+                                    <button
+                                      onClick={() => handleCircleInvitationAction(inv.id, 'accept')}
+                                      disabled={processingCircleInvite === inv.id}
+                                      className="flex-1 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                                    >
+                                      {processingCircleInvite === inv.id ? '...' : 'Accept'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {processed.length > 0 && (
+                          <div className="mb-5">
+                            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Recent Activity</h2>
+                            <div className="space-y-2">
+                              {processed.slice(0, 5).map(inv => (
+                                <div key={inv.id} className="bg-white rounded-xl p-3 border border-gray-100 flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-lg flex-shrink-0">{inv.circle_emoji}</div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-800 truncate">{inv.circle_name}</p>
+                                    <p className="text-xs text-gray-400">From {inv.inviter_name}</p>
+                                  </div>
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${inv.status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                                    {inv.status === 'accepted' ? 'Joined' : 'Declined'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* My Circles list — hidden when showing invitations */}
+              {!showCircleInvitations && circles.length === 0 && (
                 <div className="text-center py-12 px-6">
                   <div className="text-4xl mb-3">🔵</div>
                   <p className="font-semibold text-gray-800 mb-1">You're not in any circles yet</p>
@@ -471,7 +723,7 @@ export default function CirclesPage() {
                 </div>
               )}
 
-              {privateCircles.length > 0 && (
+              {!showCircleInvitations && privateCircles.length > 0 && (
                 <div className="mb-6">
                   <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Private</h2>
                   <div className="space-y-3">
@@ -485,7 +737,7 @@ export default function CirclesPage() {
                 </div>
               )}
 
-              {publicCircles.length > 0 && (
+              {!showCircleInvitations && publicCircles.length > 0 && (
                 <div className="mb-6">
                   <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Public</h2>
                   <div className="space-y-3">
@@ -522,8 +774,8 @@ export default function CirclesPage() {
               {!discoverLoading && (() => {
                 const activeLocation = discoverBrowseLocation ?? discoverUserLocation;
                 const filtered = discoverCircles.filter(c => {
-                  if (activeLocation && c.creator?.location_lat && c.creator?.location_lng) {
-                    const d = distanceKm(activeLocation.lat, activeLocation.lng, c.creator.location_lat, c.creator.location_lng);
+                  if (activeLocation && c.location_lat && c.location_lng) {
+                    const d = distanceKm(activeLocation.lat, activeLocation.lng, c.location_lat, c.location_lng);
                     if (d > searchRadius) return false;
                   }
                   if (discoverSearch) return c.name.toLowerCase().includes(discoverSearch.toLowerCase()) || c.description?.toLowerCase().includes(discoverSearch.toLowerCase());
@@ -547,7 +799,7 @@ export default function CirclesPage() {
                 return (
                   <div className="space-y-3">
                     {filtered.map(circle => (
-                      <div key={circle.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div key={circle.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-gray-200 transition-all">
                         {circle.cover_image_url && (
                           <div className="relative h-20 w-full">
                             <img src={circle.cover_image_url} alt="" className="w-full h-full object-cover" />
@@ -565,7 +817,8 @@ export default function CirclesPage() {
                             )}
                             <div className="flex-1 min-w-0">
                               <h3 className="font-semibold text-gray-900 text-sm mb-0.5">{circle.name}</h3>
-                              {circle.description && <p className="text-gray-500 text-xs mb-1.5 line-clamp-1">{circle.description}</p>}
+                              {circle.description && <p className="text-gray-500 text-xs mb-1 line-clamp-1">{circle.description}</p>}
+                              {circle.location_name && <p className="text-xs text-gray-400 mb-1.5">{circle.location_name}</p>}
                               <div className="flex items-center justify-between">
                                 <span className="text-xs text-gray-400">{circle.member_count} {circle.member_count === 1 ? 'member' : 'members'}</span>
                                 {circle.isMember ? (
@@ -595,6 +848,30 @@ export default function CirclesPage() {
               <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">New Circle</h3>
 
               <div className="space-y-4">
+
+                {/* Cover image picker */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Banner photo (optional)</label>
+                  <label className="block cursor-pointer group">
+                    {newCircleCoverPreview ? (
+                      <div className="relative w-full h-28 rounded-xl overflow-hidden">
+                        <img src={newCircleCoverPreview} alt="Cover preview" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-white text-sm font-semibold">Change photo</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full h-20 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center gap-2 group-hover:border-emerald-400 group-hover:bg-emerald-50 transition-colors">
+                        <svg className="w-4 h-4 text-gray-400 group-hover:text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-sm text-gray-400 group-hover:text-emerald-600">Add banner photo</span>
+                      </div>
+                    )}
+                    <input type="file" accept="image/*" className="sr-only" onChange={handleNewCircleCoverSelect} />
+                  </label>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                   <input
@@ -636,18 +913,35 @@ export default function CirclesPage() {
                     ? 'Anyone can discover and join this circle.'
                     : 'Only people you invite can join this circle.'}
                 </p>
+                <div className="pt-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Location <span className="text-red-500">*</span>
+                  </label>
+                  <SimpleLocationPicker
+                    onLocationSelect={loc => { setNewCircleLocation(loc); setNewCircleLocationError(false); }}
+                    placeholder="Suburb or town..."
+                  />
+                  {newCircleLocationError && !newCircleLocation && (
+                    <p className="text-xs text-red-500 mt-1">Location is required</p>
+                  )}
+                  {newCircleLocation && (
+                    <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="text-sm font-medium text-emerald-900">{newCircleLocation.name}</div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex gap-3 mt-6">
                 <button
-                  onClick={() => { setShowCreateModal(false); setNewCircleData({ name: '', description: '', is_public: false }); }}
+                  onClick={() => { setShowCreateModal(false); setNewCircleData({ name: '', description: '', is_public: false }); setNewCircleLocation(null); setNewCircleLocationError(false); }}
                   className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={createCircle}
-                  disabled={creating || !newCircleData.name.trim()}
+                  disabled={creating || !newCircleData.name.trim() || !newCircleLocation}
                   className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 disabled:bg-gray-300"
                 >
                   {creating ? 'Creating...' : 'Create'}

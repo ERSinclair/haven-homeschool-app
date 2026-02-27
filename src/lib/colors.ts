@@ -78,6 +78,8 @@ export function getUserTypeBadge(userType?: string): { style: string; label: str
     case 'business':
     case 'facility':
       return { style: 'bg-amber-100 text-amber-700', label: 'Business' };
+    case 'playgroup':
+      return { style: 'bg-purple-100 text-purple-700', label: 'Playgroup' };
     case 'family':
       return { style: 'bg-emerald-100 text-emerald-700', label: 'Family' };
     default:

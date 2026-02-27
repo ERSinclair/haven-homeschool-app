@@ -1,41 +1,33 @@
 @import "tailwindcss";
 
-/* Mobile Bottom Navigation Fixes */
+/* Mobile Bottom Navigation — z-index 49 keeps it below Tailwind z-50 modals */
 #bottom-navigation-v2 {
-  /* Ensure it works on all mobile browsers */
   position: fixed !important;
   bottom: 0 !important;
   left: 0 !important;
   right: 0 !important;
   width: 100% !important;
-  z-index: 9999 !important;
-  
-  /* Hardware acceleration for mobile */
-  -webkit-transform: translate3d(0, 0, 0);
-  transform: translate3d(0, 0, 0);
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  
-  /* Handle mobile safe areas */
+  z-index: 49;
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* Additional mobile-specific fixes */
 @supports (-webkit-touch-callout: none) {
   #bottom-navigation-v2 {
-    /* iOS Safari specific */
     bottom: max(0px, env(safe-area-inset-bottom)) !important;
   }
 }
 
-/* Force bottom positioning on mobile viewports */
 @media screen and (max-width: 768px) {
   #bottom-navigation-v2 {
     position: fixed !important;
     bottom: 0 !important;
-    /* Ensure it's above mobile browser UI */
-    z-index: 999999 !important;
+    z-index: 49;
   }
+}
+
+/* z-overlay — above modals (z-50=50) and above nav bar (49). No !important wars. */
+.z-overlay {
+  z-index: 200;
 }
 
 :root {
@@ -86,14 +78,16 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-nunito), system-ui, sans-serif;
-  overflow-x: hidden;
+  overflow-x: hidden; /* clips horizontal overflow; propagates to viewport (not a scroll container) */
+  -webkit-overflow-scrolling: touch;
   word-wrap: break-word;
 }
 
-/* Mobile-specific fixes */
-html {
-  overflow-x: hidden;
-}
+/* NOTE: do NOT set overflow on html element — in Chrome/Brave it moves the scroll
+   root to the html element and breaks touch-drag scroll in mobile emulation and
+   on real devices. overflow-x: hidden on body propagates to the viewport instead. */
+
+/* Mobile-specific fixes — do NOT set overflow on html, it breaks iOS scroll */
 
 * {
   box-sizing: border-box;
@@ -260,7 +254,6 @@ button:not(:disabled):hover {
 }
 button:not(:disabled):active {
   filter: brightness(0.82);
-  transform: scale(0.98);
 }
 
 /* Better focus states */
@@ -299,4 +292,126 @@ textarea::placeholder {
     min-height: 44px;
     min-width: 44px;
   }
+}
+
+/* ============================================================
+   PAGE TRANSITIONS
+   ============================================================ */
+/* animate-pageIn removed — any CSS animation (transform or opacity) on a parent
+   creates a stacking context that breaks position:fixed children layout (event/
+   circle overlays) and fights iOS Safari touch-scroll. No animation is safer. */
+.animate-pageIn {}
+
+/* ============================================================
+   HAVEN CARD SYSTEM
+   Standard list card:   haven-card + haven-card-interactive
+   Modal/sheet card:     bg-white rounded-2xl shadow-sm (keep as-is)
+   ============================================================ */
+.haven-card {
+  background: #ffffff;
+  border-radius: 0.75rem;       /* rounded-xl — list cards */
+  border: 1px solid #F3F4F6;    /* gray-100 */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.haven-card-interactive {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  border: 1px solid #F3F4F6;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  cursor: pointer;
+}
+.haven-card-interactive:hover {
+  box-shadow: 0 4px 14px rgba(0,0,0,0.09), 0 2px 4px rgba(0,0,0,0.06);
+  border-color: #E5E7EB;        /* gray-200 */
+}
+.haven-card-interactive:active {
+  transform: scale(0.99);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* ============================================================
+   TYPOGRAPHY
+   ============================================================ */
+
+/* Tight tracking on headings */
+h1, h2, h3 {
+  font-family: var(--font-nunito), system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Section headers — small caps label style */
+.haven-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #9CA3AF;
+}
+
+/* Strong display text */
+.haven-display {
+  font-size: 1.875rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+/* ============================================================
+   MICRO-INTERACTIONS
+   ============================================================ */
+
+/* Add transform to existing button transition */
+button:not(:disabled) {
+  transition: filter 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+}
+
+/* Pill buttons — stronger tactile press */
+.btn-pill {
+  transition: filter 0.12s ease, transform 0.12s ease, background-color 0.15s ease;
+}
+.btn-pill:active {
+  transform: scale(0.94);
+  filter: brightness(0.88);
+}
+
+/* Nav icons — subtle bounce on tap */
+#bottom-navigation-v2 button {
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#bottom-navigation-v2 button:active {
+  transform: scale(0.88);
+}
+
+/* Input focus — smooth glow transition */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+textarea,
+select {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Smooth link colour transitions */
+a {
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+/* Avatar press feedback */
+.avatar-tap:active {
+  transform: scale(0.95);
+  transition: transform 0.1s ease;
+}
+
+/* Toggle switch smooth animation */
+.haven-toggle {
+  transition: background-color 0.2s ease;
+}
+.haven-toggle-thumb {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }

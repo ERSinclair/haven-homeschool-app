@@ -16,6 +16,13 @@ export default function BottomNav() {
   const [circlesBadge, setCirclesBadge] = useState(0);
   const [notifBadge, setNotifBadge] = useState(0);
 
+  // Prefetch all main tab routes so navigation feels instant
+  useEffect(() => {
+    ['/discover', '/events', '/circles', '/messages', '/profile'].forEach(href => {
+      router.prefetch(href);
+    });
+  }, [router]);
+
   useEffect(() => {
     const session = getStoredSession();
     setIsLoggedIn(!!session?.user);

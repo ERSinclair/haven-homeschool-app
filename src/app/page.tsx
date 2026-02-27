@@ -16,7 +16,7 @@ export default function Home() {
       // Longer delay to prevent conflict with login redirects
       const timer = setTimeout(() => {
         router.push('/discover');
-      }, 1500); // Increased delay to avoid conflicts
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [user, loading, router]);
@@ -188,9 +188,13 @@ export default function Home() {
           <div className="flex items-center gap-2 pointer-events-none">
             <span className="font-bold text-emerald-600 text-4xl" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</span>
           </div>
-          <p className="text-sm text-gray-500">
-            Made for Australian families 🇦🇺 v2.0
-          </p>
+          <p className="text-sm text-gray-500">Made for Australian families &nbsp;·&nbsp; © 2026 Haven</p>
+        </div>
+        <div className="max-w-3xl mx-auto flex justify-center gap-5 mt-3">
+          <Link href="/terms" className="text-xs text-gray-400 hover:text-gray-600">Terms</Link>
+          <Link href="/community-guidelines" className="text-xs text-gray-400 hover:text-gray-600">Guidelines</Link>
+          <Link href="/privacy" className="text-xs text-gray-400 hover:text-gray-600">Privacy</Link>
+          <a href="mailto:hello@familyhaven.app" className="text-xs text-gray-400 hover:text-gray-600">Contact</a>
         </div>
       </div>
     </div>

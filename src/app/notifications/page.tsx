@@ -226,18 +226,33 @@ export default function NotificationsPage() {
     setProcessing(prev => new Set(prev).add(notif.id));
     try {
       const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+      const deleteH = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+
       if (accept) {
-        // Add to circle_members
-        await fetch(`${supabaseUrl}/rest/v1/circle_members`, {
+        // Add to circle_members — 409 means already a member, treat as success
+        const res = await fetch(`${supabaseUrl}/rest/v1/circle_members`, {
           method: 'POST', headers: h,
           body: JSON.stringify({ circle_id: notif.reference_id, member_id: session.user.id, role: 'member' }),
         });
-        toast('Joined circle', 'success');
+        if (!res.ok && res.status !== 409) {
+          toast('Failed to join circle', 'error');
+          return;
+        }
+        // Delete the notification from DB so it doesn't reappear
+        await fetch(`${supabaseUrl}/rest/v1/notifications?id=eq.${notif.id}`, {
+          method: 'DELETE', headers: deleteH,
+        });
+        setNotifications(prev => prev.filter(n => n.id !== notif.id));
+        toast('Joined circle!', 'success');
         router.push(`/circles/${notif.reference_id}`);
       } else {
+        // Decline — delete notification from DB
+        await fetch(`${supabaseUrl}/rest/v1/notifications?id=eq.${notif.id}`, {
+          method: 'DELETE', headers: deleteH,
+        });
+        setNotifications(prev => prev.filter(n => n.id !== notif.id));
         toast('Invite declined');
       }
-      setNotifications(prev => prev.filter(n => n.id !== notif.id));
     } catch { /* silent */ }
     finally { setProcessing(prev => { const s = new Set(prev); s.delete(notif.id); return s; }); }
   };
@@ -326,7 +341,7 @@ export default function NotificationsPage() {
                       // Connection request — inline accept/decline
                       if (notif.type === 'connection_request') {
                         return (
-                          <div key={notif.id} className={`bg-white rounded-2xl p-4 border ${!notif.read ? 'border-emerald-200' : 'border-gray-100'}`}>
+                          <div key={notif.id} className={`bg-white rounded-2xl p-4 border shadow-sm ${!notif.read ? 'border-emerald-200' : 'border-gray-100'}`}>
                             <div className="flex items-start gap-3 mb-3">
                               <Link href={`/discover?profile=${notif.actor_id}`} onClick={() => !notif.read && markRead(notif.id)}>
                                 <ActorAvatar actor={notif.actor} type={notif.type} />
@@ -359,7 +374,7 @@ export default function NotificationsPage() {
                       // Circle invite — inline accept/decline
                       if (notif.type === 'circle_invite') {
                         return (
-                          <div key={notif.id} className={`bg-white rounded-2xl p-4 border ${!notif.read ? 'border-purple-200' : 'border-gray-100'}`}>
+                          <div key={notif.id} className={`bg-white rounded-2xl p-4 border shadow-sm ${!notif.read ? 'border-purple-200' : 'border-gray-100'}`}>
                             <div className="flex items-start gap-3 mb-3">
                               <ActorAvatar actor={notif.actor} type={notif.type} />
                               <div className="flex-1 min-w-0">
@@ -389,7 +404,7 @@ export default function NotificationsPage() {
                           key={notif.id}
                           href={notif.link || '/'}
                           onClick={() => !notif.read && markRead(notif.id)}
-                          className={`flex items-start gap-3 bg-white rounded-2xl p-4 border transition-all hover:shadow-sm ${!notif.read ? 'border-emerald-200' : 'border-gray-100'}`}
+                          className={`flex items-start gap-3 bg-white rounded-2xl p-4 border shadow-sm transition-all hover:shadow-md hover:border-gray-200 ${!notif.read ? 'border-emerald-200' : 'border-gray-100'}`}
                         >
                           <ActorAvatar actor={notif.actor} type={notif.type} />
                           <div className="flex-1 min-w-0">

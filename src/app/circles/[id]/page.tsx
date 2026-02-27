@@ -10,6 +10,8 @@ import AppHeader from '@/components/AppHeader';
 import ImageCropModal from '@/components/ImageCropModal';
 import { createNotification } from '@/lib/notifications';
 import EmojiPicker from '@/components/EmojiPicker';
+import ChatView, { ChatMessage as ChatViewMessage } from '@/components/ChatView';
+import MessageContextMenu from '@/components/MessageContextMenu';
 
 type Circle = {
   id: string;
@@ -110,8 +112,10 @@ export default function CirclePage() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [pendingChatFile, setPendingChatFile] = useState<File | null>(null);
   const [uploadingChatFile, setUploadingChatFile] = useState(false);
+  const [contextMenuMsg, setContextMenuMsg] = useState<ChatViewMessage | null>(null);
   const chatFileRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'chat' | 'members' | 'resources' | 'meetup' | 'board'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'info'>('chat');
+  const [infoSubTab, setInfoSubTab] = useState<'members' | 'resources' | 'meetup' | 'board'>('members');
   const [boardPosts, setBoardPosts] = useState<BoardPost[]>([]);
   const [boardLoading, setBoardLoading] = useState(false);
   const [showBoardCreate, setShowBoardCreate] = useState(false);
@@ -320,19 +324,7 @@ export default function CirclePage() {
     }
   }, [members]);
 
-  // Auto scroll to bottom of messages on load/update
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Re-scroll when switching back to chat tab (messages already loaded, state unchanged)
-  useEffect(() => {
-    if (activeTab !== 'chat') return;
-    const timer = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [activeTab]);
+  // Scroll is now handled internally by ChatView (scrollTrigger={activeTab})
 
   const fetchCircleReactions = async (msgIds: string[]) => {
     if (!msgIds.length) return;
@@ -364,22 +356,30 @@ export default function CirclePage() {
     if (!session || !currentUserId) return;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    const myReaction = (circleReactions[messageId] || []).find(g => g.emoji === emoji)?.users.includes(currentUserId);
-    if (myReaction) {
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+    // Find user's existing reaction on this message (if any)
+    const existingGroup = (circleReactions[messageId] || []).find(g => g.users.includes(currentUserId));
+    const isSameEmoji = existingGroup?.emoji === emoji;
+
+    // Remove existing reaction (if any)
+    if (existingGroup) {
       await fetch(
-        `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.circle&user_id=eq.${currentUserId}&emoji=eq.${encodeURIComponent(emoji)}`,
-        { method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+        `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.circle&user_id=eq.${currentUserId}&emoji=eq.${encodeURIComponent(existingGroup.emoji)}`,
+        { method: 'DELETE', headers: h }
       );
       setCircleReactions(prev => {
         const groups = (prev[messageId] || [])
-          .map(g => g.emoji === emoji ? { ...g, users: g.users.filter(u => u !== currentUserId) } : g)
+          .map(g => g.emoji === existingGroup.emoji ? { ...g, users: g.users.filter(u => u !== currentUserId) } : g)
           .filter(g => g.users.length > 0);
         return { ...prev, [messageId]: groups };
       });
-    } else {
+    }
+
+    // Add new reaction only if it's a different emoji (same emoji = toggle off)
+    if (!isSameEmoji) {
       await fetch(`${supabaseUrl}/rest/v1/message_reactions`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        headers: { ...h, 'Prefer': 'return=minimal,resolution=ignore-duplicates' },
         body: JSON.stringify({ message_id: messageId, message_type: 'circle', user_id: currentUserId, emoji }),
       });
       setCircleReactions(prev => {
@@ -506,8 +506,8 @@ export default function CirclePage() {
   }, [circleId]);
 
   useEffect(() => {
-    if (activeTab === 'board') loadBoardPosts();
-  }, [activeTab, loadBoardPosts]);
+    if (activeTab === 'info' && infoSubTab === 'board') loadBoardPosts();
+  }, [activeTab, infoSubTab, loadBoardPosts]);
 
   const submitBoardPost = async () => {
     if (!boardTitle.trim() || !boardContent.trim()) return;
@@ -560,53 +560,28 @@ export default function CirclePage() {
     setBoardPosts(prev => prev.filter(p => p.id !== postId));
   };
 
-  const sendMessage = async () => {
-    if (!newMessage.trim() || sendingMessage) return;
-
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || sendingMessage) return;
     try {
       setSendingMessage(true);
-
       const session = getStoredSession();
       if (!session?.user) throw new Error('Not authenticated');
-
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/circle_messages`,
-        {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation',
-          },
-          body: JSON.stringify({
-            circle_id: circleId,
-            sender_id: session.user.id,
-            content: newMessage.trim(),
-            message_type: 'text'
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to send message');
-      }
-
+      const response = await fetch(`${supabaseUrl}/rest/v1/circle_messages`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({ circle_id: circleId, sender_id: session.user.id, content: text.trim(), message_type: 'text' }),
+      });
+      if (!response.ok) throw new Error('Failed to send message');
       const [sentMessage] = await response.json();
-      
-      // Add sender profile info
       const currentMember = members.find(m => m.member_id === session.user.id);
-      const messageWithProfile = {
-        ...sentMessage,
-        sender_profile: currentMember?.profile
-      };
-
-      setMessages(prev => [...prev, messageWithProfile]);
-      setNewMessage('');
-
+      setMessages(prev => [...prev, { ...sentMessage, sender_profile: currentMember?.profile }]);
     } catch (err) {
       console.error('Error sending message:', err);
     } finally {
@@ -658,14 +633,17 @@ export default function CirclePage() {
         setMessages(prev => [...prev, { ...newMsg, sender_profile: currentMember?.profile }]);
       }
     } catch { /* silent */ }
-    finally { setUploadingChatFile(false); if (chatFileRef.current) chatFileRef.current.value = ''; }
+    finally { setUploadingChatFile(false); }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+  const deleteCircleMessage = async (msgId: string) => {
+    const session = getStoredSession();
+    if (!session) return;
+    await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/circle_messages?id=eq.${msgId}`, {
+      method: 'DELETE',
+      headers: { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, 'Authorization': `Bearer ${session.access_token}` },
+    });
+    setMessages(prev => prev.filter((m: any) => m.id !== msgId));
   };
 
   const openInviteModal = async () => {
@@ -1126,82 +1104,30 @@ export default function CirclePage() {
               </button>
             ) : undefined}
           />
-          {/* Cover image banner */}
-          {circle.cover_image_url && (
-            <div className="relative w-full h-32 overflow-hidden">
-              <img
-                src={circle.cover_image_url}
-                alt="Circle cover"
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-            </div>
-          )}
-
-          {/* Circle Info */}
-          <div className="flex items-center gap-3 px-4 pb-3">
-            {circle.emoji && <span className="text-2xl">{circle.emoji}</span>}
-            <div>
-              <h1 className="font-bold text-gray-900">{circle.name}</h1>
-              <p className="text-sm text-gray-500">{circle.member_count} members</p>
-            </div>
+          {/* Always-visible compact name — keeps tab nav at stable position */}
+          <div className="flex items-center gap-2 px-4 pb-2 -mt-1">
+            {circle.emoji && <span className="text-base">{circle.emoji}</span>}
+            <span className="text-sm font-semibold text-gray-900 truncate">{circle.name}</span>
+            <span className="text-xs text-gray-400 ml-1">{circle.member_count} members</span>
           </div>
         </div>
       </div>
 
       {/* Tab Navigation — flex-shrink-0 */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200">
-        <div className="max-w-md mx-auto px-4">
-          <div className="flex">
+      <div className="flex-shrink-0 bg-white border-b border-gray-100 px-4 pb-3">
+        <div className="max-w-md mx-auto">
+          <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
             <button
               onClick={() => setActiveTab('chat')}
-              className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
-                activeTab === 'chat'
-                  ? 'border-emerald-500 text-emerald-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'chat' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              Chat
+              Chat {messages.length > 0 && `(${messages.length})`}
             </button>
             <button
-              onClick={() => setActiveTab('members')}
-              className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
-                activeTab === 'members'
-                  ? 'border-emerald-500 text-emerald-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+              onClick={() => setActiveTab('info')}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'info' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              Members
-            </button>
-            <button
-              onClick={() => setActiveTab('resources')}
-              className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
-                activeTab === 'resources'
-                  ? 'border-emerald-500 text-emerald-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Resources
-            </button>
-            <button
-              onClick={() => setActiveTab('meetup')}
-              className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
-                activeTab === 'meetup'
-                  ? 'border-emerald-500 text-emerald-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Meetup
-            </button>
-            <button
-              onClick={() => setActiveTab('board')}
-              className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
-                activeTab === 'board'
-                  ? 'border-emerald-500 text-emerald-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Board
+              Info
             </button>
           </div>
         </div>
@@ -1210,186 +1136,51 @@ export default function CirclePage() {
       {/* Content — flex-1, overflow-hidden so chat can control its own scroll */}
       <div className="flex-1 overflow-hidden max-w-md mx-auto w-full">
         {activeTab === 'chat' ? (
-          // Chat View — fills remaining height, messages scroll, input pinned at bottom
+          <ChatView
+            messages={messages as ChatViewMessage[]}
+            currentUserId={currentUserId}
+            reactions={circleReactions}
+            onSend={sendMessage}
+            onSendFile={sendCircleFile}
+            onReact={toggleCircleReaction}
+            onLongPress={msg => setContextMenuMsg(msg)}
+            sending={sendingMessage}
+            uploadingFile={uploadingChatFile}
+            showSenderName={true}
+            placeholder="Message the circle..."
+            emptyText="No messages yet. Start the conversation!"
+            scrollTrigger={activeTab}
+          />
+        ) : activeTab === 'info' ? (
           <div className="flex flex-col h-full">
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-gray-500">No messages yet. Start the conversation!</p>
-                </div>
-              ) : (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex gap-3 ${
-                      message.sender_id === currentUserId ? 'flex-row-reverse' : ''
+            {/* Cover image banner */}
+            {circle.cover_image_url && (
+              <div className="relative w-full h-28 overflow-hidden flex-shrink-0">
+                <img src={circle.cover_image_url} alt="Circle cover" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+              </div>
+            )}
+            {/* Info sub-tabs */}
+            <div className="flex-shrink-0 bg-white border-b border-gray-100 px-4 py-2">
+              <div className="flex gap-1">
+                {(['members', 'resources', 'meetup', 'board'] as const).map(sub => (
+                  <button
+                    key={sub}
+                    onClick={() => setInfoSubTab(sub)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      infoSubTab === sub ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:text-gray-700 bg-gray-100'
                     }`}
-                    onTouchStart={() => {
-                      if (circleLongPressTimer) clearTimeout(circleLongPressTimer);
-                      const t = setTimeout(() => { setCircleSelectedMsg(message); setShowCircleReactionSheet(true); }, 600);
-                      setCircleLongPressTimer(t);
-                    }}
-                    onTouchEnd={() => { if (circleLongPressTimer) { clearTimeout(circleLongPressTimer); setCircleLongPressTimer(null); } }}
-                    onContextMenu={e => { e.preventDefault(); setCircleSelectedMsg(message); setShowCircleReactionSheet(true); }}
                   >
-                    <AvatarUpload
-                      userId={message.sender_id}
-                      currentAvatarUrl={message.sender_profile?.avatar_url}
-                      name={message.sender_profile?.family_name || message.sender_profile?.display_name || '?'}
-                      size="sm"
-                      editable={false}
-                    />
-                    <div
-                      className={`flex-1 max-w-xs ${
-                        message.sender_id === currentUserId ? 'text-right' : ''
-                      }`}
-                    >
-                      {message.file_url && message.file_type?.startsWith('image/') ? (
-                        <img
-                          src={message.file_url}
-                          alt={message.content}
-                          className="max-w-[200px] max-h-[200px] object-cover rounded-xl cursor-pointer inline-block"
-                          onClick={() => window.open(message.file_url, '_blank')}
-                        />
-                      ) : message.file_url ? (
-                        <div className={`inline-block px-3 py-2 rounded-lg ${message.sender_id === currentUserId ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-900'}`}>
-                          <a href={message.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm underline">
-                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                            {message.content}
-                          </a>
-                        </div>
-                      ) : (
-                        <div className={`inline-block px-3 py-2 rounded-lg ${message.sender_id === currentUserId ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-900'}`}>
-                          <p>{message.content}</p>
-                        </div>
-                      )}
-                      {/* Reaction pills */}
-                      {(circleReactions[message.id] || []).length > 0 && (
-                        <div className={`flex flex-wrap gap-1 mt-1 ${message.sender_id === currentUserId ? 'justify-end' : 'justify-start'}`}>
-                          {(circleReactions[message.id] || []).map(r => (
-                            <button
-                              key={r.emoji}
-                              type="button"
-                              onClick={() => toggleCircleReaction(message.id, r.emoji)}
-                              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-sm border transition-colors ${
-                                r.users.includes(currentUserId)
-                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                                  : 'bg-white border-gray-200 text-gray-700 hover:border-emerald-300'
-                              }`}
-                            >
-                              {r.emoji}{r.users.length > 1 && <span className="text-xs font-medium ml-0.5">{r.users.length}</span>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">
-                        {message.sender_id !== currentUserId && (
-                          <>
-                            {message.sender_profile?.family_name || message.sender_profile?.display_name} · 
-                          </>
-                        )}
-                        {formatMessageTime(message.created_at)}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Message Input */}
-            <div className="bg-white border-t border-gray-200 p-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
-              {/* Pending file preview */}
-              {pendingChatFile && (
-                <div className="mb-2 px-3 py-2 bg-gray-50 rounded-xl flex items-center gap-2 text-sm">
-                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                  <span className="flex-1 truncate text-gray-700">{pendingChatFile.name}</span>
-                  <button onClick={() => { setPendingChatFile(null); if (chatFileRef.current) chatFileRef.current.value = ''; }} className="text-gray-400 hover:text-red-400 text-lg leading-none">×</button>
-                </div>
-              )}
-              <div className="relative flex gap-2 items-end">
-                {showChatEmojiPicker && (
-                  <EmojiPicker
-                    onSelect={emoji => {
-                      const el = chatTextareaRef.current;
-                      if (el) {
-                        const start = el.selectionStart ?? newMessage.length;
-                        const end = el.selectionEnd ?? newMessage.length;
-                        const next = newMessage.slice(0, start) + emoji + newMessage.slice(end);
-                        setNewMessage(next);
-                        setTimeout(() => { el.focus(); el.setSelectionRange(start + emoji.length, start + emoji.length); }, 0);
-                      } else {
-                        setNewMessage(v => v + emoji);
-                      }
-                    }}
-                    onClose={() => setShowChatEmojiPicker(false)}
-                  />
-                )}
-                <button
-                  onClick={() => chatFileRef.current?.click()}
-                  disabled={uploadingChatFile}
-                  className="p-2 text-gray-400 hover:text-emerald-600 transition-colors flex-shrink-0"
-                  title="Attach file"
-                >
-                  {uploadingChatFile ? (
-                    <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                    </svg>
-                  )}
-                </button>
-                <input
-                  ref={chatFileRef}
-                  type="file"
-                  accept="image/*,.pdf,.doc,.docx,.txt"
-                  className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) setPendingChatFile(f); }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowChatEmojiPicker(v => !v)}
-                  className="p-2 text-gray-400 hover:text-emerald-600 flex-shrink-0 transition-colors"
-                  title="Emoji"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </button>
-                <textarea
-                  ref={chatTextareaRef}
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  onFocus={() => {
-                    setTimeout(() => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }), 150);
-                  }}
-                  placeholder={pendingChatFile ? 'Add a message (optional)...' : 'Type a message...'}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
-                  maxLength={500}
-                  rows={1}
-                  style={{
-                    minHeight: '40px',
-                    maxHeight: '120px',
-                    height: Math.min(120, Math.max(40, (newMessage.split('\n').length * 20) + 20)) + 'px'
-                  }}
-                />
-                <button
-                  onClick={async () => { if (pendingChatFile) { await sendCircleFile(pendingChatFile); setPendingChatFile(null); if (chatFileRef.current) chatFileRef.current.value = ''; if (newMessage.trim()) sendMessage(); } else { sendMessage(); } }}
-                  disabled={(!newMessage.trim() && !pendingChatFile) || sendingMessage || uploadingChatFile}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                >
-                  {sendingMessage || uploadingChatFile ? '...' : 'Send'}
-                </button>
+                    {sub.charAt(0).toUpperCase() + sub.slice(1)}
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
-        ) : activeTab === 'members' ? (
-          // Members View
-          <div className="h-full overflow-y-auto p-4">
+            {/* Info sub-tab content */}
+            <div className="flex-1 overflow-hidden">
+              {infoSubTab === 'members' ? (
+                // Members View
+                <div className="h-full overflow-y-auto p-4">
             <div className="space-y-4">
               {/* Sort members alphabetically by last name */}
               {[...members].sort((a, b) => {
@@ -1453,7 +1244,7 @@ export default function CirclePage() {
               </div>
             )}
           </div>
-        ) : activeTab === 'resources' ? (
+              ) : infoSubTab === 'resources' ? (
           // Resources View
           <div className="h-full overflow-y-auto p-4">
             {/* Add resource button */}
@@ -1588,7 +1379,7 @@ export default function CirclePage() {
               </div>
             )}
           </div>
-        ) : activeTab === 'meetup' ? (
+              ) : infoSubTab === 'meetup' ? (
           // Meetup Tab
           <div className="h-full overflow-y-auto p-4 space-y-4">
             {/* Current meetup display */}
@@ -1751,7 +1542,7 @@ export default function CirclePage() {
               </>
             )}
           </div>
-        ) : activeTab === 'board' ? (
+              ) : infoSubTab === 'board' ? (
           <div className="h-full overflow-y-auto p-4">
             <div className="pt-4">
               {/* Post button */}
@@ -1875,6 +1666,9 @@ export default function CirclePage() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -2171,7 +1965,8 @@ export default function CirclePage() {
                   <button
                     onClick={() => {
                       setShowSettingsModal(false);
-                      setActiveTab('members');
+                      setActiveTab('info');
+                      setInfoSubTab('members');
                     }}
                     className="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
                   >
@@ -2347,37 +2142,18 @@ export default function CirclePage() {
         </div>
       )}
 
-      {/* Circle message reaction sheet */}
-      {showCircleReactionSheet && circleSelectedMsg && (
-        <div
-          className="fixed inset-0 z-[9999]"
-          onClick={() => { setShowCircleReactionSheet(false); setCircleSelectedMsg(null); }}
-        >
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl pb-8"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-center pt-3 pb-2">
-              <div className="w-10 h-1 bg-gray-300 rounded-full" />
-            </div>
-            <div className="flex justify-center gap-2 px-6 pb-4">
-              {QUICK_REACTIONS.map(emoji => {
-                const myReact = (circleReactions[circleSelectedMsg.id] || []).find(g => g.emoji === emoji)?.users.includes(currentUserId);
-                return (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => { toggleCircleReaction(circleSelectedMsg.id, emoji); setShowCircleReactionSheet(false); setCircleSelectedMsg(null); }}
-                    className={`w-10 h-10 flex items-center justify-center text-xl rounded-full transition-all ${myReact ? 'bg-emerald-100 ring-2 ring-emerald-400 scale-110' : 'bg-gray-100 hover:bg-gray-200 active:scale-95'}`}
-                  >
-                    {emoji}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+      {/* Circle chat context menu — portal renders above everything */}
+      {contextMenuMsg && (
+        <MessageContextMenu
+          message={contextMenuMsg}
+          currentUserId={currentUserId}
+          reactions={circleReactions[contextMenuMsg.id] || []}
+          onReact={emoji => toggleCircleReaction(contextMenuMsg.id, emoji)}
+          onClose={() => setContextMenuMsg(null)}
+          onCopy={() => { navigator.clipboard.writeText(contextMenuMsg.content).catch(() => {}); toast('Copied!', 'success'); }}
+          onSave={() => { navigator.clipboard.writeText(contextMenuMsg.content).catch(() => {}); toast('Message saved', 'success'); }}
+          onDelete={() => deleteCircleMessage(contextMenuMsg.id)}
+        />
       )}
     </div>
   );

@@ -2,18 +2,39 @@
 import { toast } from '@/lib/toast';
 
 import { useState, useEffect, useRef } from 'react';
+import { getCached, setCached } from '@/lib/pageCache';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import { sendPush } from '@/lib/push';
-import SimpleLocationPicker from '@/components/SimpleLocationPicker';
 import AppHeader from '@/components/AppHeader';
+import CreateEventModal from '@/components/events/CreateEventModal';
+import SimpleLocationPicker from '@/components/SimpleLocationPicker';
+import EventSettingsModal from '@/components/events/EventSettingsModal';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { createNotification } from '@/lib/notifications';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 import { loadSearchRadius } from '@/lib/preferences';
 import { EventsPageSkeleton } from '@/components/SkeletonLoader';
 import EmojiPicker from '@/components/EmojiPicker';
+import ChatView, { ChatMessage as ChatViewMessage } from '@/components/ChatView';
+import MessageContextMenu from '@/components/MessageContextMenu';
+
+type EventInvitation = {
+  id: string;
+  event_id: string;
+  event_title: string;
+  event_description?: string;
+  event_date: string;
+  event_time: string;
+  event_category: string;
+  event_location_name: string;
+  host_id: string;
+  host_name: string;
+  host_avatar_url?: string;
+  created_at: string;
+  status: 'pending' | 'accepted' | 'declined';
+};
 
 type Event = {
   id: string;
@@ -38,6 +59,7 @@ type Event = {
   waitlist_count?: number;
   is_private?: boolean;
   is_cancelled?: boolean;
+  cover_image_url?: string | null;
   recurrence_rule?: 'weekly' | 'fortnightly' | 'monthly' | null;
   recurrence_end_date?: string | null;
   is_recurring_instance?: boolean; // frontend-only, not stored in DB
@@ -65,6 +87,7 @@ const categoryLabels: Record<string, string> = {
 
 export default function EventsPage() {
   const [events, setEvents] = useState<Event[]>([]);
+  const [privateHostedEvents, setPrivateHostedEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -73,8 +96,6 @@ export default function EventsPage() {
   
   // Event settings modal state
   const [showEventSettingsModal, setShowEventSettingsModal] = useState(false);
-  const [confirmCancelEvent, setConfirmCancelEvent] = useState(false);
-  const [cancellingEvent, setCancellingEvent] = useState(false);
   
   // Event editing state
   const [editingEventTitle, setEditingEventTitle] = useState(false);
@@ -118,23 +139,25 @@ export default function EventsPage() {
   const [loadingChat, setLoadingChat] = useState(false);
   const [sendingChat, setSendingChat] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [contextMenuMsg, setContextMenuMsg] = useState<any | null>(null);
   const [chatSenderProfiles, setChatSenderProfiles] = useState<Record<string, any>>({});
   const chatFileRef = useRef<HTMLInputElement>(null);
   const eventChatEndRef = useRef<HTMLDivElement>(null);
   const eventChatContainerRef = useRef<HTMLDivElement>(null);
   const lastEventMsgIdRef = useRef<string | null>(null);
   const eventChatInputRef = useRef<HTMLInputElement>(null);
-  const [showEventEmojiPicker, setShowEventEmojiPicker] = useState(false);
   const [eventReactions, setEventReactions] = useState<Record<string, { emoji: string; users: string[] }[]>>({});
-  const [eventLongPressTimer, setEventLongPressTimer] = useState<NodeJS.Timeout | null>(null);
-  const [eventSelectedChatMsg, setEventSelectedChatMsg] = useState<any>(null);
-  const [showEventReactionSheet, setShowEventReactionSheet] = useState(false);
-  const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-  // Past events
+  // Past events / invitations
   const [pastEventsSubTab, setPastEventsSubTab] = useState<'attended' | 'hosted'>('attended');
   const [showPastEvents, setShowPastEvents] = useState(false);
+  const [showInvitations, setShowInvitations] = useState(false);
+  const [showAllPastHosted, setShowAllPastHosted] = useState(false);
+  const [showAllPastAttended, setShowAllPastAttended] = useState(false);
+  const [invitations, setInvitations] = useState<EventInvitation[]>([]);
+  const [loadingInvitations, setLoadingInvitations] = useState(false);
+  const [processingInvite, setProcessingInvite] = useState<string | null>(null);
   // Main tabs
-  const [mainTab, setMainTab] = useState<'discover' | 'mine'>('discover');
+  const [mainTab, setMainTab] = useState<'discover' | 'mine'>('mine');
   const router = useRouter();
 
   // Auto-open create modal if ?create=1 is in the URL
@@ -192,6 +215,85 @@ export default function EventsPage() {
   useEffect(() => {
     loadUserLocation();
   }, []);
+
+  // Load invitations when that view is opened
+  useEffect(() => {
+    if (!showInvitations) return;
+    const load = async () => {
+      setLoadingInvitations(true);
+      try {
+        const session = getStoredSession();
+        if (!session?.user) return;
+        const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+        const invRes = await fetch(
+          `${supabaseUrl}/rest/v1/event_invitations?invitee_id=eq.${session.user.id}&select=*,events(title,description,event_date,event_time,category,location_name)&order=created_at.desc`,
+          { headers }
+        );
+        if (!invRes.ok) return;
+        const rawInvs = await invRes.json();
+        if (!Array.isArray(rawInvs) || rawInvs.length === 0) { setInvitations([]); return; }
+        const hostIds = [...new Set<string>(rawInvs.map((i: any) => i.inviter_id))];
+        const profilesRes = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?id=in.(${hostIds.join(',')})&select=id,family_name,display_name,avatar_url`,
+          { headers }
+        );
+        const profiles = profilesRes.ok ? await profilesRes.json() : [];
+        const profileMap: Record<string, any> = {};
+        profiles.forEach((p: any) => { profileMap[p.id] = p; });
+        setInvitations(rawInvs.map((inv: any) => {
+          const event = inv.events || {};
+          const host = profileMap[inv.inviter_id] || {};
+          return {
+            id: inv.id,
+            event_id: inv.event_id,
+            event_title: event.title || 'Event',
+            event_description: event.description,
+            event_date: event.event_date || '',
+            event_time: event.event_time || '',
+            event_category: event.category || 'Other',
+            event_location_name: event.location_name || '',
+            host_id: inv.inviter_id,
+            host_name: host.family_name || host.display_name || 'Someone',
+            host_avatar_url: host.avatar_url,
+            created_at: inv.created_at,
+            status: inv.status,
+          };
+        }));
+      } catch (err) {
+        console.error('Error loading invitations:', err);
+      } finally {
+        setLoadingInvitations(false);
+      }
+    };
+    load();
+  }, [showInvitations]);
+
+  const handleInvitation = async (invitationId: string, action: 'accept' | 'decline') => {
+    setProcessingInvite(invitationId);
+    try {
+      const session = getStoredSession();
+      if (!session?.user) return;
+      const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' };
+      const invitation = invitations.find(inv => inv.id === invitationId);
+      await fetch(`${supabaseUrl}/rest/v1/event_invitations?id=eq.${invitationId}`, {
+        method: 'PATCH', headers,
+        body: JSON.stringify({ status: action === 'accept' ? 'accepted' : 'declined' }),
+      });
+      if (action === 'accept' && invitation) {
+        await fetch(`${supabaseUrl}/rest/v1/event_rsvps`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ event_id: invitation.event_id, profile_id: session.user.id, status: 'going' }),
+        });
+      }
+      setInvitations(prev => prev.map(inv =>
+        inv.id === invitationId ? { ...inv, status: action === 'accept' ? 'accepted' : 'declined' } : inv
+      ));
+    } catch (err) {
+      console.error('Error handling invitation:', err);
+    } finally {
+      setProcessingInvite(null);
+    }
+  };
 
   // Load attendees when an event is selected (only if user is host or has RSVPed)
   useEffect(() => {
@@ -296,38 +398,6 @@ export default function EventsPage() {
     return () => clearTimeout(timer);
   }, [eventDetailTab]);
 
-  const cancelEvent = async () => {
-    if (!selectedEvent) return;
-    const session = getStoredSession();
-    if (!session) return;
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    setCancellingEvent(true);
-    try {
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/events?id=eq.${(selectedEvent as Event).id}`,
-        {
-          method: 'PATCH',
-          headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ is_cancelled: true }),
-        }
-      );
-      if (res.ok) {
-        setShowEventSettingsModal(false);
-        setConfirmCancelEvent(false);
-        setSelectedEvent(null);
-        setEvents(prev => prev.filter(e => e.id !== (selectedEvent as Event).id));
-        toast('Event cancelled', 'success');
-      } else {
-        toast('Could not cancel event', 'error');
-      }
-    } catch {
-      toast('Could not cancel event', 'error');
-    } finally {
-      setCancellingEvent(false);
-    }
-  };
-
   const fetchEventReactions = async (msgIds: string[]) => {
     if (!msgIds.length) return;
     const session = getStoredSession();
@@ -358,22 +428,30 @@ export default function EventsPage() {
     if (!session || !userId) return;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    const myReaction = (eventReactions[messageId] || []).find(g => g.emoji === emoji)?.users.includes(userId);
-    if (myReaction) {
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+    // Find user's existing reaction on this message (if any)
+    const existingGroup = (eventReactions[messageId] || []).find(g => g.users.includes(userId));
+    const isSameEmoji = existingGroup?.emoji === emoji;
+
+    // Remove existing reaction (if any)
+    if (existingGroup) {
       await fetch(
-        `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.event&user_id=eq.${userId}&emoji=eq.${encodeURIComponent(emoji)}`,
-        { method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+        `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.event&user_id=eq.${userId}&emoji=eq.${encodeURIComponent(existingGroup.emoji)}`,
+        { method: 'DELETE', headers: h }
       );
       setEventReactions(prev => {
         const groups = (prev[messageId] || [])
-          .map(g => g.emoji === emoji ? { ...g, users: g.users.filter(u => u !== userId) } : g)
+          .map(g => g.emoji === existingGroup.emoji ? { ...g, users: g.users.filter(u => u !== userId) } : g)
           .filter(g => g.users.length > 0);
         return { ...prev, [messageId]: groups };
       });
-    } else {
+    }
+
+    // Add new reaction only if it's a different emoji (same emoji = toggle off)
+    if (!isSameEmoji) {
       await fetch(`${supabaseUrl}/rest/v1/message_reactions`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        headers: { ...h, 'Prefer': 'return=minimal,resolution=ignore-duplicates' },
         body: JSON.stringify({ message_id: messageId, message_type: 'event', user_id: userId, emoji }),
       });
       setEventReactions(prev => {
@@ -386,10 +464,8 @@ export default function EventsPage() {
     }
   };
 
-  const sendEventChatMessage = async () => {
-    if (!eventChatInput.trim() || !selectedEvent || sendingChat) return;
-    const text = eventChatInput.trim();
-    setEventChatInput('');
+  const sendEventChatMessage = async (text: string) => {
+    if (!text.trim() || !selectedEvent || sendingChat) return;
     setSendingChat(true);
     try {
       const session = getStoredSession();
@@ -477,6 +553,16 @@ export default function EventsPage() {
     finally { setUploadingFile(false); if (chatFileRef.current) chatFileRef.current.value = ''; }
   };
 
+  const deleteEventChatMessage = async (msgId: string) => {
+    const session = getStoredSession();
+    if (!session) return;
+    await fetch(`${supabaseUrl}/rest/v1/event_chat_messages?id=eq.${msgId}`, {
+      method: 'DELETE',
+      headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+    });
+    setEventChatMessages(prev => prev.filter((m: any) => m.id !== msgId));
+  };
+
   // Handle ?manage=eventId deep-link from My Events page
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -546,52 +632,69 @@ export default function EventsPage() {
       }
       setUserId(session.user.id);
 
-      try {
-        // Public events only — private events and attended events are in My Events
-        const res = await fetch(
-          `${supabaseUrl}/rest/v1/events?is_cancelled=eq.false&is_private=eq.false&select=*&order=event_date.asc`,
-          {
-            headers: {
-              'apikey': supabaseKey!,
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-          }
-        );
-        const eventsData = await res.json();
+      // Show cached events instantly while fresh data loads
+      const cached = getCached<Event[]>('events:list');
+      if (cached) { setEvents(cached); setLoading(false); }
 
-        // Get host names and RSVP counts
-        const safeFetch = async (url: string, headers: Record<string, string>) => {
-          try {
-            const r = await fetch(url, { headers });
-            if (!r.ok) return [];
-            return await r.json();
-          } catch { return []; }
+      try {
+        const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+        const safeFetch = async (url: string) => {
+          try { const r = await fetch(url, { headers: h }); return r.ok ? r.json() : []; } catch { return []; }
         };
 
-        const enriched = await Promise.all(eventsData.map(async (event: Event) => {
-          const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+        // 1 request: all public events
+        const eventsData: Event[] = await safeFetch(
+          `${supabaseUrl}/rest/v1/events?is_cancelled=eq.false&is_private=eq.false&select=*&order=event_date.asc`
+        );
+        if (!eventsData?.length) { setEvents([]); setLoading(false); return; }
 
-          const [hosts, rsvps, userRsvp, userWaitlist, waitlist] = await Promise.all([
-            safeFetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${event.host_id}&select=family_name,display_name`, h),
-            safeFetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${event.id}&status=eq.going&select=id`, h),
-            safeFetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${event.id}&profile_id=eq.${session.user.id}&status=eq.going&select=id`, h),
-            safeFetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${event.id}&profile_id=eq.${session.user.id}&status=eq.waitlist&select=id`, h),
-            safeFetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${event.id}&status=eq.waitlist&select=id`, h),
-          ]);
+        const ids = eventsData.map((e: Event) => e.id).join(',');
+        const hostIds = [...new Set(eventsData.map((e: Event) => e.host_id))].join(',');
 
+        // 4 batched requests instead of N×5
+        const [hostProfiles, allRsvpsGoing, userRsvps, allWaitlist] = await Promise.all([
+          safeFetch(`${supabaseUrl}/rest/v1/profiles?id=in.(${hostIds})&select=id,family_name,display_name`),
+          safeFetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=in.(${ids})&status=eq.going&select=event_id`),
+          safeFetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=in.(${ids})&profile_id=eq.${session.user.id}&select=event_id,status`),
+          safeFetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=in.(${ids})&status=eq.waitlist&select=event_id`),
+        ]);
+
+        const hostMap = new Map(hostProfiles.map((p: any) => [p.id, p]));
+        const rsvpCount = (allRsvpsGoing as any[]).reduce((acc: Record<string,number>, r: any) => {
+          acc[r.event_id] = (acc[r.event_id] || 0) + 1; return acc;
+        }, {});
+        const waitlistCount = (allWaitlist as any[]).reduce((acc: Record<string,number>, r: any) => {
+          acc[r.event_id] = (acc[r.event_id] || 0) + 1; return acc;
+        }, {});
+        const userRsvpMap = new Map((userRsvps as any[]).map((r: any) => [r.event_id, r.status]));
+
+        const enriched: Event[] = eventsData.map((event: Event) => {
+          const host = hostMap.get(event.host_id) as any;
           return {
             ...event,
-            host: hosts[0] ? {
-              name: hosts[0].display_name || hosts[0].family_name || 'Unknown'
-            } : { name: 'Unknown' },
-            rsvp_count: rsvps.length,
-            user_rsvp: userRsvp.length > 0,
-            user_waitlist: userWaitlist.length > 0,
-            waitlist_count: waitlist.length,
+            host: { name: host?.display_name || host?.family_name || 'Unknown' },
+            rsvp_count: rsvpCount[event.id] || 0,
+            waitlist_count: waitlistCount[event.id] || 0,
+            user_rsvp: userRsvpMap.get(event.id) === 'going',
+            user_waitlist: userRsvpMap.get(event.id) === 'waitlist',
           };
-        }));
+        });
 
         setEvents(enriched);
+        setCached('events:list', enriched);
+
+        // Fetch user's private hosted events (1 more request)
+        try {
+          const privRes = await fetch(
+            `${supabaseUrl}/rest/v1/events?is_cancelled=eq.false&is_private=eq.true&host_id=eq.${session.user.id}&select=*&order=event_date.asc`,
+            { headers: h }
+          );
+          if (privRes.ok) {
+            const privData: Event[] = await privRes.json();
+            setPrivateHostedEvents(privData.map((e: Event) => ({ ...e, host: { name: 'You' }, rsvp_count: 0, user_rsvp: false })));
+          }
+        } catch { /* silent */ }
+
       } catch (err) {
         console.error('Error loading events:', err);
       } finally {
@@ -1218,9 +1321,9 @@ export default function EventsPage() {
   if (selectedEvent) {
     return (
       <>
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
-        {/* Sticky header — always visible when scrolling event chat */}
-        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-gray-100">
+      <div className="fixed top-0 left-0 right-0 bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden" style={{ bottom: '72px' }}>
+        {/* Header + tabs — flex-shrink-0 */}
+        <div className="flex-shrink-0 bg-white shadow-sm border-b border-gray-100" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="max-w-md mx-auto px-4 pt-2">
             <AppHeader
               onBack={() => setSelectedEvent(null)}
@@ -1233,186 +1336,63 @@ export default function EventsPage() {
                 </button>
               ) : undefined}
             />
+            <p className="text-sm font-semibold text-gray-900 -mt-1 mb-2 truncate">{(selectedEvent as Event).title}</p>
           </div>
-        </div>
-        <div className="max-w-md mx-auto px-4 pb-8">
-
           {/* Tabs — Chat only visible to host + RSVPed users */}
           {((selectedEvent as Event).user_rsvp || (selectedEvent as Event).host_id === userId) && (
-            <div className="flex gap-1 mt-4 mb-4 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
-              <button
-                onClick={() => setEventDetailTab('info')}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${eventDetailTab === 'info' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Info
-              </button>
-              <button
-                onClick={() => setEventDetailTab('chat')}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${eventDetailTab === 'chat' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Chat {eventChatMessages.length > 0 && `(${eventChatMessages.length})`}
-              </button>
-            </div>
-          )}
-
-          {/* Chat view */}
-          {eventDetailTab === 'chat' && (
-            <div>
-              <div ref={eventChatContainerRef} className="overflow-y-auto pb-20 space-y-3" style={{ height: 'calc(100dvh - 220px)', minHeight: '200px' }}>
-                {loadingChat ? (
-                  <div className="flex justify-center py-8">
-                    <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                  </div>
-                ) : eventChatMessages.length === 0 ? (
-                  <div className="text-center py-8 px-6">
-                    <p className="text-2xl mb-2">💬</p>
-                    <p className="text-sm text-gray-500">No messages yet — say hi to the group!</p>
-                  </div>
-                ) : (
-                  eventChatMessages.map((msg: any) => {
-                    const isMe = msg.sender_id === userId;
-                    const sender = chatSenderProfiles[msg.sender_id];
-                    const senderName = sender?.display_name || sender?.family_name || 'Unknown';
-                    const msgTime = new Date(msg.created_at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}
-                        onTouchStart={() => {
-                          if (eventLongPressTimer) clearTimeout(eventLongPressTimer);
-                          const t = setTimeout(() => { setEventSelectedChatMsg(msg); setShowEventReactionSheet(true); }, 600);
-                          setEventLongPressTimer(t);
-                        }}
-                        onTouchEnd={() => { if (eventLongPressTimer) { clearTimeout(eventLongPressTimer); setEventLongPressTimer(null); } }}
-                        onContextMenu={e => { e.preventDefault(); setEventSelectedChatMsg(msg); setShowEventReactionSheet(true); }}
-                      >
-                        {/* Avatar — only show for others */}
-                        {!isMe && (
-                          <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 flex-shrink-0 self-end">
-                            {sender?.avatar_url
-                              ? <img src={sender.avatar_url} className="w-7 h-7 rounded-full object-cover" alt="" />
-                              : senderName[0]?.toUpperCase()}
-                          </div>
-                        )}
-                        <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                          {!isMe && <span className="text-xs text-gray-400 mb-0.5 ml-1">{senderName}</span>}
-                          {msg.file_url && msg.file_type?.startsWith('image/') ? (
-                            <img src={msg.file_url} alt={msg.content} className="max-w-[200px] max-h-[200px] object-cover rounded-2xl cursor-pointer" onClick={() => window.open(msg.file_url, '_blank')} />
-                          ) : msg.file_url ? (
-                            <div className={`px-4 py-3 rounded-2xl text-sm ${isMe ? 'bg-emerald-600 text-white rounded-br-sm' : 'bg-white text-gray-900 shadow-sm rounded-bl-sm'}`}>
-                              <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 underline ${isMe ? 'text-white' : 'text-emerald-700'}`}>
-                                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                                <span className="text-xs truncate max-w-[150px]">{msg.content}</span>
-                              </a>
-                              <p className={`text-xs mt-0.5 ${isMe ? 'text-emerald-200' : 'text-gray-400'}`}>{msgTime}</p>
-                            </div>
-                          ) : (
-                            <div className={`px-4 py-3 rounded-2xl text-sm ${isMe ? 'bg-emerald-600 text-white rounded-br-sm' : 'bg-white text-gray-900 shadow-sm rounded-bl-sm'}`}>
-                              <p className="break-words">{msg.content}</p>
-                              <p className={`text-xs mt-0.5 ${isMe ? 'text-emerald-200' : 'text-gray-400'}`}>{msgTime}</p>
-                            </div>
-                          )}
-                          {/* Reaction pills */}
-                          {(eventReactions[msg.id] || []).length > 0 && (
-                            <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                              {(eventReactions[msg.id] || []).map(r => (
-                                <button
-                                  key={r.emoji}
-                                  type="button"
-                                  onClick={() => toggleEventReaction(msg.id, r.emoji)}
-                                  className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-sm border transition-colors ${
-                                    userId && r.users.includes(userId)
-                                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                                      : 'bg-white border-gray-200 text-gray-700 hover:border-emerald-300'
-                                  }`}
-                                >
-                                  {r.emoji}{r.users.length > 1 && <span className="text-xs font-medium ml-0.5">{r.users.length}</span>}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-                <div ref={eventChatEndRef} />
-              </div>
-              <div className="fixed left-0 right-0 bg-white border-t border-gray-100 z-20 px-4 py-3" style={{ bottom: '72px' }}>
-                <div className="max-w-md mx-auto relative flex gap-2 items-center">
-                  {showEventEmojiPicker && (
-                    <EmojiPicker
-                      onSelect={emoji => {
-                        const el = eventChatInputRef.current;
-                        if (el) {
-                          const start = el.selectionStart ?? eventChatInput.length;
-                          const end = el.selectionEnd ?? eventChatInput.length;
-                          const next = eventChatInput.slice(0, start) + emoji + eventChatInput.slice(end);
-                          setEventChatInput(next);
-                          setTimeout(() => { el.focus(); el.setSelectionRange(start + emoji.length, start + emoji.length); }, 0);
-                        } else {
-                          setEventChatInput(v => v + emoji);
-                        }
-                      }}
-                      onClose={() => setShowEventEmojiPicker(false)}
-                    />
-                  )}
-                  <input
-                    ref={chatFileRef}
-                    type="file"
-                    accept="image/*,application/pdf,.doc,.docx"
-                    className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) sendFileMessage(f); }}
-                  />
-                  <button
-                    onClick={() => chatFileRef.current?.click()}
-                    disabled={uploadingFile}
-                    className="p-2 text-gray-400 hover:text-emerald-600 disabled:opacity-40 flex-shrink-0 transition-colors"
-                    title="Attach file"
-                  >
-                    {uploadingFile ? (
-                      <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                      </svg>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowEventEmojiPicker(v => !v)}
-                    className="p-2 text-gray-400 hover:text-emerald-600 flex-shrink-0 transition-colors"
-                    title="Emoji"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </button>
-                  <input
-                    ref={eventChatInputRef}
-                    type="text"
-                    value={eventChatInput}
-                    onChange={e => setEventChatInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendEventChatMessage()}
-                    placeholder="Message the group..."
-                    className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  />
-                  <button
-                    onClick={sendEventChatMessage}
-                    disabled={!eventChatInput.trim() || sendingChat}
-                    className="w-10 h-10 flex items-center justify-center flex-shrink-0 bg-emerald-600 text-white rounded-xl disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
-                  >
-                    {sendingChat
-                      ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                    }
-                  </button>
-                </div>
+            <div className="max-w-md mx-auto px-4 pb-3">
+              <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
+                <button
+                  onClick={() => setEventDetailTab('chat')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${eventDetailTab === 'chat' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Chat {eventChatMessages.length > 0 && `(${eventChatMessages.length})`}
+                </button>
+                <button
+                  onClick={() => setEventDetailTab('info')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${eventDetailTab === 'info' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Info
+                </button>
               </div>
             </div>
           )}
+        </div>
 
-          {eventDetailTab === 'info' && (
+        {/* Chat tab — ChatView fills remaining space */}
+        {eventDetailTab === 'chat' && (
+          <div className="flex-1 overflow-hidden max-w-md mx-auto w-full">
+            <ChatView
+              messages={eventChatMessages.map((msg: any) => ({
+                ...msg,
+                sender_profile: chatSenderProfiles[msg.sender_id] ?? null,
+              }))}
+              currentUserId={userId || ''}
+              reactions={eventReactions}
+              onSend={sendEventChatMessage}
+              onSendFile={sendFileMessage}
+              onReact={toggleEventReaction}
+              onLongPress={msg => setContextMenuMsg(msg)}
+              sending={sendingChat}
+              uploadingFile={uploadingFile}
+              showSenderName={true}
+              placeholder="Message the group..."
+              emptyText="No messages yet — say hi to the group!"
+              scrollTrigger={eventChatMessages.length}
+            />
+          </div>
+        )}
+
+        {/* Info tab — scrollable */}
+        {eventDetailTab === 'info' && (
+          <div className="flex-1 overflow-y-auto">
+          {(selectedEvent as Event).cover_image_url && (
+            <div className="relative w-full h-36 overflow-hidden flex-shrink-0">
+              <img src={(selectedEvent as Event).cover_image_url!} alt="Event cover" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+            </div>
+          )}
+          <div className="max-w-md mx-auto px-4 pb-8 pt-4">
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
             <div className="p-6">
               <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium mb-3 ${categoryColors[(selectedEvent as Event).category]}`}>
@@ -1489,7 +1469,6 @@ export default function EventsPage() {
               <div className="flex items-center justify-between mb-4">
                 <span className="text-gray-600">
                   {(selectedEvent as Event).rsvp_count} going
-                  {(selectedEvent as Event).max_attendees && ` / ${(selectedEvent as Event).max_attendees} max`}
                 </span>
               </div>
 
@@ -1569,20 +1548,18 @@ export default function EventsPage() {
                     );
                   })()}
                   {/* Spots / waitlist summary */}
-                  {(selectedEvent as Event).max_attendees && (
+                  {((selectedEvent as Event).waitlist_count || 0) > 0 && (
                     <p className="text-center text-xs text-gray-400">
-                      {(selectedEvent as Event).rsvp_count || 0}/{(selectedEvent as Event).max_attendees} spots filled
-                      {((selectedEvent as Event).waitlist_count || 0) > 0 && ` · ${(selectedEvent as Event).waitlist_count} on waitlist`}
+                      {(selectedEvent as Event).waitlist_count} on waitlist
                     </p>
                   )}
                 </div>
               ) : (
                 <div className="text-center space-y-1">
                   <p className="text-sm text-gray-500">You are hosting this event</p>
-                  {(selectedEvent as Event).max_attendees && (
+                  {((selectedEvent as Event).waitlist_count || 0) > 0 && (
                     <p className="text-xs text-gray-400">
-                      {(selectedEvent as Event).rsvp_count || 0}/{(selectedEvent as Event).max_attendees} going
-                      {((selectedEvent as Event).waitlist_count || 0) > 0 && ` · ${(selectedEvent as Event).waitlist_count} on waitlist`}
+                      {(selectedEvent as Event).waitlist_count} on waitlist
                     </p>
                   )}
                   <p className="text-xs text-gray-400">Use Settings to edit event details</p>
@@ -1590,111 +1567,41 @@ export default function EventsPage() {
               )}
             </div>
           </div>
-          )}
-        </div>
+          </div>
+          </div>
+        )}
+
+      {/* Event chat context menu */}
+      {contextMenuMsg && (
+        <MessageContextMenu
+          message={contextMenuMsg}
+          currentUserId={userId || ''}
+          reactions={eventReactions[contextMenuMsg.id] || []}
+          onReact={emoji => toggleEventReaction(contextMenuMsg.id, emoji)}
+          onClose={() => setContextMenuMsg(null)}
+          onCopy={() => { navigator.clipboard.writeText(contextMenuMsg.content).catch(() => {}); toast('Copied!'); }}
+          onSave={() => { navigator.clipboard.writeText(contextMenuMsg.content).catch(() => {}); toast('Message saved'); }}
+          onDelete={() => deleteEventChatMessage(contextMenuMsg.id)}
+        />
+      )}
       </div>
 
-      {/* Event Settings Modal — must be inside event detail return */}
+      {/* Event Settings Modal */}
       {showEventSettingsModal && selectedEvent && (selectedEvent as Event).host_id === userId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xl font-bold text-gray-900">Event Settings</h3>
-                <button onClick={() => { setShowEventSettingsModal(false); setConfirmCancelEvent(false); }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
-              </div>
-            </div>
-            <div className="p-6 space-y-4">
-              {/* Title */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Title</p>
-                    <p className="font-medium text-gray-900">{(selectedEvent as Event).title}</p>
-                  </div>
-                  <button onClick={() => { setShowEventSettingsModal(false); setEditingEventTitle(true); setTempEventTitle((selectedEvent as Event).title); }} className="text-emerald-600 hover:text-emerald-700 text-sm font-medium">Edit</button>
-                </div>
-              </div>
-              {/* Date & Time */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Date & Time</p>
-                    <p className="font-medium text-gray-900">{formatDate((selectedEvent as Event).event_date)} at {formatTime((selectedEvent as Event).event_time)}</p>
-                  </div>
-                  <button onClick={() => { setShowEventSettingsModal(false); setEditingEventDate(true); setTempEventDate((selectedEvent as Event).event_date); }} className="text-emerald-600 hover:text-emerald-700 text-sm font-medium">Edit</button>
-                </div>
-              </div>
-              {/* Location */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Location</p>
-                    <p className="font-medium text-gray-900">{(selectedEvent as Event).location_name || 'Not set'}</p>
-                  </div>
-                  <button onClick={() => { setShowEventSettingsModal(false); setEditingEventLocation(true); }} className="text-emerald-600 hover:text-emerald-700 text-sm font-medium">Edit</button>
-                </div>
-              </div>
-              {/* Description */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-500 mb-1">Description</p>
-                    <p className="text-sm text-gray-700 line-clamp-2">{(selectedEvent as Event).description || 'No description'}</p>
-                  </div>
-                  <button onClick={() => { setShowEventSettingsModal(false); setEditingEventDescription(true); setTempEventDescription((selectedEvent as Event).description || ''); }} className="text-emerald-600 hover:text-emerald-700 text-sm font-medium flex-shrink-0">Edit</button>
-                </div>
-              </div>
-              {/* Age Range */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Age range</p>
-                    <p className="font-medium text-gray-900">{(selectedEvent as Event).age_range || 'All ages'}</p>
-                  </div>
-                  <button onClick={() => { setShowEventSettingsModal(false); setEditingEventAgeRange(true); setTempEventAgeRange((selectedEvent as Event).age_range || ''); }} className="text-emerald-600 hover:text-emerald-700 text-sm font-medium">Edit</button>
-                </div>
-              </div>
-              {/* Attendance */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">Attendance</p>
-                <p className="font-medium text-gray-900">{(selectedEvent as Event).rsvp_count || 0} going{(selectedEvent as Event).max_attendees ? ` / ${(selectedEvent as Event).max_attendees} max` : ''}</p>
-              </div>
-
-              {/* Danger Zone */}
-              <div className="border border-red-200 rounded-xl p-4">
-                <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-3">Danger Zone</p>
-                {!confirmCancelEvent ? (
-                  <button
-                    onClick={() => setConfirmCancelEvent(true)}
-                    className="w-full py-2.5 bg-white border border-red-300 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-50 transition-colors"
-                  >
-                    Cancel event
-                  </button>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-700 font-medium">Cancel this event? Attendees won't be notified automatically.</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setConfirmCancelEvent(false)}
-                        className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200"
-                      >
-                        Keep it
-                      </button>
-                      <button
-                        onClick={cancelEvent}
-                        disabled={cancellingEvent}
-                        className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
-                      >
-                        {cancellingEvent ? 'Cancelling...' : 'Yes, cancel'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <EventSettingsModal
+          event={selectedEvent}
+          userId={userId!}
+          onClose={() => setShowEventSettingsModal(false)}
+          onUpdated={(updates) => {
+            setSelectedEvent(prev => prev ? { ...prev, ...updates } : null);
+            setEvents(prev => prev.map(e => e.id === (selectedEvent as Event).id ? { ...e, ...updates } : e));
+          }}
+          onCancelled={(eventId) => {
+            setShowEventSettingsModal(false);
+            setSelectedEvent(null);
+            setEvents(prev => prev.filter(e => e.id !== eventId));
+          }}
+        />
       )}
 
       </>
@@ -1707,19 +1614,19 @@ export default function EventsPage() {
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
         <AppHeader />
 
-        {/* Main tabs — Discover | My Events */}
+        {/* Main tabs — My Events | Discover */}
         <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
-          <button
-            onClick={() => setMainTab('discover')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mainTab === 'discover' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            Discover
-          </button>
           <button
             onClick={() => setMainTab('mine')}
             className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mainTab === 'mine' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
             My Events
+          </button>
+          <button
+            onClick={() => setMainTab('discover')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${mainTab === 'discover' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Discover
           </button>
           <button
             onClick={() => setEventsViewMode(v => v === 'list' ? 'calendar' : 'list')}
@@ -1775,157 +1682,249 @@ export default function EventsPage() {
         {/* My Events tab */}
         {mainTab === 'mine' && (() => {
           const today = new Date().toISOString().slice(0, 10);
-          const upcomingMine = myEvents.filter(e => e.event_date >= today);
-          const pastMine = events.filter(e => e.event_date < today && (e.user_rsvp || e.host_id === userId));
-          const pastHosted = pastMine.filter(e => e.host_id === userId);
-          const pastAttended = pastMine.filter(e => e.user_rsvp && e.host_id !== userId);
+          // All events user is involved in (public events from main fetch)
+          const allHosted = [...events.filter(e => e.host_id === userId), ...privateHostedEvents]
+            .filter((e, i, arr) => arr.findIndex(x => x.id === e.id) === i) // dedupe
+            .sort((a, b) => a.event_date.localeCompare(b.event_date));
+          const allGoing = events.filter(e => e.user_rsvp && e.host_id !== userId)
+            .sort((a, b) => a.event_date.localeCompare(b.event_date));
+
+          const upcomingHosted = allHosted.filter(e => e.event_date >= today);
+          const upcomingGoing = allGoing.filter(e => e.event_date >= today);
+          const pastHosted = allHosted.filter(e => e.event_date < today);
+          const pastGoing = allGoing.filter(e => e.event_date < today);
+          const allPast = [...pastHosted, ...pastGoing].sort((a, b) => b.event_date.localeCompare(a.event_date));
+
+          const eventCard = (event: Event, style: 'hosting' | 'going' | 'past') => (
+            <button
+              key={event.id}
+              onClick={() => setSelectedEvent(event)}
+              className={`w-full rounded-xl p-3 text-left transition-colors ${
+                style === 'hosting' ? 'bg-emerald-50 border border-emerald-200 hover:bg-emerald-100' :
+                style === 'going'   ? 'bg-blue-50 border border-blue-100 hover:bg-blue-100' :
+                                     'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className={`font-medium text-sm truncate ${style === 'past' ? 'text-gray-600' : 'text-gray-900'}`}>{event.title}</span>
+                <span className={`text-xs flex-shrink-0 ${style === 'hosting' ? 'text-emerald-600' : style === 'going' ? 'text-blue-500' : 'text-gray-400'}`}>{formatDate(event.event_date)}</span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                {event.location_name && <p className="text-xs text-gray-500 truncate">{event.location_name}</p>}
+                {event.is_private && <span className="text-xs text-gray-400 flex-shrink-0">Private</span>}
+              </div>
+            </button>
+          );
+
+          const hasUpcoming = upcomingHosted.length > 0 || upcomingGoing.length > 0;
+
           return (
             <>
-              {/* Invitations link */}
-              <button
-                onClick={() => router.push('/events/invitations')}
-                className="w-full mb-3 py-2 px-4 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors text-left flex items-center justify-between"
-              >
-                <span>Event invitations</span>
-                <span className="text-gray-400">→</span>
-              </button>
+              {/* Top navigation row: Events / Past Events / Invitations */}
+              <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+                <button
+                  onClick={() => { setShowPastEvents(false); setShowInvitations(false); }}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    !showPastEvents && !showInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Events
+                </button>
+                <button
+                  onClick={() => { setShowPastEvents(true); setShowInvitations(false); }}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    showPastEvents && !showInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Past{allPast.length > 0 ? ` (${allPast.length})` : ''}
+                </button>
+                <button
+                  onClick={() => { setShowPastEvents(false); setShowInvitations(true); }}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    showInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Invitations
+                </button>
+              </div>
 
-              {/* Countdown banner for next event */}
-              {(() => {
-                const next = upcomingMine.find(e => e.user_rsvp || e.host_id === userId);
-                if (!next) return null;
-                const daysAway = Math.round((new Date(next.event_date + 'T12:00:00').getTime() - Date.now()) / 86400000);
-                if (daysAway > 14) return null;
-                const label = daysAway === 0 ? 'Today!' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway} days`;
-                return (
-                  <div className="bg-emerald-600 text-white rounded-2xl p-4 mb-4 flex items-center gap-3">
-                    <div className="text-2xl">📅</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-emerald-200 uppercase tracking-wide">{label}</p>
-                      <p className="font-bold truncate">{next.title}</p>
-                      {next.location_name && <p className="text-sm text-emerald-200 truncate">{next.location_name}</p>}
-                    </div>
-                    <button onClick={() => setSelectedEvent(next)} className="text-xs font-semibold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg flex-shrink-0">
-                      View
-                    </button>
-                  </div>
-                );
-              })()}
-
-              {upcomingMine.length === 0 && (
-                <div className="text-center py-8">
-                  <p className="font-semibold text-gray-700 mb-1">No upcoming events</p>
-                  <p className="text-sm text-gray-400 mb-4">Events you RSVP to or host will appear here.</p>
-                  <button
-                    onClick={() => setMainTab('discover')}
-                    className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700"
-                  >
-                    Browse events
-                  </button>
-                </div>
-              )}
-
-              {upcomingMine.length > 0 && (
-                <div className="mb-6">
-                  <h2 className="font-semibold text-gray-900 mb-3">Your upcoming events</h2>
-                  <div className="space-y-2">
-                    {upcomingMine.map(event => (
-                      <button
-                        key={event.id}
-                        onClick={() => setSelectedEvent(event)}
-                        className="w-full bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-left hover:bg-emerald-100"
-                      >
-                        <div className="flex justify-between">
-                          <span className="font-medium text-emerald-900">{event.title}</span>
-                          <span className="text-emerald-600 text-sm">{formatDate(event.event_date)}</span>
+              {/* Upcoming events view */}
+              {!showPastEvents && !showInvitations && (
+                <>
+                  {/* Countdown banner */}
+                  {(() => {
+                    const next = upcomingHosted[0] || upcomingGoing[0];
+                    if (!next) return null;
+                    const daysAway = Math.round((new Date(next.event_date + 'T12:00:00').getTime() - Date.now()) / 86400000);
+                    if (daysAway > 14) return null;
+                    const label = daysAway === 0 ? 'Today!' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway} days`;
+                    return (
+                      <div className="bg-emerald-600 text-white rounded-2xl p-4 mb-4 flex items-center gap-3">
+                        <div className="text-2xl">📅</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-emerald-200 uppercase tracking-wide">{label}</p>
+                          <p className="font-bold truncate">{next.title}</p>
+                          {next.location_name && <p className="text-sm text-emerald-200 truncate">{next.location_name}</p>}
                         </div>
-                        {event.location_name
-                          ? <p className="text-emerald-700 text-sm mt-1">{event.location_name}</p>
-                          : <p className="text-emerald-600 text-sm italic mt-1">Location TBA</p>}
-                      </button>
-                    ))}
-                  </div>
+                        <button onClick={() => setSelectedEvent(next)} className="text-xs font-semibold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg flex-shrink-0">View</button>
+                      </div>
+                    );
+                  })()}
+
+                  {!hasUpcoming && (
+                    <div className="text-center py-8 mb-4">
+                      <p className="font-semibold text-gray-700 mb-1">No upcoming events</p>
+                      <p className="text-sm text-gray-400 mb-4">Events you host or RSVP to will appear here.</p>
+                      <button onClick={() => setMainTab('discover')} className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700">Browse events</button>
+                    </div>
+                  )}
+
+                  {/* Hosting */}
+                  {upcomingHosted.length > 0 && (
+                    <div className="mb-5">
+                      <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Hosting</h2>
+                      <div className="space-y-2">{upcomingHosted.map(e => eventCard(e, 'hosting'))}</div>
+                    </div>
+                  )}
+
+                  {/* Going */}
+                  {upcomingGoing.length > 0 && (
+                    <div className="mb-5">
+                      <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Going</h2>
+                      <div className="space-y-2">{upcomingGoing.map(e => eventCard(e, 'going'))}</div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Invitations inline view */}
+              {showInvitations && (
+                <div className="mb-6">
+                  {loadingInvitations ? (
+                    <div className="flex justify-center py-10">
+                      <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (() => {
+                    const pending = invitations.filter(i => i.status === 'pending');
+                    const processed = invitations.filter(i => i.status !== 'pending');
+                    if (invitations.length === 0) return (
+                      <div className="text-center py-10">
+                        <p className="font-semibold text-gray-600 mb-1">No invitations</p>
+                        <p className="text-sm text-gray-400">Event invitations from other families will appear here.</p>
+                      </div>
+                    );
+                    return (
+                      <>
+                        {pending.length > 0 && (
+                          <div className="mb-5">
+                            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+                              Pending
+                              <span className="bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center leading-none">{pending.length}</span>
+                            </h2>
+                            <div className="space-y-3">
+                              {pending.map(inv => (
+                                <div key={inv.id} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+                                  <h3 className="font-semibold text-gray-900 text-sm mb-0.5">{inv.event_title}</h3>
+                                  <p className="text-xs text-gray-500 mb-1">
+                                    {inv.event_date ? new Date(inv.event_date + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}
+                                    {inv.event_time && ` · ${inv.event_time}`}
+                                    {inv.event_location_name && ` · ${inv.event_location_name}`}
+                                  </p>
+                                  <p className="text-xs text-gray-400 mb-3">From {inv.host_name}</p>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleInvitation(inv.id, 'decline')}
+                                      disabled={processingInvite === inv.id}
+                                      className="flex-1 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                                    >
+                                      {processingInvite === inv.id ? '...' : 'Decline'}
+                                    </button>
+                                    <button
+                                      onClick={() => handleInvitation(inv.id, 'accept')}
+                                      disabled={processingInvite === inv.id}
+                                      className="flex-1 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                                    >
+                                      {processingInvite === inv.id ? '...' : 'Accept'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {processed.length > 0 && (
+                          <div className="mb-5">
+                            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Recent Activity</h2>
+                            <div className="space-y-2">
+                              {processed.slice(0, 5).map(inv => (
+                                <div key={inv.id} className="bg-white rounded-xl p-3 border border-gray-100 flex items-center gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-800 truncate">{inv.event_title}</p>
+                                    <p className="text-xs text-gray-400">From {inv.host_name}</p>
+                                  </div>
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${inv.status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                                    {inv.status === 'accepted' ? 'Attending' : 'Declined'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
-              {/* Past Events */}
-              {pastMine.length > 0 && (
+              {/* Past Events view */}
+              {showPastEvents && (
                 <div className="mb-6">
-                  <button
-                    onClick={() => setShowPastEvents(v => !v)}
-                    className="flex items-center gap-2 font-semibold text-gray-700 mb-3 hover:text-gray-900 transition-colors"
-                  >
-                    Past events ({pastMine.length})
-                    <svg className={`w-4 h-4 transition-transform ${showPastEvents ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {showPastEvents && (
+                  {allPast.length === 0 ? (
+                    <div className="text-center py-10">
+                      <p className="font-semibold text-gray-600 mb-1">No past events yet</p>
+                      <p className="text-sm text-gray-400">Events you host or attend will show up here.</p>
+                    </div>
+                  ) : (
                     <>
-                      {/* Highlights */}
-                      {pastMine.length > 0 && (
-                        <div className="flex gap-3 mb-4">
-                          <div className="flex-1 bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">
-                            <p className="text-2xl font-bold text-emerald-700">{pastAttended.length}</p>
-                            <p className="text-xs text-emerald-600 mt-0.5">Attended</p>
+                      {/* Hosted */}
+                      {pastHosted.length > 0 && (
+                        <div className="mb-5">
+                          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            Hosted ({pastHosted.length})
+                          </h2>
+                          <div className="space-y-2">
+                            {(showAllPastHosted ? pastHosted : pastHosted.slice(0, 3)).map(e => eventCard(e, 'past'))}
                           </div>
-                          <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
-                            <p className="text-2xl font-bold text-gray-700">{pastHosted.length}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">Hosted</p>
-                          </div>
-                          <div className="flex-1 bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
-                            <p className="text-2xl font-bold text-blue-700">{pastMine.length}</p>
-                            <p className="text-xs text-blue-600 mt-0.5">Total</p>
-                          </div>
+                          {pastHosted.length > 3 && (
+                            <button
+                              onClick={() => setShowAllPastHosted(v => !v)}
+                              className="mt-2 w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                            >
+                              {showAllPastHosted ? 'Show less' : `Show all ${pastHosted.length}`}
+                            </button>
+                          )}
                         </div>
                       )}
-                      {/* Sub-tabs */}
-                      <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-3">
-                        <button
-                          onClick={() => setPastEventsSubTab('attended')}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${pastEventsSubTab === 'attended' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                          Attended ({pastAttended.length})
-                        </button>
-                        <button
-                          onClick={() => setPastEventsSubTab('hosted')}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${pastEventsSubTab === 'hosted' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                          Hosted ({pastHosted.length})
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {(pastEventsSubTab === 'attended' ? pastAttended : pastHosted).map(event => (
-                          <button
-                            key={event.id}
-                            onClick={() => setSelectedEvent(event)}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-left hover:bg-gray-100"
-                          >
-                            <div className="flex justify-between">
-                              <span className="font-medium text-gray-700">{event.title}</span>
-                              <span className="text-gray-400 text-sm">{formatDate(event.event_date)}</span>
-                            </div>
-                            {event.location_name
-                              ? <p className="text-gray-500 text-sm mt-1">{event.location_name}</p>
-                              : <p className="text-gray-400 text-sm italic mt-1">Location TBA</p>}
-                          </button>
-                        ))}
-                        {(pastEventsSubTab === 'attended' ? pastAttended : pastHosted).length === 0 && (
-                          pastEventsSubTab === 'attended' ? (
-                            <div className="text-center py-10 px-6">
-                              <div className="text-3xl mb-2">🎟️</div>
-                              <p className="font-semibold text-gray-700 mb-1">No events attended yet</p>
-                              <p className="text-sm text-gray-500">Events you RSVP to will appear here.</p>
-                            </div>
-                          ) : (
-                            <div className="text-center py-10 px-6">
-                              <div className="text-3xl mb-2">🗓️</div>
-                              <p className="font-semibold text-gray-700 mb-1">You haven't hosted any events yet</p>
-                              <p className="text-sm text-gray-500">Create your first event and bring families together.</p>
-                            </div>
-                          )
-                        )}
-                      </div>
+
+                      {/* Attended */}
+                      {pastGoing.length > 0 && (
+                        <div className="mb-5">
+                          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            Attended ({pastGoing.length})
+                          </h2>
+                          <div className="space-y-2">
+                            {(showAllPastAttended ? pastGoing : pastGoing.slice(0, 3)).map(e => eventCard(e, 'past'))}
+                          </div>
+                          {pastGoing.length > 3 && (
+                            <button
+                              onClick={() => setShowAllPastAttended(v => !v)}
+                              className="mt-2 w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                            >
+                              {showAllPastAttended ? 'Show less' : `Show all ${pastGoing.length}`}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1970,7 +1969,7 @@ export default function EventsPage() {
               <button
                 key={`${event.id}-${event.event_date}-${idx}`}
                 onClick={() => setSelectedEvent(event)}
-                className="w-full bg-white rounded-xl shadow-sm p-3 text-left hover:shadow-md transition-shadow border border-gray-100"
+                className="w-full bg-white rounded-xl shadow-sm p-3 text-left hover:shadow-md hover:border-gray-200 active:scale-[0.99] transition-all border border-gray-100"
               >
                 {/* Category + status */}
                 <div className="flex items-center justify-between mb-1.5">
@@ -2000,7 +1999,7 @@ export default function EventsPage() {
                 <div className="flex justify-between text-xs text-gray-400">
                   <span>By {event.host?.name}</span>
                   <span>
-                    {event.rsvp_count}{event.max_attendees ? `/${event.max_attendees}` : ''} going
+                    {event.rsvp_count || 0} going
                     {(event.waitlist_count || 0) > 0 && ` · ${event.waitlist_count} waiting`}
                   </span>
                 </div>
@@ -2610,421 +2609,8 @@ export default function EventsPage() {
       
       {/* Bottom spacing for mobile nav */}
       <div className="h-20"></div>
-
-      {/* Event chat message reaction sheet */}
-      {showEventReactionSheet && eventSelectedChatMsg && (
-        <div
-          className="fixed inset-0 z-[9999]"
-          onClick={() => { setShowEventReactionSheet(false); setEventSelectedChatMsg(null); }}
-        >
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl pb-8"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-center pt-3 pb-2">
-              <div className="w-10 h-1 bg-gray-300 rounded-full" />
-            </div>
-            <div className="flex justify-center gap-2 px-6 pb-4">
-              {QUICK_REACTIONS.map(emoji => {
-                const myReact = userId && (eventReactions[eventSelectedChatMsg.id] || []).find((g: { emoji: string; users: string[] }) => g.emoji === emoji)?.users.includes(userId);
-                return (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => { toggleEventReaction(eventSelectedChatMsg.id, emoji); setShowEventReactionSheet(false); setEventSelectedChatMsg(null); }}
-                    className={`w-10 h-10 flex items-center justify-center text-xl rounded-full transition-all ${myReact ? 'bg-emerald-100 ring-2 ring-emerald-400 scale-110' : 'bg-gray-100 hover:bg-gray-200 active:scale-95'}`}
-                  >
-                    {emoji}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
     </ProtectedRoute>
-  );
-}
-
-function CreateEventModal({ 
-  onClose, 
-  onCreated,
-  userId 
-}: { 
-  onClose: () => void;
-  onCreated: (event: Event) => void;
-  userId: string;
-}) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Educational');
-  const [customCategory, setCustomCategory] = useState('');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('10:00');
-  const [exactLocation, setExactLocation] = useState<{
-    name: string;
-    address: string;
-    lat: number;
-    lng: number;
-  } | null>(null);
-  const [ageRange, setAgeRange] = useState('');
-  const [isPrivate, setIsPrivate] = useState(false);
-  const [recurrenceRule, setRecurrenceRule] = useState<'none' | 'weekly' | 'fortnightly' | 'monthly'>('none');
-  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
-  const [maxAttendees, setMaxAttendees] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const handleCreate = async () => {
-    if (!title || !date) return;
-    
-    const session = getStoredSession();
-    if (!session) return;
-
-    setSaving(true);
-
-    try {
-      const eventData = {
-        host_id: userId,
-        title,
-        description,
-        category: category === 'Other' ? (customCategory || 'Other') : category,
-        event_date: date,
-        event_time: time,
-        age_range: ageRange || null,
-        is_private: isPrivate,
-        show_exact_location: exactLocation ? true : false,
-        location_name: exactLocation ? exactLocation.name : null,
-        exact_address: exactLocation ? exactLocation.address : null,
-        latitude: exactLocation ? exactLocation.lat : null,
-        longitude: exactLocation ? exactLocation.lng : null,
-        recurrence_rule: recurrenceRule === 'none' ? null : recurrenceRule,
-        recurrence_end_date: (recurrenceRule !== 'none' && recurrenceEndDate) ? recurrenceEndDate : null,
-        max_attendees: maxAttendees ? parseInt(maxAttendees) : null,
-      };
-
-      
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/events`,
-        {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation',
-          },
-          body: JSON.stringify(eventData),
-        }
-      );
-
-      if (res.ok) {
-        const [newEvent] = await res.json();
-        
-        // Get host name
-        const hostRes = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=family_name,display_name`,
-          {
-            headers: {
-              'apikey': supabaseKey!,
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-          }
-        );
-        const hosts = await hostRes.json();
-        
-        onCreated({
-          ...newEvent,
-          host: hosts[0] ? { 
-            name: hosts[0].display_name || hosts[0].family_name || 'You' 
-          } : { name: 'You' },
-          rsvp_count: 0,
-          user_rsvp: false,
-        });
-      } else {
-        const errorText = await res.text();
-        console.error('Event creation failed:', res.status, errorText);
-        console.error('Request data was:', eventData);
-      }
-    } catch (err) {
-      console.error('Error creating event:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50">
-      <div className="bg-white rounded-t-2xl w-full max-w-md flex flex-col max-h-[92vh]">
-        {/* Sticky modal header */}
-        <div className="flex-shrink-0 flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h2 className="text-2xl font-bold text-gray-900">Create Event</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
-        </div>
-        {/* Scrollable form — min-h-0 is required for overflow-y-auto to work inside a flex-col */}
-        <div className="overflow-y-auto flex-1 min-h-0 p-6 pb-28" style={{ WebkitOverflowScrolling: 'touch' }}>
-          <div className="space-y-6">
-            <div>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
-                placeholder="Event title"
-              />
-            </div>
-
-            <div>
-              <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200">
-                {[
-                  { value: 'Educational', label: 'Educational' },
-                  { value: 'Play', label: 'Play' },
-                  { value: 'Other', label: 'Other' }
-                ].map((cat) => (
-                  <button
-                    key={cat.value}
-                    type="button"
-                    onClick={() => setCategory(cat.value)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      category === cat.value ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-              {/* Custom category description for "Other" */}
-              {category === 'Other' && (
-                <div className="mt-3">
-                  <input
-                    type="text"
-                    value={customCategory}
-                    onChange={(e) => setCustomCategory(e.target.value)}
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
-                    placeholder="Describe your event category..."
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900"
-                />
-              </div>
-              {/* Custom time picker */}
-              <div className="flex gap-2">
-                <select
-                  value={(() => {
-                    const [h] = time.split(':');
-                    const hour = parseInt(h, 10);
-                    return hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
-                  })()}
-                  onChange={(e) => {
-                    const label = e.target.value;
-                    const isPM = label.includes('PM');
-                    const num = parseInt(label, 10);
-                    const hour = num === 12 ? (isPM ? 12 : 0) : isPM ? num + 12 : num;
-                    const [, m] = time.split(':');
-                    setTime(`${String(hour).padStart(2, '0')}:${m || '00'}`);
-                  }}
-                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {['6 AM','7 AM','8 AM','9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM'].map(h => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-                <select
-                  value={(() => { const [,m] = time.split(':'); return m || '00'; })()}
-                  onChange={(e) => {
-                    const [h] = time.split(':');
-                    setTime(`${h}:${e.target.value}`);
-                  }}
-                  className="w-24 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {['00','15','30','45'].map(m => (
-                    <option key={m} value={m}>{m === '00' ? ':00' : `:${m}`}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Repeat / Recurrence */}
-            <div>
-              <p className="text-sm font-medium text-gray-700 mb-2">Repeat</p>
-              <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200">
-                {([
-                  { value: 'none',        label: 'Once' },
-                  { value: 'weekly',      label: 'Weekly' },
-                  { value: 'fortnightly', label: 'Fortnightly' },
-                  { value: 'monthly',     label: 'Monthly' },
-                ] as const).map(opt => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setRecurrenceRule(opt.value)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      recurrenceRule === opt.value ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              {recurrenceRule !== 'none' && (
-                <div className="mt-3">
-                  <label className="text-xs text-gray-500 mb-1 block">End date (optional)</label>
-                  <input
-                    type="date"
-                    value={recurrenceEndDate}
-                    onChange={(e) => setRecurrenceEndDate(e.target.value)}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 text-sm"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div>
-              <SimpleLocationPicker
-                onLocationSelect={(loc) => setExactLocation(loc)}
-                placeholder="Search for address or venue..."
-              />
-              
-              {exactLocation && (
-                <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                  <div className="text-sm font-medium text-emerald-900">{exactLocation.name}</div>
-                  <div className="text-xs text-emerald-700">{exactLocation.address}</div>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <input
-                type="text"
-                value={ageRange}
-                onChange={(e) => setAgeRange(e.target.value)}
-                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
-                placeholder="Age range (optional)"
-              />
-            </div>
-
-            <div>
-              <input
-                type="number"
-                min="1"
-                max="500"
-                value={maxAttendees}
-                onChange={(e) => setMaxAttendees(e.target.value)}
-                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
-                placeholder="Max attendees (optional — leave blank for unlimited)"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label 
-                className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
-                  !isPrivate 
-                    ? 'border-emerald-600 bg-emerald-50'
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="visibility"
-                  checked={!isPrivate}
-                  onChange={() => setIsPrivate(false)}
-                  className="sr-only"
-                />
-                <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
-                  !isPrivate 
-                    ? 'border-emerald-600 bg-emerald-600' 
-                    : 'border-gray-300'
-                }`}>
-                  {!isPrivate && (
-                    <div className="w-full h-full rounded-full bg-white transform scale-50"></div>
-                  )}
-                </div>
-                <div>
-                  <span className={`font-medium ${
-                    !isPrivate ? 'text-emerald-900' : 'text-gray-700'
-                  }`}>
-                    Public
-                  </span>
-                  <p className="text-sm text-gray-500 mt-1">Anyone can see and join this event</p>
-                </div>
-              </label>
-
-              <label 
-                className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
-                  isPrivate 
-                    ? 'border-emerald-600 bg-emerald-50'
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="visibility"
-                  checked={isPrivate}
-                  onChange={() => setIsPrivate(true)}
-                  className="sr-only"
-                />
-                <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
-                  isPrivate 
-                    ? 'border-emerald-600 bg-emerald-600' 
-                    : 'border-gray-300'
-                }`}>
-                  {isPrivate && (
-                    <div className="w-full h-full rounded-full bg-white transform scale-50"></div>
-                  )}
-                </div>
-                <div>
-                  <span className={`font-medium ${
-                    isPrivate ? 'text-emerald-900' : 'text-gray-700'
-                  }`}>
-                    Private
-                  </span>
-                  <p className="text-sm text-gray-500 mt-1">Only your connections can see this event</p>
-                </div>
-              </label>
-            </div>
-
-            <div>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
-                rows={4}
-                placeholder="What's the plan?"
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-4 mt-8">
-            <button
-              onClick={onClose}
-              className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={!title || !date || saving || (category === 'Other' && !customCategory)}
-              className="flex-1 py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
-            >
-              {saving ? 'Creating...' : 'Create Event'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 

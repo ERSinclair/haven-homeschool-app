@@ -4,6 +4,7 @@ import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import ToastContainer from "@/components/ToastContainer";
 import ScrollToTop from "@/components/ScrollToTop";
+import PageWrapper from "@/components/PageWrapper";
 import { AuthProvider } from "@/lib/AuthContext";
 import { ThemeProvider } from "@/lib/ThemeContext";
 import "@/lib/errorHandler"; // Global error suppression
@@ -57,27 +58,9 @@ export default function RootLayout({
         <meta name="format-detection" content="telephone=no" />
         <style dangerouslySetInnerHTML={{
           __html: `
-            html, body {
-              height: 100%;
-              overflow-x: hidden;
-              overflow-y: auto;
-              -webkit-overflow-scrolling: touch;
-            }
-            
             body {
               min-height: 100vh;
               padding-bottom: 5rem !important;
-            }
-            
-            /* Fix for mobile scrolling */
-            * {
-              -webkit-overflow-scrolling: touch;
-            }
-            
-            /* Ensure all main containers can scroll */
-            main {
-              overflow-y: auto;
-              min-height: calc(100vh - 5rem);
             }
           `
         }} />
@@ -90,7 +73,7 @@ export default function RootLayout({
           <AuthProvider>
             <ScrollToTop />
             <main className="min-h-screen" style={{ paddingBottom: '5rem' }}>
-              {children}
+              <PageWrapper>{children}</PageWrapper>
             </main>
             <BottomNav />
             <ToastContainer />

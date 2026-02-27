@@ -407,16 +407,17 @@ export default function SettingsPage() {
           
           <div className="divide-y divide-gray-100">
             {[
-              { label: 'Help Center', icon: '' },
-              { label: 'Contact Support', icon: '' },
-              { label: 'Community Guidelines', icon: '' },
-              { label: 'Privacy Policy', icon: '' },
+              { label: 'Help Center', icon: '', href: 'mailto:hello@familyhaven.app' },
+              { label: 'Contact Support', icon: '', href: 'mailto:hello@familyhaven.app' },
+              { label: 'Community Guidelines', icon: '', href: '/community-guidelines' },
+              { label: 'Terms of Service', icon: '', href: '/terms' },
+              { label: 'Privacy Policy', icon: '', href: '/privacy' },
             ].map((item) => (
-              <button key={item.label} className="flex items-center w-full p-4 hover:bg-gray-50 text-left">
+              <a key={item.label} href={item.href} className="flex items-center w-full p-4 hover:bg-gray-50 text-left">
                 <span className="mr-3">{item.icon}</span>
                 <span className="flex-1 text-gray-700">{item.label}</span>
                 <span className="text-gray-300">→</span>
-              </button>
+              </a>
             ))}
           </div>
         </div>
@@ -445,7 +446,11 @@ export default function SettingsPage() {
             <span style={{ fontFamily: 'var(--font-fredoka)' }} className="text-emerald-600 font-medium">Haven</span> v0.1.0 · Made in Australia
           </p>
           <p>
-            <a href="/privacy" className="hover:text-gray-600 underline underline-offset-2">Privacy Policy</a>
+            <a href="/terms" className="hover:text-gray-600 underline underline-offset-2">Terms</a>
+            {' · '}
+            <a href="/community-guidelines" className="hover:text-gray-600 underline underline-offset-2">Guidelines</a>
+            {' · '}
+            <a href="/privacy" className="hover:text-gray-600 underline underline-offset-2">Privacy</a>
             {' · '}
             <a href="mailto:hello@familyhaven.app" className="hover:text-gray-600 underline underline-offset-2">Contact</a>
           </p>

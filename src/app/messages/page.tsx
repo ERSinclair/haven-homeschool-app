@@ -2,6 +2,7 @@
 import { toast } from '@/lib/toast';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
+import { getCached, setCached } from '@/lib/pageCache';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
@@ -10,7 +11,7 @@ import { getAvatarColor } from '@/lib/colors';
 import AvatarUpload from '@/components/AvatarUpload';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import EmojiPicker from '@/components/EmojiPicker';
+import ChatView, { ChatMessage } from '@/components/ChatView';
 
 type Conversation = {
   id: string;
@@ -31,8 +32,8 @@ type Message = {
   content: string;
   sender_id: string;
   created_at: string;
-  file_url?: string;
-  file_type?: string;
+  file_url?: string | null;
+  file_type?: string | null;
 };
 
 function MessagesContent() {
@@ -40,9 +41,9 @@ function MessagesContent() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messageTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const [showMsgEmojiPicker, setShowMsgEmojiPicker] = useState(false);
   const [newMessage, setNewMessage] = useState('');
+  const [dmSending, setDmSending] = useState(false);
+  const [dmUploadingFile, setDmUploadingFile] = useState(false);
   const [reactions, setReactions] = useState<Record<string, { emoji: string; users: string[] }[]>>({});
 
   const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -56,7 +57,8 @@ function MessagesContent() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedConversations, setSelectedConversations] = useState<string[]>([]);
   const [conversationSelectionMode, setConversationSelectionMode] = useState(false);
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const [showDeleteConversationModal, setShowDeleteConversationModal] = useState(false);
   const [connectionRequests, setConnectionRequests] = useState<Map<string, {status: string, isRequester: boolean}>>(new Map());
   const [showSearch, setShowSearch] = useState(false);
@@ -89,51 +91,51 @@ function MessagesContent() {
     const session = getStoredSession();
     if (!session?.user) return;
 
+    // Show cached conversations instantly
+    const cached = getCached<Conversation[]>('messages:convos');
+    if (cached) setConversations(cached);
+
     try {
+      const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+
       const res = await fetch(
         `${supabaseUrl}/rest/v1/conversations?or=(participant_1.eq.${session.user.id},participant_2.eq.${session.user.id})&select=*`,
-        {
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          signal,
-        }
+        { headers, signal }
       );
-      
+
       if (signal?.aborted) return;
-      
       const convos = await res.json();
-      
-      const enriched = await Promise.all(convos.map(async (c: any) => {
+      if (!Array.isArray(convos) || !convos.length) { setConversations([]); return; }
+
+      // Batch fetch all other-user profiles in 1 request
+      const otherIds = convos.map((c: any) =>
+        c.participant_1 === session.user.id ? c.participant_2 : c.participant_1
+      );
+      const uniqueIds = [...new Set(otherIds)].join(',');
+      const profileRes = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=in.(${uniqueIds})&select=id,family_name,display_name,avatar_url,location_name`,
+        { headers, signal }
+      );
+
+      if (signal?.aborted) return;
+      const profileList = profileRes.ok ? await profileRes.json() : [];
+      const profileMap = new Map<string, any>(profileList.map((p: any) => [p.id, p]));
+
+      const enriched: Conversation[] = convos.map((c: any) => {
         const otherId = c.participant_1 === session.user.id ? c.participant_2 : c.participant_1;
-        
-        const profileRes = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?id=eq.${otherId}&select=id,family_name,display_name,avatar_url,location_name`,
-          {
-            headers: {
-              'apikey': supabaseKey!,
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-            signal,
-          }
-        );
-        
-        if (signal?.aborted) return null;
-        
-        const profiles = await profileRes.json();
-        
+        const profile = profileMap.get(otherId) || { id: otherId, family_name: 'Unknown', display_name: 'Unknown', location_name: '', avatar_url: null };
         return {
           id: c.id,
-          other_user: profiles[0] || { id: otherId, family_name: 'Unknown', display_name: 'Unknown', location_name: '', avatar_url: null },
+          other_user: profile,
           last_message_text: c.last_message_text,
           last_message_at: c.last_message_at,
           unread: c.last_message_by && c.last_message_by !== session.user.id,
         };
-      }));
-      
+      });
+
       if (!signal?.aborted) {
-        setConversations(enriched.filter(Boolean));
+        setConversations(enriched);
+        setCached('messages:convos', enriched);
       }
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
@@ -275,20 +277,16 @@ function MessagesContent() {
     setConversationSelectionMode(false);
     setSelectedConversations([]);
     return () => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-      }
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     };
   }, [selectedId]);
 
   // Cleanup timer on unmount
   useEffect(() => {
     return () => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-      }
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     };
-  }, [longPressTimer]);
+  }, []);
 
   // Periodic check for new connection requests
   useEffect(() => {
@@ -451,6 +449,137 @@ function MessagesContent() {
       }
     } finally {
       setSending(false);
+    }
+  };
+
+  const dmSendText = async (text: string) => {
+    if (!text.trim() || !selectedId || !userId) return;
+    const session = getStoredSession();
+    if (!session) return;
+
+    setDmSending(true);
+    try {
+      const messageData = {
+        conversation_id: selectedId,
+        sender_id: userId,
+        content: text,
+      };
+
+      const res = await fetch(`${supabaseUrl}/rest/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify(messageData),
+      });
+
+      if (res.ok) {
+        const [newMsg] = await res.json();
+        setMessages(prev => [...prev, newMsg]);
+
+        await fetch(`${supabaseUrl}/rest/v1/conversations?id=eq.${selectedId}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            last_message_text: text,
+            last_message_at: new Date().toISOString(),
+            last_message_by: userId,
+          }),
+        });
+
+        const recipientId = conversations.find(c => c.id === selectedId)?.other_user?.id;
+        if (recipientId) {
+          sendPush(session.access_token, recipientId, 'New message on Haven', text, '/messages');
+        }
+
+        await reloadConversations();
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        console.error('Error sending message:', err);
+      }
+    } finally {
+      setDmSending(false);
+    }
+  };
+
+  const dmSendFile = async (file: File) => {
+    if (!selectedId || !userId) return;
+    const session = getStoredSession();
+    if (!session) return;
+
+    setDmUploadingFile(true);
+    try {
+      if (file.size > 5 * 1024 * 1024) {
+        toast('File size must be less than 5MB', 'error');
+        return;
+      }
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${userId}/${fileName}`;
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const uploadResponse = await fetch(
+        `${supabaseUrl}/storage/v1/object/message-files/${filePath}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: formData,
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        toast('Failed to upload file', 'error');
+        return;
+      }
+
+      const fileUrl = `${supabaseUrl}/storage/v1/object/public/message-files/${filePath}`;
+      const fileType = file.type.startsWith('image/') ? 'image' : 'file';
+
+      const messageData = {
+        conversation_id: selectedId,
+        sender_id: userId,
+        content: fileUrl,
+        file_url: fileUrl,
+        file_type: fileType,
+      };
+
+      const res = await fetch(`${supabaseUrl}/rest/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify(messageData),
+      });
+
+      if (res.ok) {
+        const [newMsg] = await res.json();
+        const msgWithFile = { ...newMsg, file_url: fileUrl, file_type: fileType };
+        setMessages(prev => [...prev, msgWithFile]);
+        await reloadConversations();
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        console.error('Error sending file:', err);
+      }
+    } finally {
+      setDmUploadingFile(false);
     }
   };
 
@@ -1282,243 +1411,30 @@ function MessagesContent() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 pt-6 pb-4 space-y-4 max-w-md mx-auto w-full messages-container">
-          {messages.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <p>No messages yet.</p>
-              <p className="text-sm mt-1">Send a message to start the conversation!</p>
-            </div>
-          ) : (
-            messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex w-full ${msg.sender_id === userId ? 'justify-end' : 'justify-start'}`}
-              >
-                {(() => {
-                    const file = getMessageFileUrl(msg);
-                    const textContent = file ? msg.content.replace(file.fileUrl, '').trim() : msg.content;
-                    const isImageOnly = file?.isImage && !textContent;
-                    const isSelected = selectedMessages.includes(msg.id);
-                    const selectionClass = isSelected ? 'ring-2 ring-emerald-300 scale-95' : selectionMode ? 'opacity-60' : '';
-                    const touchHandlers = {
-                      onTouchStart: () => {
-                        if (longPressTimer) clearTimeout(longPressTimer);
-                        const timer = setTimeout(() => handleMessageLongPress(msg.id), 1000);
-                        setLongPressTimer(timer);
-                      },
-                      onTouchEnd: () => {
-                        if (longPressTimer) { clearTimeout(longPressTimer); setLongPressTimer(null); }
-                        if (selectionMode) handleMessageTap(msg.id);
-                      },
-                      onClick: () => { if (selectionMode) handleMessageTap(msg.id); },
-                    };
-
-                    return (
-                      <div className="relative w-full max-w-full">
-                        {/* Selection checkbox */}
-                        {selectionMode && (
-                          <div
-                            className="absolute -left-8 top-1/2 transform -translate-y-1/2 z-10 cursor-pointer"
-                            onClick={(e) => { e.stopPropagation(); handleMessageTap(msg.id); }}
-                          >
-                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-gray-300'}`}>
-                              {isSelected && <span className="text-white text-xs font-bold">✓</span>}
-                            </div>
-                          </div>
-                        )}
-
-                        {file ? (
-                          /* File/image — no bubble wrapper */
-                          <div className={`cursor-pointer transition-all ${selectionClass}`} {...touchHandlers}>
-                            {file.isImage ? (
-                              <img
-                                src={file.fileUrl}
-                                alt="Attachment"
-                                className="max-w-[220px] max-h-[220px] rounded-2xl object-cover"
-                                onClick={(e) => { if (!selectionMode) { e.stopPropagation(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
-                                onTouchEnd={(e) => { if (!selectionMode) { e.stopPropagation(); e.preventDefault(); setLightboxUrl(file.fileUrl); setLightboxMsgId(msg.id); } }}
-                              />
-                            ) : (
-                              <button
-                                className={`flex items-center gap-2 px-3 py-2 rounded-2xl text-sm font-medium ${msg.sender_id === userId ? 'bg-emerald-600 text-white' : 'bg-white text-gray-900 shadow-sm border border-gray-100'}`}
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const filename = decodeURIComponent(file.fileUrl.split('/').pop()?.split('?')[0] || 'file');
-                                  try {
-                                    const res = await fetch(file.fileUrl);
-                                    const blob = await res.blob();
-                                    const blobUrl = URL.createObjectURL(blob);
-                                    const a = document.createElement('a');
-                                    a.href = blobUrl;
-                                    a.download = filename;
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    document.body.removeChild(a);
-                                    URL.revokeObjectURL(blobUrl);
-                                  } catch {
-                                    window.open(file.fileUrl, '_blank');
-                                  }
-                                }}
-                              >
-                                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                <span className="truncate max-w-[180px]">
-                                  {decodeURIComponent(file.fileUrl.split('/').pop()?.split('?')[0] || 'File')}
-                                </span>
-                              </button>
-                            )}
-                            {textContent && (
-                              <p className={`text-sm mt-1 break-words ${msg.sender_id === userId ? 'text-right' : ''}`} style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>{textContent}</p>
-                            )}
-                            <p className="text-xs text-gray-400 mt-1">{formatTime(msg.created_at)}</p>
-                          </div>
-                        ) : (
-                          /* Text-only bubble */
-                          <div
-                            className={`max-w-[75%] px-4 py-3 rounded-2xl transition-all cursor-pointer ${
-                              msg.sender_id === userId
-                                ? 'bg-emerald-600 text-white rounded-br-md ml-auto'
-                                : 'bg-white text-gray-900 rounded-bl-md shadow-sm mr-auto'
-                            } ${selectionClass}`}
-                            {...touchHandlers}
-                          >
-                            <p className="text-sm break-words" style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>{textContent}</p>
-                            <p className={`text-xs mt-1 ${msg.sender_id === userId ? 'text-emerald-200' : 'text-gray-400'}`}>
-                              {formatTime(msg.created_at)}
-                            </p>
-                          </div>
-                        )}
-                        {/* Reaction pills */}
-                        {(reactions[msg.id] || []).length > 0 && (
-                          <div className={`flex flex-wrap gap-1 mt-1 ${msg.sender_id === userId ? 'justify-end' : 'justify-start'}`}>
-                            {(reactions[msg.id] || []).map(r => (
-                              <button
-                                key={r.emoji}
-                                type="button"
-                                onClick={() => toggleDmReaction(msg.id, r.emoji)}
-                                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-sm border transition-colors ${
-                                  userId && r.users.includes(userId)
-                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                                    : 'bg-white border-gray-200 text-gray-700 hover:border-emerald-300'
-                                }`}
-                              >
-                                {r.emoji}{r.users.length > 1 && <span className="text-xs font-medium ml-0.5">{r.users.length}</span>}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-              </div>
-            ))
-          )}
-          <div ref={messagesEndRef} />
+        <div className="flex-1 overflow-hidden max-w-md mx-auto w-full">
+          <ChatView
+            messages={messages.map(m => ({
+              ...m,
+              sender_profile: m.sender_id !== userId
+                ? { display_name: selected.other_user.family_name || selected.other_user.display_name, avatar_url: selected.other_user.avatar_url }
+                : null,
+            }))}
+            currentUserId={userId!}
+            reactions={reactions}
+            onSend={dmSendText}
+            onSendFile={dmSendFile}
+            onReact={(msgId, emoji) => toggleDmReaction(msgId, emoji)}
+            onLongPress={msg => { setContextMenuMessage(msg); setShowMessageContextMenu(true); }}
+            onMessageClick={msgId => { if (selectionMode) handleMessageTap(msgId); }}
+            selectedMessageIds={selectionMode ? selectedMessages : []}
+            sending={dmSending}
+            uploadingFile={dmUploadingFile}
+            showSenderName={false}
+            scrollTrigger={messages.length}
+            placeholder="Type a message..."
+            emptyText="No messages yet. Send a message to start the conversation!"
+          />
         </div>
-
-        {!selectionMode && (
-          <div className="flex-shrink-0 bg-white border-t border-gray-100 p-4 z-10">
-            <div className="max-w-4xl mx-auto">
-              {/* File preview */}
-              {selectedFile && (
-                <div className="mb-3 p-3 bg-gray-50 rounded-xl flex items-center gap-3">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{selectedFile.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {selectedFile.size > 1024 * 1024 
-                        ? `${(selectedFile.size / 1024 / 1024).toFixed(1)} MB`
-                        : `${Math.round(selectedFile.size / 1024)} KB`
-                      }
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setSelectedFile(null)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-              <div className="relative flex gap-2">
-                {showMsgEmojiPicker && (
-                  <EmojiPicker
-                    onSelect={emoji => {
-                      const el = messageTextareaRef.current;
-                      if (el) {
-                        const start = el.selectionStart ?? newMessage.length;
-                        const end = el.selectionEnd ?? newMessage.length;
-                        const next = newMessage.slice(0, start) + emoji + newMessage.slice(end);
-                        setNewMessage(next);
-                        setTimeout(() => { el.focus(); el.setSelectionRange(start + emoji.length, start + emoji.length); }, 0);
-                      } else {
-                        setNewMessage(v => v + emoji);
-                      }
-                    }}
-                    onClose={() => setShowMsgEmojiPicker(false)}
-                  />
-                )}
-              <textarea
-                ref={messageTextareaRef}
-                value={newMessage}
-                onChange={(e) => {
-                  setNewMessage(e.target.value);
-                  // Auto-resize textarea
-                  const textarea = e.target as HTMLTextAreaElement;
-                  textarea.style.height = 'auto';
-                  textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessageHandler()}
-                placeholder="Type a message..."
-                className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none overflow-wrap-anywhere break-words"
-                rows={1}
-                style={{ 
-                  minHeight: '48px',
-                  maxHeight: '120px',
-                  wordWrap: 'break-word',
-                  overflowWrap: 'anywhere'
-                }}
-              />
-              <input
-                type="file"
-                id="file-input"
-                accept="image/*,.pdf,.doc,.docx,.txt"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setSelectedFile(file);
-                  }
-                }}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => setShowMsgEmojiPicker(v => !v)}
-                className="px-3 py-3 text-gray-400 hover:text-emerald-600 flex items-center justify-center transition-colors"
-                title="Emoji"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => document.getElementById('file-input')?.click()}
-                className="px-4 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 flex items-center justify-center"
-                title="Attach file"
-              >
-                📎
-              </button>
-              <button
-                onClick={sendMessageHandler}
-                disabled={(!newMessage.trim() && !selectedFile) || sending}
-                className="px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
-              >
-                {sending ? '...' : '→'}
-              </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Lightbox — MUST be inside conversation view return (state-driven, not portal) */}
         {lightboxUrl && (
@@ -1574,6 +1490,121 @@ function MessagesContent() {
                   Save
                 </button>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Message Context Menu — bottom sheet */}
+        {showMessageContextMenu && contextMenuMessage && (
+          <div
+            className="fixed inset-0 z-overlay"
+            onClick={() => { setShowMessageContextMenu(false); setContextMenuMessage(null); }}
+          >
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/40" />
+            {/* Sheet */}
+            <div
+              className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl" style={{ paddingBottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Handle */}
+              <div className="flex justify-center pt-3 pb-2">
+                <div className="w-10 h-1 bg-gray-300 rounded-full" />
+              </div>
+              {/* Quick emoji reactions */}
+              <div className="flex justify-center gap-2 px-6 pb-3">
+                {QUICK_REACTIONS.map(emoji => {
+                  const myReact = userId && (reactions[contextMenuMessage.id] || []).find(g => g.emoji === emoji)?.users.includes(userId);
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => { toggleDmReaction(contextMenuMessage.id, emoji); setShowMessageContextMenu(false); setContextMenuMessage(null); }}
+                      className={`w-10 h-10 flex items-center justify-center text-xl rounded-full transition-all ${myReact ? 'bg-emerald-100 ring-2 ring-emerald-400 scale-110' : 'bg-gray-100 hover:bg-gray-200 active:scale-95'}`}
+                    >
+                      {emoji}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Message preview */}
+              {contextMenuMessage.content && (
+                <p className="text-xs text-gray-400 text-center px-6 pb-4 truncate">
+                  {contextMenuMessage.content.length > 60
+                    ? contextMenuMessage.content.substring(0, 60) + '...'
+                    : contextMenuMessage.content}
+                </p>
+              )}
+              {/* Actions */}
+              <div className="divide-y divide-gray-100 border-t border-gray-100">
+                {/* Copy text — only if there's text content */}
+                {contextMenuMessage.content && (() => {
+                  const file = getMessageFileUrl(contextMenuMessage);
+                  const textContent = file ? contextMenuMessage.content.replace(file.fileUrl, '').trim() : contextMenuMessage.content;
+                  if (!textContent) return null;
+                  return (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(textContent).catch(() => {});
+                        setShowMessageContextMenu(false);
+                        setContextMenuMessage(null);
+                        setSuccessMessage('Copied!');
+                        setShowSuccessNotification(true);
+                        setTimeout(() => setShowSuccessNotification(false), 2000);
+                      }}
+                      className="w-full px-6 py-4 text-left text-gray-900 font-medium text-sm hover:bg-gray-50 active:bg-gray-100"
+                    >
+                      Copy text
+                    </button>
+                  );
+                })()}
+                <button
+                  onClick={() => saveMessageToSaved(contextMenuMessage)}
+                  className="w-full px-6 py-4 text-left text-gray-900 font-medium text-sm hover:bg-gray-50 active:bg-gray-100"
+                >
+                  Save message
+                </button>
+                {/* Delete — only for own messages */}
+                {contextMenuMessage.sender_id === userId && (
+                  <button
+                    onClick={async () => {
+                      setShowMessageContextMenu(false);
+                      const msgToDelete = contextMenuMessage;
+                      setContextMenuMessage(null);
+                      const session = getStoredSession();
+                      if (!session) return;
+                      try {
+                        const res = await fetch(
+                          `${supabaseUrl}/rest/v1/messages?id=eq.${msgToDelete.id}`,
+                          {
+                            method: 'DELETE',
+                            headers: {
+                              'apikey': supabaseKey!,
+                              'Authorization': `Bearer ${session.access_token}`,
+                            },
+                          }
+                        );
+                        if (res.ok) {
+                          setMessages(prev => prev.filter(m => m.id !== msgToDelete.id));
+                        } else {
+                          toast('Could not delete message', 'error');
+                        }
+                      } catch {
+                        toast('Could not delete message', 'error');
+                      }
+                    }}
+                    className="w-full px-6 py-4 text-left text-red-600 font-medium text-sm hover:bg-red-50 active:bg-red-100"
+                  >
+                    Delete message
+                  </button>
+                )}
+                <button
+                  onClick={() => { setShowMessageContextMenu(false); setContextMenuMessage(null); }}
+                  className="w-full px-6 py-4 text-left text-gray-400 font-medium text-sm hover:bg-gray-50 active:bg-gray-100"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1759,25 +1790,33 @@ function MessagesContent() {
                 )}
                 <button
                   onClick={() => handleConversationTap(convo.id)}
-                  onTouchStart={() => {
-                    if (longPressTimer) clearTimeout(longPressTimer);
+                  onTouchStart={(e) => {
+                    touchStartPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
                     if (!conversationSelectionMode && convo.id !== 'saved-messages') {
-                      const timer = setTimeout(() => handleConversationLongPress(convo.id), 1000);
-                      setLongPressTimer(timer);
+                      longPressTimerRef.current = setTimeout(() => handleConversationLongPress(convo.id), 800);
                     }
                   }}
                   onTouchEnd={() => {
-                    if (longPressTimer) {
-                      clearTimeout(longPressTimer);
-                      setLongPressTimer(null);
-                    }
+                    touchStartPosRef.current = null;
+                    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
                   }}
-                  className={`w-full bg-white rounded-xl p-4 flex items-center gap-3 transition-all text-left ${
+                  onTouchMove={(e) => {
+                    if (!touchStartPosRef.current || !longPressTimerRef.current) return;
+                    const dx = Math.abs(e.touches[0].clientX - touchStartPosRef.current.x);
+                    const dy = Math.abs(e.touches[0].clientY - touchStartPosRef.current.y);
+                    if (dx > 8 || dy > 8) { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } touchStartPosRef.current = null; }
+                  }}
+                  onTouchCancel={() => {
+                    touchStartPosRef.current = null;
+                    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+                  }}
+                  className={`w-full bg-white rounded-xl p-4 flex items-center gap-3 transition-all text-left shadow-sm border border-gray-100 ${
                     conversationSelectionMode
                       ? selectedConversations.includes(convo.id)
                         ? 'ring-2 ring-emerald-300 scale-95 ml-8'
                         : 'opacity-60 ml-8'
-                      : 'hover:bg-gray-50'
+                      : 'hover:bg-gray-50 hover:shadow-md hover:border-gray-200 active:scale-[0.99]'
                   }`}
                 >
                 <div className="flex-shrink-0">
@@ -1923,14 +1962,14 @@ function MessagesContent() {
       {/* Message Context Menu — bottom sheet */}
       {showMessageContextMenu && contextMenuMessage && (
         <div
-          className="fixed inset-0 z-[9999]"
+          className="fixed inset-0 z-overlay"
           onClick={() => { setShowMessageContextMenu(false); setContextMenuMessage(null); }}
         >
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/40" />
           {/* Sheet */}
           <div
-            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl pb-8"
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl" style={{ paddingBottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Handle */}

@@ -445,27 +445,6 @@ export default function ConnectionsPage() {
       <div className="max-w-md mx-auto px-4 pt-2 pb-8">
         <AppHeader />
 
-        {/* Expandable Search Bar */}
-        {showSearch && (
-          <div className="mb-6">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                placeholder="Search connections..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                autoFocus
-              />
-            </div>
-          </div>
-        )}
-
         {/* Main View Toggle with Search */}
         <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
           <button
@@ -483,6 +462,27 @@ export default function ConnectionsPage() {
             Search
           </button>
         </div>
+
+        {/* Expandable Search Bar — opens below the Search button */}
+        {showSearch && (
+          <div className="mb-3">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                placeholder="Search connections..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                autoFocus
+              />
+            </div>
+          </div>
+        )}
 
         {/* Tab Navigation */}
         <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
@@ -595,8 +595,8 @@ export default function ConnectionsPage() {
                 return (
                   <div 
                     key={connection.id} 
-                    className={`bg-white rounded-xl shadow-sm p-3 transition-all ${
-                      isSelected ? 'ring-2 ring-emerald-500 bg-emerald-50' : ''
+                    className={`bg-white rounded-xl shadow-sm p-3 border transition-all ${
+                      isSelected ? 'ring-2 ring-emerald-500 bg-emerald-50 border-emerald-200' : 'border-gray-100 hover:shadow-md hover:border-gray-200 active:scale-[0.99]'
                     }`}
                     onTouchStart={handleTouchStart}
                     onTouchEnd={handleTouchEnd}
@@ -696,7 +696,7 @@ export default function ConnectionsPage() {
               </div>
             ) : (
               filteredPendingRequests.map((request) => (
-                <div key={request.id} className="bg-white rounded-xl shadow-sm p-4">
+                <div key={request.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                   <div className="flex items-center gap-3">
                     <AvatarUpload
                       userId={request.user.id}
@@ -771,7 +771,7 @@ export default function ConnectionsPage() {
               </div>
             ) : (
               filteredSentRequests.map((request) => (
-                <div key={request.id} className="bg-white rounded-xl shadow-sm p-4">
+                <div key={request.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                   <div className="flex items-center gap-3">
                     <AvatarUpload
                       userId={request.user.id}

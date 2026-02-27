@@ -18,6 +18,7 @@ import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/
 import { loadSearchRadius } from '@/lib/preferences';
 import ReportBlockModal from '@/components/ReportBlockModal';
 import { DiscoverPageSkeleton } from '@/components/SkeletonLoader';
+import { getCached, setCached } from '@/lib/pageCache';
 
 type Family = {
   id: string;
@@ -37,7 +38,7 @@ type Family = {
   last_active?: string;
   last_active_at?: string;
   updated_at?: string;
-  user_type?: 'family' | 'teacher' | 'business' | 'event' | 'facility' | 'other';
+  user_type?: 'family' | 'playgroup' | 'teacher' | 'business' | 'event' | 'facility' | 'other';
   homeschool_approaches?: string[];
   subjects?: string[];
   age_groups_taught?: string[];
@@ -54,7 +55,7 @@ type Profile = {
   kids_ages: number[];
   status: string;
   bio?: string;
-  user_type?: 'family' | 'teacher' | 'business' | 'event' | 'facility' | 'other';
+  user_type?: 'family' | 'playgroup' | 'teacher' | 'business' | 'event' | 'facility' | 'other';
 };
 
 type ViewMode = 'list' | 'map';
@@ -160,7 +161,7 @@ function EnhancedDiscoverPage() {
   const [activeSection, setActiveSection] = useState<Section>('families');
   const [maxDistance, setMaxDistance] = useState(15);
   const [ageRange, setAgeRange] = useState({ min: 1, max: 10 });
-  const [activeTab, setActiveTab] = useState<'all' | 'family' | 'teacher' | 'business'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'family' | 'playgroup' | 'teacher' | 'business'>('all');
   const [familyStatusFilter, setFamilyStatusFilter] = useState<string>('all');
   const [familyCustomFilter, setFamilyCustomFilter] = useState<string>('');
   const [approachFilter, setApproachFilter] = useState<string>('all');
@@ -257,7 +258,14 @@ function EnhancedDiscoverPage() {
     const loadData = async () => {
       // Only run on client side
       if (typeof window === 'undefined') return;
-      
+
+      // Show cached families immediately while fresh data loads
+      const cachedFamilies = getCached<any[]>('discover:families');
+      if (cachedFamilies) {
+        setFamilies(cachedFamilies);
+        setIsLoading(false);
+      }
+
       // Load user session and data
       try {
         // Get session from localStorage (bypass SDK)
@@ -400,8 +408,8 @@ function EnhancedDiscoverPage() {
         });
         
         setFamilies(familiesWithStatus);
-        
-        
+        setCached('discover:families', familiesWithStatus);
+
         // Load user's circles for invitations
         await loadUserCircles();
         
@@ -484,43 +492,51 @@ function EnhancedDiscoverPage() {
     if (activeTab !== 'all') {
       filtered = filtered.filter(family => {
         const userType = family.user_type || 'family';
+        // facility maps to business; playgroups now have their own tab
         const effectiveType = userType === 'facility' ? 'business' : userType;
         return effectiveType === activeTab;
       });
     }
 
     // Family status sub-filter (only when Families tab is active)
-    if (activeTab === 'family' && familyStatusFilter !== 'all') {
-      const knownStatuses = ['new', 'considering', 'experienced'];
-      if (familyStatusFilter === 'other') {
-        // Show families whose status doesn't match any known value
-        filtered = filtered.filter(family => {
-          const statuses = Array.isArray(family.status)
-            ? family.status
-            : typeof family.status === 'string'
-              ? family.status.split(',').map((s: string) => s.trim())
-              : [];
-          return !statuses.some((s: string) => knownStatuses.includes(s));
-        });
-        // Further narrow by custom text if provided
-        if (familyCustomFilter.trim()) {
-          const q = familyCustomFilter.toLowerCase();
-          filtered = filtered.filter(f =>
-            (f.family_name || '').toLowerCase().includes(q) ||
-            (f.bio || '').toLowerCase().includes(q)
-          );
-        }
-      } else {
-        filtered = filtered.filter(family => {
-          const statuses = Array.isArray(family.status)
-            ? family.status
-            : typeof family.status === 'string'
-              ? family.status.split(',').map((s: string) => s.trim())
-              : [];
-          return statuses.includes(familyStatusFilter);
-        });
-      }
+    // Playgroups now have their own tab — exclude them from Families tab
+    if (activeTab === 'family') {
+      filtered = filtered.filter(family => !family.user_type || family.user_type === 'family');
     }
+    if (activeTab === 'family' && familyStatusFilter !== 'all') {
+      {
+        filtered = filtered.filter(family => !family.user_type || family.user_type === 'family');
+        const knownStatuses = ['new', 'considering', 'experienced'];
+        if (familyStatusFilter === 'other') {
+          // Show families whose status doesn't match any known value
+          filtered = filtered.filter(family => {
+            const statuses = Array.isArray(family.status)
+              ? family.status
+              : typeof family.status === 'string'
+                ? family.status.split(',').map((s: string) => s.trim())
+                : [];
+            return !statuses.some((s: string) => knownStatuses.includes(s));
+          });
+          // Further narrow by custom text if provided
+          if (familyCustomFilter.trim()) {
+            const q = familyCustomFilter.toLowerCase();
+            filtered = filtered.filter(f =>
+              (f.family_name || '').toLowerCase().includes(q) ||
+              (f.bio || '').toLowerCase().includes(q)
+            );
+          }
+        } else {
+          filtered = filtered.filter(family => {
+            const statuses = Array.isArray(family.status)
+              ? family.status
+              : typeof family.status === 'string'
+                ? family.status.split(',').map((s: string) => s.trim())
+                : [];
+            return statuses.includes(familyStatusFilter);
+          });
+        }
+      }
+    } // end family status sub-filter
 
     // Homeschool approach filter (only when Families tab is active)
     if ((activeTab === 'all' || activeTab === 'family') && approachFilter !== 'all') {
@@ -941,6 +957,24 @@ function EnhancedDiscoverPage() {
     }
   };
 
+  const handleShare = async () => {
+    const shareData = {
+      title: 'Haven – Find your parent community',
+      text: 'I\'m using Haven to connect with local families. Come join me!',
+      url: 'https://familyhaven.app',
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText('https://familyhaven.app');
+        toast('Link copied to clipboard', 'success');
+      }
+    } catch {
+      // user cancelled or share failed — do nothing
+    }
+  };
+
   const inviteToCircle = async (circleId: string, memberId: string) => {
     // Circles feature not implemented yet
     return false;
@@ -1079,10 +1113,11 @@ function EnhancedDiscoverPage() {
         {/* Account type tab bar — always visible */}
         <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
           {([
-            { value: 'all',      label: 'All' },
-            { value: 'family',   label: 'Families' },
-            { value: 'teacher',  label: 'Teachers' },
-            { value: 'business', label: 'Businesses' },
+            { value: 'all',       label: 'All' },
+            { value: 'family',    label: 'Families' },
+            { value: 'playgroup', label: 'Playgroups' },
+            { value: 'teacher',   label: 'Teachers' },
+            { value: 'business',  label: 'Businesses' },
           ] as const).map(tab => (
             <button
               key={tab.value}
@@ -1392,23 +1427,53 @@ function EnhancedDiscoverPage() {
         {viewMode === 'list' && (
           <div className="space-y-2">
             {filteredFamilies.length === 0 ? (
-              activeTab === 'teacher' ? (
+              activeTab === 'playgroup' ? (
+                <div className="text-center py-12 px-6">
+                  <div className="text-4xl mb-3">👶</div>
+                  <p className="font-semibold text-gray-800 mb-1">No playgroups nearby yet</p>
+                  <p className="text-sm text-gray-500 mb-4">Run a playgroup? Sign up and list it here so local families can find you.</p>
+                  <button
+                    onClick={handleShare}
+                    className="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-emerald-700 active:scale-[0.97] transition-all"
+                  >
+                    Share Haven
+                  </button>
+                </div>
+              ) : activeTab === 'teacher' ? (
                 <div className="text-center py-12 px-6">
                   <div className="text-4xl mb-3">📚</div>
                   <p className="font-semibold text-gray-800 mb-1">No teachers nearby yet</p>
-                  <p className="text-sm text-gray-500">Know a tutor or educator? Share Haven with them.</p>
+                  <p className="text-sm text-gray-500 mb-4">Know a tutor or educator? Share Haven with them.</p>
+                  <button
+                    onClick={handleShare}
+                    className="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-emerald-700 active:scale-[0.97] transition-all"
+                  >
+                    Share Haven
+                  </button>
                 </div>
               ) : activeTab === 'business' ? (
                 <div className="text-center py-12 px-6">
                   <div className="text-4xl mb-3">🏪</div>
                   <p className="font-semibold text-gray-800 mb-1">No businesses nearby yet</p>
-                  <p className="text-sm text-gray-500">Homeschool-friendly businesses will appear here as Haven grows in your area.</p>
+                  <p className="text-sm text-gray-500 mb-4">Homeschool-friendly businesses will appear here as Haven grows in your area.</p>
+                  <button
+                    onClick={handleShare}
+                    className="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-emerald-700 active:scale-[0.97] transition-all"
+                  >
+                    Share Haven
+                  </button>
                 </div>
               ) : (
                 <div className="text-center py-12 px-6">
                   <div className="text-4xl mb-3">🌱</div>
                   <p className="font-semibold text-gray-800 mb-1">You're one of the first!</p>
-                  <p className="text-sm text-gray-500">Haven is just getting started in your area. Invite a family you know to join — every community starts with one connection.</p>
+                  <p className="text-sm text-gray-500 mb-4">Haven is just getting started in your area. Every community starts with one connection.</p>
+                  <button
+                    onClick={handleShare}
+                    className="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-emerald-700 active:scale-[0.97] transition-all"
+                  >
+                    Share Haven
+                  </button>
                 </div>
               )
             ) : (
@@ -1437,7 +1502,7 @@ function EnhancedDiscoverPage() {
                 {filteredFamilies.map((family) => (
                 <div
                   key={family.id}
-                  className="w-full bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all"
+                  className="w-full bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-gray-200 active:scale-[0.99] transition-all"
                 >
                   {/* Top row: avatar + info */}
                   <div
@@ -1474,13 +1539,24 @@ function EnhancedDiscoverPage() {
                           <span className="text-xs text-gray-400 flex-shrink-0">· {formatLastActive(family.last_active)}</span>
                         )}
                       </div>
-                      {/* Kids ages */}
+                      {/* Kids ages (families) */}
                       {(!family.user_type || family.user_type === 'family') && family.kids_ages && family.kids_ages.length > 0 && (
                         <div className="flex items-center gap-1 mb-1">
                           {family.kids_ages.map((age, index) => (
                             <div key={index} className="w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center">
                               <span className="text-xs font-medium text-emerald-700" style={{ fontSize: '10px' }}>{age}</span>
                             </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Ages served (playgroups) */}
+                      {family.user_type === 'playgroup' && family.kids_ages && family.kids_ages.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1 mb-1">
+                          <span className="text-xs text-gray-400">Ages:</span>
+                          {family.kids_ages.sort((a: number, b: number) => a - b).map((age: number, index: number) => (
+                            <span key={index} className="px-1.5 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full border border-purple-100">
+                              {age === 5 ? '5+' : `${age}–${age + 1}`}
+                            </span>
                           ))}
                         </div>
                       )}
