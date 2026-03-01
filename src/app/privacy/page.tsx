@@ -74,7 +74,7 @@ export default function PrivacyPage() {
 
           <section>
             <h2 className="text-base font-bold text-gray-900 mb-2">Contact us</h2>
-            <p className="text-sm leading-relaxed">Questions about your privacy? Email us at <strong>hello@familyhaven.app</strong>. We&apos;ll respond within 5 business days.</p>
+            <p className="text-sm leading-relaxed">Questions about your privacy? Email us at <strong>cane@familyhaven.app</strong>. We&apos;ll respond within 5 business days.</p>
           </section>
 
         </div>

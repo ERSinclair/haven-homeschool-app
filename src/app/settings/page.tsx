@@ -29,6 +29,36 @@ const Toggle = ({ enabled, onChange }: { enabled: boolean; onChange: () => void 
 
 export default function SettingsPage() {
   const [userData, setUserData] = useState<any>(null);
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [showBlocked, setShowBlocked] = useState(false);
+
+  const loadBlockedUsers = async () => {
+    const session = getStoredSession();
+    if (!session?.user) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/blocked_users?blocker_id=eq.${session.user.id}&select=blocked_id,profiles!blocked_users_blocked_id_fkey(id,family_name,display_name,avatar_url)`,
+      { headers: { apikey: supabaseKey!, Authorization: `Bearer ${session.access_token}` } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      setBlockedUsers(Array.isArray(data) ? data : []);
+    }
+  };
+
+  const unblockUser = async (blockedId: string) => {
+    const session = getStoredSession();
+    if (!session?.user) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    await fetch(
+      `${supabaseUrl}/rest/v1/blocked_users?blocker_id=eq.${session.user.id}&blocked_id=eq.${blockedId}`,
+      { method: 'DELETE', headers: { apikey: supabaseKey!, Authorization: `Bearer ${session.access_token}` } }
+    );
+    setBlockedUsers(prev => prev.filter((b: any) => b.blocked_id !== blockedId));
+  };
+
   const [settings, setSettings] = useState({
     notifications: {
       messages: true,
@@ -166,7 +196,7 @@ export default function SettingsPage() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+    <div className="min-h-screen bg-transparent">
       <div className="max-w-md mx-auto px-4 pt-2 pb-8">
         <AppHeader onBack={() => router.back()} />
       </div>
@@ -407,8 +437,10 @@ export default function SettingsPage() {
           
           <div className="divide-y divide-gray-100">
             {[
-              { label: 'Help Center', icon: '', href: 'mailto:hello@familyhaven.app' },
-              { label: 'Contact Support', icon: '', href: 'mailto:hello@familyhaven.app' },
+              { label: 'Support Haven', icon: '', href: '/support' },
+              { label: 'Our Supporters', icon: '', href: '/supporters' },
+              { label: 'Help Center', icon: '', href: 'mailto:cane@familyhaven.app' },
+              { label: 'Contact Support', icon: '', href: 'mailto:cane@familyhaven.app' },
               { label: 'Community Guidelines', icon: '', href: '/community-guidelines' },
               { label: 'Terms of Service', icon: '', href: '/terms' },
               { label: 'Privacy Policy', icon: '', href: '/privacy' },
@@ -420,6 +452,49 @@ export default function SettingsPage() {
               </a>
             ))}
           </div>
+        </div>
+
+        {/* Blocked Users */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <button
+            onClick={() => { setShowBlocked(!showBlocked); if (!showBlocked) loadBlockedUsers(); }}
+            className="flex items-center justify-between w-full p-4 hover:bg-gray-50"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
+                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+              </div>
+              <span className="font-medium text-gray-900">Blocked users</span>
+            </div>
+            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showBlocked ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showBlocked && (
+            <div className="border-t border-gray-100 divide-y divide-gray-100">
+              {blockedUsers.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">No blocked users</p>
+              ) : (
+                blockedUsers.map((b: any) => {
+                  const profile = b.profiles;
+                  const name = profile?.family_name || profile?.display_name || 'Unknown';
+                  return (
+                    <div key={b.blocked_id} className="flex items-center justify-between px-4 py-3">
+                      <span className="text-sm text-gray-900">{name}</span>
+                      <button
+                        onClick={() => unblockUser(b.blocked_id)}
+                        className="text-xs font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 rounded-lg px-3 py-1.5 hover:bg-emerald-50 transition-colors"
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
 
         {/* Danger Zone */}
@@ -452,7 +527,7 @@ export default function SettingsPage() {
             {' · '}
             <a href="/privacy" className="hover:text-gray-600 underline underline-offset-2">Privacy</a>
             {' · '}
-            <a href="mailto:hello@familyhaven.app" className="hover:text-gray-600 underline underline-offset-2">Contact</a>
+            <a href="mailto:cane@familyhaven.app" className="hover:text-gray-600 underline underline-offset-2">Contact</a>
           </p>
         </div>
       </div>

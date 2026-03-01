@@ -56,6 +56,7 @@ type Event = {
   host?: { name: string };
   rsvp_count?: number;
   user_rsvp?: boolean;
+  user_maybe?: boolean;
   user_waitlist?: boolean;
   waitlist_count?: number;
   is_private?: boolean;
@@ -64,6 +65,7 @@ type Event = {
   recurrence_rule?: 'weekly' | 'fortnightly' | 'monthly' | null;
   recurrence_end_date?: string | null;
   is_recurring_instance?: boolean; // frontend-only, not stored in DB
+  _hidden?: boolean; // frontend-only: hidden from discover after RSVP
 };
 
 const categoryColors: Record<string, string> = {
@@ -130,6 +132,8 @@ export default function EventsPage() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
   const [eventsViewMode, setEventsViewMode] = useState<'list' | 'calendar'>('list');
+  const [hiddenEvents, setHiddenEvents] = useState<Set<string>>(new Set());
+  const [showHiddenEventsModal, setShowHiddenEventsModal] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [attendees, setAttendees] = useState<any[]>([]);
@@ -678,6 +682,7 @@ export default function EventsPage() {
             rsvp_count: rsvpCount[event.id] || 0,
             waitlist_count: waitlistCount[event.id] || 0,
             user_rsvp: userRsvpMap.get(event.id) === 'going',
+            user_maybe: userRsvpMap.get(event.id) === 'maybe',
             user_waitlist: userRsvpMap.get(event.id) === 'waitlist',
           };
         });
@@ -709,7 +714,7 @@ export default function EventsPage() {
 
   // No longer needed with individual buttons
 
-  const handleRsvp = async (eventId: string, going: boolean) => {
+  const handleRsvp = async (eventId: string, going: boolean | 'maybe') => {
     const session = getStoredSession();
     if (!session || !userId) {
       router.push('/login');
@@ -718,25 +723,38 @@ export default function EventsPage() {
 
     const event = events.find(e => e.id === eventId) || selectedEvent;
     const isFull = event?.max_attendees && (event.rsvp_count || 0) >= event.max_attendees;
-    const joiningWaitlist = going && !!isFull && !event?.user_rsvp;
+    const isMaybe = going === 'maybe';
+    const joiningWaitlist = going === true && !!isFull && !event?.user_rsvp;
     const cancellingWaitlist = !going && event?.user_waitlist;
 
-    // Optimistic update
-    setEvents(prev => prev.map(e =>
-      e.id === eventId ? {
-        ...e,
-        user_rsvp: joiningWaitlist ? e.user_rsvp : going,
-        user_waitlist: joiningWaitlist ? true : (cancellingWaitlist ? false : e.user_waitlist),
-        rsvp_count: joiningWaitlist || cancellingWaitlist ? e.rsvp_count : (e.rsvp_count || 0) + (going ? 1 : -1),
-        waitlist_count: joiningWaitlist ? (e.waitlist_count || 0) + 1 : (cancellingWaitlist ? Math.max(0, (e.waitlist_count || 0) - 1) : e.waitlist_count),
-      } : e
-    ));
+    // Optimistic update — RSVP hides from discover; un-RSVP shows it again
+    setEvents(prev => {
+      if (going === true && !joiningWaitlist) {
+        return prev.map(e => e.id === eventId ? { ...e, user_rsvp: true, user_maybe: false, rsvp_count: (e.rsvp_count || 0) + 1, _hidden: true } : e);
+      }
+      if (isMaybe) {
+        return prev.map(e => e.id === eventId ? { ...e, user_rsvp: false, user_maybe: true, _hidden: true } : e);
+      }
+      if (!going) {
+        return prev.map(e => e.id === eventId ? { ...e, user_rsvp: false, user_maybe: false, rsvp_count: Math.max(0, (e.rsvp_count || 0) - 1), _hidden: false } : e);
+      }
+      return prev.map(e =>
+        e.id === eventId ? {
+          ...e,
+          user_rsvp: joiningWaitlist ? e.user_rsvp : going,
+          user_waitlist: joiningWaitlist ? true : (cancellingWaitlist ? false : e.user_waitlist),
+          rsvp_count: joiningWaitlist || cancellingWaitlist ? e.rsvp_count : (e.rsvp_count || 0) + (going ? 1 : -1),
+          waitlist_count: joiningWaitlist ? (e.waitlist_count || 0) + 1 : (cancellingWaitlist ? Math.max(0, (e.waitlist_count || 0) - 1) : e.waitlist_count),
+        } : e
+      );
+    });
     if (selectedEvent?.id === eventId) {
       setSelectedEvent(prev => prev ? {
         ...prev,
-        user_rsvp: joiningWaitlist ? prev.user_rsvp : going,
+        user_rsvp: going === true && !joiningWaitlist ? true : going === false ? false : prev.user_rsvp,
+        user_maybe: isMaybe ? true : isMaybe ? true : !isMaybe && going !== true ? false : prev.user_maybe,
         user_waitlist: joiningWaitlist ? true : (cancellingWaitlist ? false : prev.user_waitlist),
-        rsvp_count: joiningWaitlist || cancellingWaitlist ? prev.rsvp_count : (prev.rsvp_count || 0) + (going ? 1 : -1),
+        rsvp_count: joiningWaitlist || cancellingWaitlist ? prev.rsvp_count : (prev.rsvp_count || 0) + (going === true ? 1 : going === false ? -1 : 0),
         waitlist_count: joiningWaitlist ? (prev.waitlist_count || 0) + 1 : (cancellingWaitlist ? Math.max(0, (prev.waitlist_count || 0) - 1) : prev.waitlist_count),
       } : null);
     }
@@ -753,9 +771,21 @@ export default function EventsPage() {
             'Content-Type': 'application/json',
             'Prefer': 'return=minimal',
           },
-          body: JSON.stringify({ event_id: eventId, profile_id: userId, status: 'going' }),
+          body: JSON.stringify({ event_id: eventId, profile_id: userId, status: isMaybe ? 'maybe' : 'going' }),
         });
-      } else if (going && isFull) {
+      } else if (isMaybe) {
+        // Maybe — upsert
+        response = await fetch(`${supabaseUrl}/rest/v1/event_rsvps`, {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates,return=minimal',
+          },
+          body: JSON.stringify({ event_id: eventId, profile_id: userId, status: 'maybe' }),
+        });
+      } else if (going === true && isFull) {
         // Event full — join waitlist
         response = await fetch(`${supabaseUrl}/rest/v1/event_rsvps`, {
           method: 'POST',
@@ -806,7 +836,7 @@ export default function EventsPage() {
                 type: 'event_rsvp',
                 title: 'A spot opened up!',
                 body: `You've been moved from the waitlist to going for ${event?.title}`,
-                link: '/events',
+                link: '/events?tab=my',
                 referenceId: eventId,
                 accessToken: session.access_token,
               });
@@ -828,7 +858,7 @@ export default function EventsPage() {
               type: 'event_rsvp',
               title: `Someone is coming to your event`,
               body: ev.title,
-              link: '/events',
+              link: '/events?tab=my',
               referenceId: eventId,
               accessToken: session.access_token,
             });
@@ -1308,7 +1338,7 @@ export default function EventsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+      <div className="min-h-screen bg-transparent">
         <div className="max-w-md mx-auto px-4 pt-2">
           <div className="h-16 flex items-center">
             <div className="w-16 h-4 bg-gray-200 rounded-lg animate-pulse" />
@@ -1323,7 +1353,7 @@ export default function EventsPage() {
   if (selectedEvent) {
     return (
       <>
-      <div className="fixed top-0 left-0 right-0 bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden" style={{ bottom: '72px' }}>
+      <div className="fixed top-0 left-0 right-0 bg-transparent flex flex-col overflow-hidden" style={{ bottom: '72px' }}>
         {/* Header + tabs — flex-shrink-0 */}
         <div className="flex-shrink-0 bg-white shadow-sm border-b border-gray-100" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="max-w-md mx-auto px-4 pt-2">
@@ -1513,12 +1543,22 @@ export default function EventsPage() {
                     const ev = selectedEvent as Event;
                     const isFull = ev.max_attendees && (ev.rsvp_count || 0) >= ev.max_attendees;
                     if (ev.user_rsvp) return (
-                      <button
-                        onClick={() => handleRsvp(ev.id, false)}
-                        className="w-full py-3 rounded-xl font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
-                      >
-                        Can't make it
-                      </button>
+                      <div className="space-y-2">
+                        <div className="w-full py-2.5 rounded-xl font-semibold bg-emerald-100 text-emerald-800 text-center border border-emerald-200 text-sm">Going</div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleRsvp(ev.id, 'maybe' as any)} className="flex-1 py-2 rounded-xl text-xs font-medium text-amber-700 border border-amber-200 hover:bg-amber-50 transition-colors">Maybe instead</button>
+                          <button onClick={() => handleRsvp(ev.id, false)} className="flex-1 py-2 rounded-xl text-xs font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">Can't go</button>
+                        </div>
+                      </div>
+                    );
+                    if (ev.user_maybe) return (
+                      <div className="space-y-2">
+                        <div className="w-full py-2.5 rounded-xl font-semibold bg-amber-50 text-amber-800 text-center border border-amber-200 text-sm">Maybe going</div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleRsvp(ev.id, true)} className="flex-1 py-2 rounded-xl text-xs font-medium text-emerald-700 border border-emerald-200 hover:bg-emerald-50 transition-colors">I'm going!</button>
+                          <button onClick={() => handleRsvp(ev.id, false)} className="flex-1 py-2 rounded-xl text-xs font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">Can't go</button>
+                        </div>
+                      </div>
                     );
                     if (ev.user_waitlist) return (
                       <div className="space-y-2">
@@ -1542,12 +1582,20 @@ export default function EventsPage() {
                       </button>
                     );
                     return (
-                      <button
-                        onClick={() => handleRsvp(ev.id, true)}
-                        className="w-full py-3 rounded-xl font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-                      >
-                        I'm going!
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleRsvp(ev.id, true)}
+                          className="flex-1 py-3 rounded-xl font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors text-sm"
+                        >Going</button>
+                        <button
+                          onClick={() => handleRsvp(ev.id, 'maybe' as any)}
+                          className="flex-1 py-3 rounded-xl font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors text-sm"
+                        >Maybe</button>
+                        <button
+                          onClick={() => handleRsvp(ev.id, false)}
+                          className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors text-sm"
+                        >Can't go</button>
+                      </div>
                     );
                   })()}
                   {/* Spots / waitlist summary */}
@@ -1613,7 +1661,7 @@ export default function EventsPage() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+    <div className="min-h-screen bg-transparent">
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
         <AppHeader />
 
@@ -1644,6 +1692,14 @@ export default function EventsPage() {
             + Create
           </button>
         </div>
+
+        {/* Hidden events banner */}
+        {mainTab === 'discover' && hiddenEvents.size > 0 && (
+          <div className="flex items-center justify-between mb-3 px-1">
+            <span className="text-xs text-gray-400">{hiddenEvents.size} {hiddenEvents.size === 1 ? 'event' : 'events'} hidden</span>
+            <button onClick={() => setShowHiddenEventsModal(true)} className="text-xs text-emerald-600 font-medium hover:text-emerald-700">Manage hidden</button>
+          </div>
+        )}
 
         {/* Category quick-filter chips — discover only */}
         {mainTab === 'discover' && <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
@@ -1969,7 +2025,7 @@ export default function EventsPage() {
         )}
         {mainTab === 'discover' && (() => {
           const today = new Date().toISOString().slice(0, 10);
-          const upcomingFiltered = filteredEvents.filter(e => e.event_date >= today);
+          const upcomingFiltered = filteredEvents.filter(e => e.event_date >= today && !e._hidden && !e.user_rsvp && e.host_id !== userId && !hiddenEvents.has(e.id));
           const displayEvents = eventsViewMode === 'calendar' && selectedCalendarDate
             ? upcomingFiltered.filter(e => e.event_date === selectedCalendarDate)
             : eventsViewMode === 'calendar'
@@ -1983,7 +2039,7 @@ export default function EventsPage() {
               <p className="text-sm text-gray-500">Be the first to organise something — a park day, a study session, a field trip. It only takes a minute.</p>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="mt-4 px-5 py-2 bg-gray-900 text-white text-sm font-semibold rounded-xl"
+                className="mt-4 px-5 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl"
               >
                 Create an event
               </button>
@@ -1992,8 +2048,8 @@ export default function EventsPage() {
           return (
           <div className="space-y-2">
             {displayEvents.map((event, idx) => (
-              <button
-                key={`${event.id}-${event.event_date}-${idx}`}
+              <div key={`${event.id}-${event.event_date}-${idx}`} className="relative group">
+                <button
                 onClick={() => setSelectedEvent(event)}
                 className="w-full bg-white rounded-xl shadow-sm text-left hover:shadow-md hover:border-gray-200 active:scale-[0.99] transition-all border border-gray-100 overflow-hidden"
               >
@@ -2039,11 +2095,58 @@ export default function EventsPage() {
                   </div>
                 </div>
               </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setHiddenEvents(prev => new Set([...prev, event.id])); }}
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-full bg-white/80 border border-gray-200 text-gray-400 hover:text-gray-600 transition-all"
+                  title="Hide"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
             ))}
           </div>
           );
         })()}
       </div>
+
+      {/* Hidden Events Modal */}
+      {showHiddenEventsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl max-w-md w-full max-h-[80vh] flex flex-col border border-white/60 shadow-xl">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Hidden Events</h3>
+                <p className="text-sm text-gray-500 mt-0.5">{hiddenEvents.size} {hiddenEvents.size === 1 ? 'event' : 'events'} hidden from discover</p>
+              </div>
+              <button onClick={() => setShowHiddenEventsModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {events.filter(e => hiddenEvents.has(e.id)).length === 0 ? (
+                <p className="text-center text-sm text-gray-400 py-8">No hidden events</p>
+              ) : (
+                events.filter(e => hiddenEvents.has(e.id)).map(e => (
+                  <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{e.title}</p>
+                      <p className="text-xs text-gray-400">{e.event_date} · {e.location_name || 'No location'}</p>
+                    </div>
+                    <button
+                      onClick={() => setHiddenEvents(prev => { const n = new Set(prev); n.delete(e.id); return n; })}
+                      className="px-3 py-1.5 text-xs font-semibold text-emerald-600 border border-emerald-200 rounded-xl hover:bg-emerald-50 transition-colors"
+                    >Unhide</button>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-100 flex gap-3">
+              <button onClick={() => setShowHiddenEventsModal(false)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm">Close</button>
+              {hiddenEvents.size > 0 && (
+                <button onClick={() => { setHiddenEvents(new Set()); setShowHiddenEventsModal(false); }} className="flex-1 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 text-sm">Unhide All</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Event Modal */}
       {showCreateModal && (
@@ -2059,10 +2162,10 @@ export default function EventsPage() {
 
       {/* Event Settings Modal */}
       {showEventSettingsModal && selectedEvent && (selectedEvent as Event).host_id === userId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white/85 backdrop-blur-md rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto border border-white/60 shadow-xl">
             {/* Header */}
-            <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
+            <div className="sticky top-0 bg-white/85 backdrop-blur-md rounded-t-2xl p-6 pb-4 border-b border-gray-100">
               <div className="flex justify-between items-center">
                 <h3 className="text-xl font-bold text-gray-900">Event Settings</h3>
                 <button

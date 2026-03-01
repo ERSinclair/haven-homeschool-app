@@ -1,4 +1,5 @@
 'use client';
+import ImageCropModal from '@/components/ImageCropModal';
 
 import { useState } from 'react';
 import { getStoredSession } from '@/lib/session';
@@ -57,28 +58,39 @@ export default function CreateEventModal({
   } | null>(null);
   const [ageRange, setAgeRange] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
-  const [recurrenceRule, setRecurrenceRule] = useState<'none' | 'weekly' | 'fortnightly' | 'monthly'>('none');
+  const [recurrenceRule, setRecurrenceRule] = useState<'none' | 'weekly' | 'fortnightly' | 'monthly' | 'custom'>('custom');
   const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+  const [singleDate, setSingleDate] = useState('');
+  const [customDates, setCustomDates] = useState<string[]>([]);
+  const [calendarMonth, setCalendarMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
   const [maxAttendees, setMaxAttendees] = useState('');
   const [saving, setSaving] = useState(false);
   const [locationError, setLocationError] = useState(false);
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
   const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
+  const [coverCropSrc, setCoverCropSrc] = useState<string | null>(null);
 
   const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const src = URL.createObjectURL(file);
+    setCoverCropSrc(src);
+    e.target.value = '';
+  };
+
+  const handleCoverCropConfirm = (blob: Blob) => {
+    const file = new File([blob], `event-cover-${Date.now()}.jpg`, { type: 'image/jpeg' });
     setCoverImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setCoverImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
+    setCoverImagePreview(URL.createObjectURL(blob));
+    if (coverCropSrc) URL.revokeObjectURL(coverCropSrc);
+    setCoverCropSrc(null);
   };
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const handleCreate = async () => {
-    if (!title || !date) return;
+    if (!title) return;
     if (!exactLocation) { setLocationError(true); return; }
     
     const session = getStoredSession();
@@ -87,12 +99,15 @@ export default function CreateEventModal({
     setSaving(true);
 
     try {
-      const eventData = {
+      // For 'Date' mode: create one event per selected date
+      // For recurring modes: create one event with recurrence_rule
+      const datesToCreate = recurrenceRule === 'custom' ? customDates : [singleDate];
+
+      const baseData = {
         host_id: userId,
         title,
         description,
         category: category === 'Other' ? (customCategory || 'Other') : category,
-        event_date: date,
         event_time: time,
         age_range: ageRange || null,
         is_private: isPrivate,
@@ -101,28 +116,38 @@ export default function CreateEventModal({
         exact_address: exactLocation ? exactLocation.address : null,
         latitude: exactLocation ? exactLocation.lat : null,
         longitude: exactLocation ? exactLocation.lng : null,
-        recurrence_rule: recurrenceRule === 'none' ? null : recurrenceRule,
-        recurrence_end_date: (recurrenceRule !== 'none' && recurrenceEndDate) ? recurrenceEndDate : null,
+        recurrence_rule: recurrenceRule === 'custom' ? null : recurrenceRule,
+        recurrence_end_date: recurrenceRule !== 'custom' && recurrenceEndDate ? recurrenceEndDate : null,
         max_attendees: maxAttendees ? parseInt(maxAttendees) : null,
       };
 
-      
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/events`,
-        {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey!,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation',
-          },
-          body: JSON.stringify(eventData),
-        }
+      // Create all events (parallel for Date mode, single for recurring)
+      const responses = await Promise.all(
+        datesToCreate.map(date =>
+          fetch(`${supabaseUrl}/rest/v1/events`, {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseKey!,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation',
+            },
+            body: JSON.stringify({ ...baseData, event_date: date }),
+          })
+        )
       );
 
+      const failed = responses.find(r => !r.ok);
+      if (failed) {
+        const errorText = await failed.text();
+        console.error('Event creation failed:', failed.status, errorText);
+        return;
+      }
+
+      const allCreated = await Promise.all(responses.map(r => r.json()));
+      const res = { ok: true };
       if (res.ok) {
-        let [newEvent] = await res.json();
+        let [newEvent] = allCreated[0];
 
         // Upload cover image if selected
         if (coverImageFile && newEvent?.id) {
@@ -175,10 +200,6 @@ export default function CreateEventModal({
           rsvp_count: 0,
           user_rsvp: false,
         });
-      } else {
-        const errorText = await res.text();
-        console.error('Event creation failed:', res.status, errorText);
-        console.error('Request data was:', eventData);
       }
     } catch (err) {
       console.error('Error creating event:', err);
@@ -188,8 +209,18 @@ export default function CreateEventModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50">
-      <div className="bg-white rounded-t-2xl w-full max-w-md flex flex-col max-h-[92vh]">
+    <>
+    {coverCropSrc && (
+      <ImageCropModal
+        imageSrc={coverCropSrc}
+        aspect={16/9}
+        title="Crop cover photo"
+        onConfirm={handleCoverCropConfirm}
+        onCancel={() => { URL.revokeObjectURL(coverCropSrc); setCoverCropSrc(null); }}
+      />
+    )}
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-end justify-center z-50">
+      <div className="bg-white/85 backdrop-blur-md rounded-t-2xl w-full max-w-md flex flex-col max-h-[92vh] border-t border-x border-white/60 shadow-xl">
         {/* Sticky modal header */}
         <div className="flex-shrink-0 flex justify-between items-center px-6 py-4 border-b border-gray-100">
           <h2 className="text-2xl font-bold text-gray-900">Create Event</h2>
@@ -265,50 +296,94 @@ export default function CreateEventModal({
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900"
-                />
-              </div>
-              {/* Custom time picker */}
-              <div className="flex gap-2">
-                <select
-                  value={(() => {
-                    const [h] = time.split(':');
-                    const hour = parseInt(h, 10);
-                    return hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
-                  })()}
-                  onChange={(e) => {
-                    const label = e.target.value;
-                    const isPM = label.includes('PM');
-                    const num = parseInt(label, 10);
-                    const hour = num === 12 ? (isPM ? 12 : 0) : isPM ? num + 12 : num;
-                    const [, m] = time.split(':');
-                    setTime(`${String(hour).padStart(2, '0')}:${m || '00'}`);
-                  }}
-                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {['6 AM','7 AM','8 AM','9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM'].map(h => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-                <select
-                  value={(() => { const [,m] = time.split(':'); return m || '00'; })()}
-                  onChange={(e) => {
-                    const [h] = time.split(':');
-                    setTime(`${h}:${e.target.value}`);
-                  }}
-                  className="w-24 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {['00','15','30','45'].map(m => (
-                    <option key={m} value={m}>{m === '00' ? ':00' : `:${m}`}</option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              {/* Time picker */}
+              {(() => {
+                const [hStr, mStr] = time.split(':');
+                const hour24 = parseInt(hStr || '9', 10);
+                const isPM = hour24 >= 12;
+                const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+                const minute = Math.round(parseInt(mStr || '0', 10) / 5) * 5 % 60;
+                const [showPicker, setShowPicker] = useState(false);
+
+                const hours = [12,1,2,3,4,5,6,7,8,9,10,11];
+                const minutes = [0,5,10,15,20,25,30,35,40,45,50,55];
+                const formatted = `${hour12}:${String(minute).padStart(2,'0')} ${isPM ? 'PM' : 'AM'}`;
+
+                const setHour = (h12: number) => {
+                  const h24 = h12 === 12 ? (isPM ? 12 : 0) : isPM ? h12 + 12 : h12;
+                  setTime(`${String(h24).padStart(2,'0')}:${String(minute).padStart(2,'0')}`);
+                };
+                const setMin = (m: number) => {
+                  setTime(`${String(hour24).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+                };
+                const toggleAmPm = (pm: boolean) => {
+                  const h24 = hour12 === 12 ? (pm ? 12 : 0) : pm ? hour12 + 12 : hour12;
+                  setTime(`${String(h24).padStart(2,'0')}:${String(minute).padStart(2,'0')}`);
+                };
+
+                return (
+                  <div>
+                    <button type="button" onClick={() => setShowPicker(v => !v)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-emerald-300 transition-colors">
+                      <span className="text-sm text-gray-500">Time</span>
+                      <span className="text-lg font-bold text-gray-900 font-mono">{formatted}</span>
+                    </button>
+
+                    {showPicker && (
+                      <div className="mt-2 rounded-2xl border border-gray-200 overflow-hidden shadow-md bg-white">
+                        {/* Selection highlight */}
+                        <div className="relative" style={{height: 200}}>
+                          {/* Centre line highlight */}
+                          <div className="absolute inset-x-0 pointer-events-none z-10" style={{top: '50%', transform: 'translateY(-50%)', height: 40, background: 'rgba(16,185,129,0.07)', borderTop: '1.5px solid rgba(16,185,129,0.2)', borderBottom: '1.5px solid rgba(16,185,129,0.2)'}} />
+
+                          <div className="flex h-full">
+                            {/* Hours */}
+                            <div className="flex-1 overflow-y-scroll" style={{scrollSnapType:'y mandatory', scrollbarWidth:'none', msOverflowStyle:'none'}}
+                              ref={el => { if (el) { const idx = hours.indexOf(hour12); el.scrollTop = idx * 40; } }}>
+                              <style>{`.no-scroll::-webkit-scrollbar { display: none; }`}</style>
+                              <div style={{paddingTop: 80, paddingBottom: 80}}>
+                                {hours.map(h => (
+                                  <div key={h} onClick={() => setHour(h)}
+                                    style={{scrollSnapAlign:'center', height: 40}}
+                                    className={`flex items-center justify-center text-xl font-bold cursor-pointer transition-colors ${h === hour12 ? 'text-emerald-600' : 'text-gray-300'}`}>
+                                    {String(h).padStart(2,'0')}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Colon */}
+                            <div className="flex items-center justify-center w-5 text-xl font-bold text-gray-300 flex-shrink-0 pointer-events-none">:</div>
+
+                            {/* Minutes */}
+                            <div className="flex-1 overflow-y-scroll" style={{scrollSnapType:'y mandatory', scrollbarWidth:'none', msOverflowStyle:'none'}}
+                              ref={el => { if (el) { const idx = minutes.indexOf(minute); el.scrollTop = idx * 40; } }}>
+                              <div style={{paddingTop: 80, paddingBottom: 80}}>
+                                {minutes.map(m => (
+                                  <div key={m} onClick={() => setMin(m)}
+                                    style={{scrollSnapAlign:'center', height: 40}}
+                                    className={`flex items-center justify-center text-xl font-bold cursor-pointer transition-colors ${m === minute ? 'text-emerald-600' : 'text-gray-300'}`}>
+                                    {String(m).padStart(2,'0')}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* AM/PM */}
+                            <div className="flex flex-col items-center justify-center gap-2 px-3 flex-shrink-0 border-l border-gray-100">
+                              <button type="button" onClick={() => toggleAmPm(false)}
+                                className={`w-12 py-2.5 rounded-xl text-sm font-bold transition-colors ${!isPM ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:bg-gray-100'}`}>AM</button>
+                              <button type="button" onClick={() => toggleAmPm(true)}
+                                className={`w-12 py-2.5 rounded-xl text-sm font-bold transition-colors ${isPM ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:bg-gray-100'}`}>PM</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Repeat / Recurrence */}
@@ -316,9 +391,9 @@ export default function CreateEventModal({
               <p className="text-sm font-medium text-gray-700 mb-2">Repeat</p>
               <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200">
                 {([
-                  { value: 'none',        label: 'Once' },
+                  { value: 'custom',      label: 'Date' },
                   { value: 'weekly',      label: 'Weekly' },
-                  { value: 'fortnightly', label: 'Fortnightly' },
+                  { value: 'fortnightly', label: '2 weeks' },
                   { value: 'monthly',     label: 'Monthly' },
                 ] as const).map(opt => (
                   <button
@@ -333,17 +408,136 @@ export default function CreateEventModal({
                   </button>
                 ))}
               </div>
-              {recurrenceRule !== 'none' && (
-                <div className="mt-3">
-                  <label className="text-xs text-gray-500 mb-1 block">End date (optional)</label>
-                  <input
-                    type="date"
-                    value={recurrenceEndDate}
-                    onChange={(e) => setRecurrenceEndDate(e.target.value)}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 text-sm"
-                  />
-                </div>
-              )}
+
+              {/* Single date picker for recurring modes */}
+              {recurrenceRule !== 'none' && recurrenceRule !== 'custom' && (() => {
+                const [year, month] = calendarMonth.split('-').map(Number);
+                const firstDay = new Date(year, month - 1, 1).getDay();
+                const daysInMonth = new Date(year, month, 0).getDate();
+                const today = new Date().toISOString().slice(0, 10);
+                const prevMonth = () => {
+                  const d = new Date(year, month - 2, 1);
+                  setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+                };
+                const nextMonth = () => {
+                  const d = new Date(year, month, 1);
+                  setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+                };
+                const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+                return (
+                  <div className="mt-3 bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                      <button type="button" onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">‹</button>
+                      <span className="text-sm font-semibold text-gray-900">{monthLabel}</span>
+                      <button type="button" onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">›</button>
+                    </div>
+                    <div className="grid grid-cols-7 text-center px-2 pt-2">
+                      {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                        <div key={d} className="text-[10px] font-semibold text-gray-400 py-1">{d}</div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7 px-2 pb-3 gap-y-1">
+                      {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} />)}
+                      {Array.from({ length: daysInMonth }).map((_, i) => {
+                        const day = i + 1;
+                        const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                        const selected = singleDate === dateStr;
+                        const isPast = dateStr < today;
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            disabled={isPast}
+                            onClick={() => setSingleDate(dateStr)}
+                            className={`h-8 w-full rounded-lg text-xs font-semibold transition-colors ${
+                              selected ? 'bg-emerald-600 text-white' :
+                              isPast ? 'text-gray-200 cursor-not-allowed' :
+                              'text-gray-700 hover:bg-emerald-50 hover:text-emerald-600'
+                            }`}
+                          >{day}</button>
+                        );
+                      })}
+                    </div>
+                    {singleDate && (
+                      <div className="px-4 pb-3">
+                        <span className="text-xs text-emerald-600 font-semibold">{new Date(singleDate + 'T00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Custom date picker calendar */}
+              {recurrenceRule === 'custom' && (() => {
+                const [year, month] = calendarMonth.split('-').map(Number);
+                const firstDay = new Date(year, month - 1, 1).getDay();
+                const daysInMonth = new Date(year, month, 0).getDate();
+                const today = new Date().toISOString().slice(0, 10);
+                const prevMonth = () => {
+                  const d = new Date(year, month - 2, 1);
+                  setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+                };
+                const nextMonth = () => {
+                  const d = new Date(year, month, 1);
+                  setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+                };
+                const toggleDate = (dateStr: string) => {
+                  setCustomDates(prev => {
+                    if (prev.includes(dateStr)) {
+                      if (prev.length <= 1) return prev; // always keep at least 1
+                      return prev.filter(d => d !== dateStr);
+                    }
+                    return [...prev, dateStr].sort();
+                  });
+                };
+                const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+                return (
+                  <div className="mt-3 bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                    {/* Month nav */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                      <button type="button" onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">‹</button>
+                      <span className="text-sm font-semibold text-gray-900">{monthLabel}</span>
+                      <button type="button" onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">›</button>
+                    </div>
+                    {/* Day labels */}
+                    <div className="grid grid-cols-7 text-center px-2 pt-2">
+                      {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                        <div key={d} className="text-[10px] font-semibold text-gray-400 py-1">{d}</div>
+                      ))}
+                    </div>
+                    {/* Days grid */}
+                    <div className="grid grid-cols-7 px-2 pb-3 gap-y-1">
+                      {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} />)}
+                      {Array.from({ length: daysInMonth }).map((_, i) => {
+                        const day = i + 1;
+                        const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                        const selected = customDates.includes(dateStr);
+                        const isPast = dateStr < today;
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            disabled={isPast}
+                            onClick={() => toggleDate(dateStr)}
+                            className={`h-8 w-full rounded-lg text-xs font-semibold transition-colors ${
+                              selected ? 'bg-emerald-600 text-white' :
+                              isPast ? 'text-gray-200 cursor-not-allowed' :
+                              'text-gray-700 hover:bg-emerald-50 hover:text-emerald-600'
+                            }`}
+                          >{day}</button>
+                        );
+                      })}
+                    </div>
+                    {/* Selected count */}
+                    {customDates.length > 0 && (
+                      <div className="px-4 pb-3 flex items-center justify-between">
+                        <span className="text-xs text-emerald-600 font-semibold">{customDates.length} date{customDates.length > 1 ? 's' : ''} selected</span>
+                        <button type="button" onClick={() => setCustomDates([])} className="text-xs text-gray-400 hover:text-red-500 transition-colors">Clear</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div>
@@ -475,7 +669,7 @@ export default function CreateEventModal({
             </button>
             <button
               onClick={handleCreate}
-              disabled={!title || !date || saving || (category === 'Other' && !customCategory)}
+              disabled={!title || (recurrenceRule === 'custom' && customDates.length === 0) || (recurrenceRule !== 'custom' && !singleDate) || saving || (category === 'Other' && !customCategory)}
               className="flex-1 py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
             >
               {saving ? 'Creating...' : 'Create Event'}
@@ -484,5 +678,6 @@ export default function CreateEventModal({
         </div>
       </div>
     </div>
+    </>
   );
 }

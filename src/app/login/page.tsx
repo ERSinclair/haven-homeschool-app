@@ -90,7 +90,7 @@ export default function LoginPage() {
           const profile = profiles[0];
           const completionStep = checkProfileCompletion(profile);
           
-          window.location.href = '/discover';
+          window.location.href = '/feed';
         } else {
           window.location.href = '/signup/resume?step=2';
         }

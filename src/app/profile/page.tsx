@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { getStoredSession, clearStoredSession } from '@/lib/session';
+import { getStoredSession, getStoredSessionAsync, clearStoredSession } from '@/lib/session';
 import { getAvatarColor, statusColors } from '@/lib/colors';
 import { geocodeSuburb } from '@/lib/geocode';
 import AvatarUpload from '@/components/AvatarUpload';
@@ -22,6 +22,9 @@ type Profile = {
   id: string;
   family_name: string;
   display_name?: string;
+  email_confirmed_at?: string;
+  last_active_at?: string;
+  created_at?: string;
   location_name: string;
   kids_ages: number[];
   status: string | string[];
@@ -78,14 +81,15 @@ export default function ProfilePage() {
   const [isViewingOtherUser, setIsViewingOtherUser] = useState(false);
   const [reportBlockMode, setReportBlockMode] = useState<'report' | 'block' | null>(null);
   const [notifCount, setNotifCount] = useState(0);
+  const [pendingConnections, setPendingConnections] = useState(0);
   const router = useRouter();
 
   // Load user and profile
   useEffect(() => {
     const loadProfile = async () => {
       try {
-        // Get session from localStorage (bypass SDK)
-        const session = getStoredSession();
+        // Use async session to handle token refresh (important on mobile/iPhone)
+        const session = await getStoredSessionAsync();
         
         if (!session?.user) {
           router.push('/login');
@@ -185,6 +189,19 @@ export default function ProfilePage() {
             }, 100);
           }
         }
+      // Fetch pending connection requests
+      if (!viewingOtherUser) {
+        try {
+          const connRes = await fetch(
+            `${supabaseUrl}/rest/v1/connections?receiver_id=eq.${session.user.id}&status=eq.pending&select=id`,
+            { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+          );
+          if (connRes.ok) {
+            const conns = await connRes.json();
+            setPendingConnections(Array.isArray(conns) ? conns.length : 0);
+          }
+        } catch { /* silent */ }
+      }
       } catch (err) {
         console.error('Error loading profile:', err);
       } finally {
@@ -314,7 +331,7 @@ export default function ProfilePage() {
     }
   };
 
-  // Fetch unread notification count to badge the button
+  // Notification badge removed — feed handles this
   useEffect(() => {
     if (isViewingOtherUser) return;
     const session = getStoredSession();
@@ -453,7 +470,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -461,7 +478,7 @@ export default function ProfilePage() {
 
   if (!user || !profile) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+      <div className="min-h-screen bg-transparent">
         <div className="max-w-md mx-auto px-4 py-16 text-center">
           <div className="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-6 flex items-center justify-center">
             <span className="text-3xl font-bold text-emerald-600" style={{ fontFamily: 'var(--font-fredoka)' }}>
@@ -485,7 +502,7 @@ export default function ProfilePage() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+    <div className="min-h-screen bg-transparent">
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
         {/* Header — pulled out of px-4 so it sits flush with the edge like other pages */}
         <div className="-mx-4">
@@ -507,8 +524,13 @@ export default function ProfilePage() {
         {/* Nav chips — Calendar, Connections, Education, Board */}
         {!isEditing && !isViewingOtherUser && (
           <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
-            <Link href="/connections" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
+            <Link href="/connections?tab=pending" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 text-gray-500 hover:text-gray-700 relative">
               Connections
+              {pendingConnections > 0 && (
+                <span className="min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                  {pendingConnections > 9 ? '9+' : pendingConnections}
+                </span>
+              )}
             </Link>
             <Link href="/calendar" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Calendar
@@ -590,23 +612,15 @@ export default function ProfilePage() {
 
         {/* Profile Card */}
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
-          {/* Top corners — Edit (left) | Notifications (right) */}
+          {/* Top corner — Edit */}
           {!isEditing && !isViewingOtherUser && (
-            <div className="flex items-center justify-between pb-3">
+            <div className="flex items-center pb-3">
               <button
                 onClick={() => setIsEditing(true)}
                 className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
               >
                 Edit
               </button>
-              <Link href="/notifications" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors flex items-center gap-1">
-                Notifications
-                {notifCount > 0 && (
-                  <span className="bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center border border-white leading-none flex-shrink-0">
-                    {notifCount > 9 ? '9+' : notifCount}
-                  </span>
-                )}
-              </Link>
             </div>
           )}
           {/* Avatar & Name */}
@@ -653,11 +667,32 @@ export default function ProfilePage() {
               </div>
             )}
             
-            {profile.is_verified && (
-              <span className="inline-flex items-center text-emerald-600 text-sm mt-1">
-                Verified family
-              </span>
-            )}
+            {/* Meta row: verified + member since + activity */}
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+              {profile.email_confirmed_at && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full border border-emerald-200">
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                  Verified
+                </span>
+              )}
+              {profile.created_at && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-50 text-gray-500 text-xs font-medium rounded-full border border-gray-200">
+                  Joined {new Date(profile.created_at).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })}
+                </span>
+              )}
+              {profile.last_active_at && (() => {
+                const diffMs = Date.now() - new Date(profile.last_active_at).getTime();
+                const diffDays = Math.floor(diffMs / 86400000);
+                const isOnline = diffMs < 15 * 60000;
+                const label = isOnline ? 'Online' : diffDays === 0 ? 'Active today' : diffDays === 1 ? 'Active yesterday' : diffDays < 7 ? `Active ${diffDays}d ago` : 'Offline';
+                return (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full border ${isOnline ? 'bg-white text-green-700 border-green-200' : 'bg-white text-gray-500 border-gray-200'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-400'}`} />
+                    {label}
+                  </span>
+                );
+              })()}
+            </div>
           </div>
 
           {/* Why you're here */}
@@ -1052,6 +1087,27 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* Support Haven card */}
+        {!isViewingOtherUser && (
+          <div className="bg-white border border-gray-100 rounded-2xl p-5 mb-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+              <h3 className="font-bold text-base text-gray-900">Support Haven</h3>
+            </div>
+            <p className="text-gray-500 text-sm mb-4">
+              Haven is free for every family. If it's valuable to you, consider supporting it — you'll help keep it alive & growing.
+            </p>
+            <button
+              onClick={() => router.push('/support')}
+              className="w-full py-2.5 bg-amber-50 text-amber-700 font-semibold rounded-xl border border-amber-200 hover:bg-amber-100 transition-colors text-sm"
+            >
+              Become a Supporter
+            </button>
+          </div>
+        )}
 
         {/* Photo Gallery */}
         <div className="mb-6" data-gallery>

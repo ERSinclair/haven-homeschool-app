@@ -13,6 +13,7 @@ export type ChatMessage = {
   created_at: string;
   file_url?: string | null;
   file_type?: string | null;
+  read_at?: string | null;
   sender_profile?: {
     display_name?: string | null;
     family_name?: string | null;
@@ -250,12 +251,18 @@ export default function ChatView({
                         </svg>
                         <span className="text-xs truncate max-w-[150px]">{msg.content || 'File'}</span>
                       </a>
-                      <p className={`text-xs mt-1 ${isMe ? 'text-emerald-200' : 'text-gray-400'}`}>{formatTime(msg.created_at)}</p>
+                      <div className="flex items-center gap-1 mt-1 justify-end">
+                        <p className={`text-xs ${isMe ? 'text-emerald-200' : 'text-gray-400'}`}>{formatTime(msg.created_at)}</p>
+                        {isMe && (msg.read_at ? <svg className="w-3.5 h-3.5 text-emerald-200" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L8 8.586l3.293-3.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg> : <svg className="w-3 h-3 text-emerald-300 opacity-60" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>)}
+                      </div>
                     </div>
                   ) : (
                     <div className={`px-4 py-3 rounded-2xl text-sm ${isMe ? 'bg-emerald-600 text-white rounded-br-sm' : 'bg-white text-gray-900 shadow-sm rounded-bl-sm'}`}>
                       <p className="break-words">{msg.content}</p>
-                      <p className={`text-xs mt-1 ${isMe ? 'text-emerald-200' : 'text-gray-400'}`}>{formatTime(msg.created_at)}</p>
+                      <div className="flex items-center gap-1 mt-1 justify-end">
+                        <p className={`text-xs ${isMe ? 'text-emerald-200' : 'text-gray-400'}`}>{formatTime(msg.created_at)}</p>
+                        {isMe && (msg.read_at ? <svg className="w-3.5 h-3.5 text-emerald-200" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L8 8.586l3.293-3.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg> : <svg className="w-3 h-3 text-emerald-300 opacity-60" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>)}
+                      </div>
                     </div>
                   )}
 
@@ -290,7 +297,7 @@ export default function ChatView({
 
       {/* ── Input bar ── */}
       <div
-        className="relative flex-shrink-0 bg-white border-t border-gray-100 px-4 py-3"
+        className="relative flex-shrink-0 bg-white/70 backdrop-blur-md border-t border-white/40 px-4 py-3"
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
       >
         {/* Pending file preview */}
@@ -340,15 +347,10 @@ export default function ChatView({
               el.style.height = 'auto';
               el.style.height = Math.min(el.scrollHeight, 120) + 'px';
             }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
+            onKeyDown={undefined}
             placeholder={pendingFile ? 'Add a caption (optional)...' : placeholder}
             rows={1}
-            className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
+            className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none overflow-hidden"
             style={{ minHeight: '40px', maxHeight: '120px' }}
           />
 

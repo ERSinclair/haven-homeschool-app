@@ -29,6 +29,7 @@ type Circle = {
   meetup_location?: string | null;
   meetup_notes?: string | null;
   cover_image_url?: string | null;
+  is_public: boolean;
 };
 
 type Member = {
@@ -116,6 +117,9 @@ export default function CirclePage() {
   const [contextMenuMsg, setContextMenuMsg] = useState<ChatViewMessage | null>(null);
   const chatFileRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'chat' | 'info'>('chat');
+  const [announcement, setAnnouncement] = useState('');
+  const [announcementEdit, setAnnouncementEdit] = useState(false);
+  const [announcementInput, setAnnouncementInput] = useState('');
   const [infoSubTab, setInfoSubTab] = useState<'members' | 'resources' | 'meetup' | 'board'>('members');
   const [boardPosts, setBoardPosts] = useState<BoardPost[]>([]);
   const [boardLoading, setBoardLoading] = useState(false);
@@ -130,6 +134,8 @@ export default function CirclePage() {
   const [meetupNotes, setMeetupNotes] = useState('');
   const [savingMeetup, setSavingMeetup] = useState(false);
   const [showMeetupForm, setShowMeetupForm] = useState(false);
+  const [meetupCalendarMonth, setMeetupCalendarMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
+  const [showMeetupTimePicker, setShowMeetupTimePicker] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
   const [showAddResource, setShowAddResource] = useState(false);
   const [resourceTitle, setResourceTitle] = useState('');
@@ -164,6 +170,7 @@ export default function CirclePage() {
   const [uploadingCover, setUploadingCover] = useState(false);
   const [coverCropSrc, setCoverCropSrc] = useState<string | null>(null);
   const [confirmDeleteCircle, setConfirmDeleteCircle] = useState(false);
+  const [confirmPrivacyToggle, setConfirmPrivacyToggle] = useState(false);
   const [deletingCircle, setDeletingCircle] = useState(false);
 
   const circleId = params.id as string;
@@ -210,6 +217,7 @@ export default function CirclePage() {
         }
 
         setCircle(circleData);
+        if (circleData.pinned_announcement) setAnnouncement(circleData.pinned_announcement);
         if (circleData.next_meetup_date) setMeetupDate(circleData.next_meetup_date);
         if (circleData.next_meetup_time) setMeetupTime(circleData.next_meetup_time.slice(0, 5));
         if (circleData.meetup_location) setMeetupLocation(circleData.meetup_location);
@@ -494,12 +502,31 @@ export default function CirclePage() {
       if (!session) return;
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const headers = { apikey: supabaseKey!, Authorization: `Bearer ${session.access_token}` };
+
+      // Fetch posts without FK join (no FK defined on community_posts.author_id)
       const res = await fetch(
-        `${supabaseUrl}/rest/v1/community_posts?circle_id=eq.${circleId}&select=id,title,content,tag,created_at,author_id,author:profiles(family_name,display_name,avatar_url)&order=created_at.desc`,
-        { headers: { apikey: supabaseKey!, Authorization: `Bearer ${session.access_token}` } }
+        `${supabaseUrl}/rest/v1/community_posts?circle_id=eq.${circleId}&select=id,title,content,tag,created_at,author_id&order=created_at.desc`,
+        { headers }
       );
-      const data = await res.json();
-      setBoardPosts(Array.isArray(data) ? data : []);
+      const posts = await res.json();
+      if (!Array.isArray(posts)) { setBoardPosts([]); return; }
+
+      // Enrich with author profiles
+      const authorIds = [...new Set(posts.map((p: any) => p.author_id).filter(Boolean))];
+      let profileMap: Record<string, any> = {};
+      if (authorIds.length > 0) {
+        const pRes = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?id=in.(${authorIds.join(',')})&select=id,family_name,display_name,avatar_url`,
+          { headers }
+        );
+        const profiles = pRes.ok ? await pRes.json() : [];
+        if (Array.isArray(profiles)) {
+          profiles.forEach((p: any) => { profileMap[p.id] = p; });
+        }
+      }
+
+      setBoardPosts(posts.map((p: any) => ({ ...p, author: profileMap[p.author_id] || null })));
     } catch {
       // silent
     } finally {
@@ -1004,7 +1031,60 @@ export default function CirclePage() {
     }
   };
 
-  const deleteCircle = async () => {
+  const toggleCirclePrivacy = async () => {
+    if (!circle || !isAdmin) return;
+    const session = getStoredSession();
+    if (!session?.user) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' };
+    const newValue = !circle.is_public;
+    const label = newValue ? 'public' : 'private';
+    try {
+      // Update circle visibility
+      const res = await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ is_public: newValue }),
+      });
+      if (!res.ok) throw new Error();
+      setCircle(prev => prev ? { ...prev, is_public: newValue } : null);
+      setConfirmPrivacyToggle(false);
+
+      // Post system message to chat
+      const systemMsg = `This circle has been made ${label}.`;
+      const msgRes = await fetch(`${supabaseUrl}/rest/v1/circle_messages`, {
+        method: 'POST',
+        headers: { ...headers, 'Prefer': 'return=representation' },
+        body: JSON.stringify({ circle_id: circleId, sender_id: session.user.id, content: systemMsg, message_type: 'system' }),
+      });
+      if (msgRes.ok) {
+        const [sentMsg] = await msgRes.json();
+        const currentMember = members.find(m => m.member_id === session.user.id);
+        setMessages(prev => [...prev, { ...sentMsg, sender_profile: currentMember?.profile }]);
+      }
+
+      // Notify all other members
+      const otherMembers = members.filter(m => m.member_id !== session.user.id);
+      for (const member of otherMembers) {
+createNotification({
+          userId: member.member_id,
+          type: 'circle_update',
+          title: circle.name,
+          body: `This circle has been made ${label}.`,
+          actorId: session.user.id,
+          referenceId: circleId,
+          accessToken: session.access_token,
+        });
+      }
+
+      toast(`Circle is now ${label}`, 'success');
+    } catch {
+      toast('Failed to update circle visibility', 'error');
+    }
+  };
+
+  const leaveOrCloseCircle = async () => {
     if (deletingCircle) return;
     setDeletingCircle(true);
     try {
@@ -1012,15 +1092,47 @@ export default function CirclePage() {
       if (!session?.user) return;
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
-      await fetch(`${supabaseUrl}/rest/v1/circle_messages?circle_id=eq.${circleId}`, { method: 'DELETE', headers });
-      await fetch(`${supabaseUrl}/rest/v1/circle_members?circle_id=eq.${circleId}`, { method: 'DELETE', headers });
-      const res = await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`, { method: 'DELETE', headers });
-      if (!res.ok) throw new Error();
-      toast('Circle deleted', 'success');
-      router.push('/circles');
+      const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' };
+
+      // Get all members sorted by joined_at ascending (oldest = most senior)
+      const membersRes = await fetch(
+        `${supabaseUrl}/rest/v1/circle_members?circle_id=eq.${circleId}&order=joined_at.asc&select=id,member_id,role`,
+        { headers }
+      );
+      const allMembers: { id: string; member_id: string; role: string }[] = await membersRes.json();
+      const otherMembers = allMembers.filter(m => m.member_id !== currentUserId);
+
+      if (otherMembers.length === 0) {
+        // Last member — close the circle entirely
+        await fetch(`${supabaseUrl}/rest/v1/circle_messages?circle_id=eq.${circleId}`, { method: 'DELETE', headers });
+        await fetch(`${supabaseUrl}/rest/v1/circle_members?circle_id=eq.${circleId}`, { method: 'DELETE', headers });
+        const res = await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`, { method: 'DELETE', headers });
+        if (!res.ok) throw new Error();
+        toast('Circle closed', 'success');
+        router.push('/circles');
+      } else {
+        // If owner, transfer ownership to next most senior member
+        if (isAdmin) {
+          const nextOwner = otherMembers[0];
+          await fetch(
+            `${supabaseUrl}/rest/v1/circle_members?id=eq.${nextOwner.id}`,
+            { method: 'PATCH', headers, body: JSON.stringify({ role: 'admin' }) }
+          );
+          await fetch(
+            `${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`,
+            { method: 'PATCH', headers, body: JSON.stringify({ created_by: nextOwner.member_id }) }
+          );
+        }
+        // Remove self
+        await fetch(
+          `${supabaseUrl}/rest/v1/circle_members?circle_id=eq.${circleId}&member_id=eq.${currentUserId}`,
+          { method: 'DELETE', headers }
+        );
+        toast('You have left the circle', 'success');
+        router.push('/circles');
+      }
     } catch {
-      toast('Failed to delete circle', 'error');
+      toast('Failed to leave circle', 'error');
       setDeletingCircle(false);
     }
   };
@@ -1067,7 +1179,7 @@ export default function CirclePage() {
           <p className="text-red-600 mb-4">{error || 'Circle not found'}</p>
           <Link
             href="/circles"
-            className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
           >
             Back to Circles
           </Link>
@@ -1138,22 +1250,70 @@ export default function CirclePage() {
       {/* Content — flex-1, overflow-hidden so chat can control its own scroll */}
       <div className="flex-1 overflow-hidden max-w-md mx-auto w-full">
         {activeTab === 'chat' ? (
-          <ChatView
-            onAvatarPress={(uid) => setProfileCardUserId(uid)}
-            messages={messages as ChatViewMessage[]}
-            currentUserId={currentUserId}
-            reactions={circleReactions}
-            onSend={sendMessage}
-            onSendFile={sendCircleFile}
-            onReact={toggleCircleReaction}
-            onLongPress={msg => setContextMenuMsg(msg)}
-            sending={sendingMessage}
-            uploadingFile={uploadingChatFile}
-            showSenderName={true}
-            placeholder="Message the circle..."
-            emptyText="No messages yet. Start the conversation!"
-            scrollTrigger={activeTab}
-          />
+          <div className="flex flex-col h-full">
+            {/* Pinned announcement */}
+            {announcement && !announcementEdit && (
+              <div className="mx-3 mt-2 mb-1 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
+                <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 3a1 1 0 00-1.447-.894L8.763 6H5a3 3 0 000 6h.28l1.771 5.316A1 1 0 008 18h1a1 1 0 001-1v-4.382l6.553 3.276A1 1 0 0018 15V3z" clipRule="evenodd" /></svg>
+                <p className="text-xs text-amber-800 flex-1 leading-relaxed">{announcement}</p>
+                {isAdmin && (
+                  <button onClick={() => { setAnnouncementInput(announcement); setAnnouncementEdit(true); }} className="text-amber-500 hover:text-amber-700 ml-1 flex-shrink-0">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                  </button>
+                )}
+              </div>
+            )}
+            {announcementEdit && (
+              <div className="mx-3 mt-2 mb-1 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-2">
+                <textarea
+                  value={announcementInput}
+                  onChange={e => setAnnouncementInput(e.target.value)}
+                  placeholder="Pin an announcement for the circle..."
+                  className="w-full text-xs text-gray-800 bg-transparent resize-none border-none focus:outline-none"
+                  rows={2}
+                  maxLength={200}
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setAnnouncementEdit(false)} className="text-xs text-gray-500 px-2 py-1 rounded-lg hover:bg-gray-100">Cancel</button>
+                  <button onClick={async () => {
+                    const session = getStoredSession();
+                    if (!session) return;
+                    await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/circles?id=eq.${circleId}`, {
+                      method: 'PATCH',
+                      headers: { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                      body: JSON.stringify({ pinned_announcement: announcementInput || null, pinned_at: announcementInput ? new Date().toISOString() : null }),
+                    });
+                    setAnnouncement(announcementInput);
+                    setAnnouncementEdit(false);
+                  }} className="text-xs bg-emerald-600 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-700">Save</button>
+                </div>
+              </div>
+            )}
+            {isAdmin && !announcement && !announcementEdit && (
+              <button onClick={() => { setAnnouncementInput(''); setAnnouncementEdit(true); }} className="mx-3 mt-2 mb-1 text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 3a1 1 0 00-1.447-.894L8.763 6H5a3 3 0 000 6h.28l1.771 5.316A1 1 0 008 18h1a1 1 0 001-1v-4.382l6.553 3.276A1 1 0 0018 15V3z" clipRule="evenodd" /></svg>
+                Pin an announcement
+              </button>
+            )}
+            <div className="flex-1 overflow-hidden">
+              <ChatView
+                onAvatarPress={(uid) => setProfileCardUserId(uid)}
+                messages={messages as ChatViewMessage[]}
+                currentUserId={currentUserId}
+                reactions={circleReactions}
+                onSend={sendMessage}
+                onSendFile={sendCircleFile}
+                onReact={toggleCircleReaction}
+                onLongPress={msg => setContextMenuMsg(msg)}
+                sending={sendingMessage}
+                uploadingFile={uploadingChatFile}
+                showSenderName={true}
+                placeholder="Message the circle..."
+                emptyText="No messages yet. Start the conversation!"
+                scrollTrigger={activeTab}
+              />
+            </div>
+          </div>
         ) : activeTab === 'info' ? (
           <div className="flex flex-col h-full">
             {/* Cover image banner */}
@@ -1253,7 +1413,7 @@ export default function CirclePage() {
             {/* Add resource button */}
             <button
               onClick={() => setShowAddResource(v => !v)}
-              className={`w-full mb-4 py-2.5 px-4 rounded-xl font-medium transition-colors ${showAddResource ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
+              className={`w-full mb-4 py-2.5 px-4 rounded-xl font-medium transition-colors ${showAddResource ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
             >
               {showAddResource ? 'Cancel' : '+ Add Resource'}
             </button>
@@ -1420,44 +1580,115 @@ export default function CirclePage() {
               <>
                 <button
                   onClick={() => setShowMeetupForm(v => !v)}
-                  className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${showMeetupForm ? 'bg-gray-100 text-gray-700' : 'bg-gray-900 text-white'}`}
+                  className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${showMeetupForm ? 'bg-gray-100 text-gray-700' : 'bg-emerald-600 text-white'}`}
                 >
                   {showMeetupForm ? 'Cancel' : circle?.next_meetup_date ? 'Edit meetup' : 'Schedule a meetup'}
                 </button>
               {showMeetupForm && (
               <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Date</label>
-                  <input
-                    type="date"
-                    value={meetupDate}
-                    onChange={e => setMeetupDate(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Time (optional)</label>
-                  <div className="flex gap-2">
-                    <select
-                      value={(() => { const h = parseInt(meetupTime.split(':')[0] ?? '9', 10); return h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`; })()}
-                      onChange={(e) => { const label = e.target.value; const isPM = label.includes('PM'); const num = parseInt(label, 10); const hour = num === 12 ? (isPM ? 12 : 0) : isPM ? num + 12 : num; const m = meetupTime.split(':')[1] ?? '00'; setMeetupTime(`${String(hour).padStart(2, '0')}:${m}`); }}
-                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    >
-                      {['6 AM','7 AM','8 AM','9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM'].map(h => (
-                        <option key={h} value={h}>{h}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={meetupTime.split(':')[1] ?? '00'}
-                      onChange={(e) => { const h = meetupTime.split(':')[0] ?? '09'; setMeetupTime(`${h}:${e.target.value}`); }}
-                      className="w-24 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    >
-                      {['00','15','30','45'].map(m => (
-                        <option key={m} value={m}>{m === '00' ? ':00' : `:${m}`}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                {/* Date — calendar picker */}
+                {(() => {
+                  const [year, month] = meetupCalendarMonth.split('-').map(Number);
+                  const firstDay = new Date(year, month - 1, 1).getDay();
+                  const daysInMonth = new Date(year, month, 0).getDate();
+                  const today = new Date().toISOString().slice(0, 10);
+                  const prevMonth = () => { const d = new Date(year, month - 2, 1); setMeetupCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); };
+                  const nextMonth = () => { const d = new Date(year, month, 1); setMeetupCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); };
+                  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                        <button type="button" onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">&#8249;</button>
+                        <span className="text-sm font-semibold text-gray-900">{monthLabel}</span>
+                        <button type="button" onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">&#8250;</button>
+                      </div>
+                      <div className="grid grid-cols-7 text-center px-2 pt-2">
+                        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                          <div key={d} className="text-[10px] font-semibold text-gray-400 py-1">{d}</div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 px-2 pb-3 gap-y-1">
+                        {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} />)}
+                        {Array.from({ length: daysInMonth }).map((_, i) => {
+                          const day = i + 1;
+                          const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                          const selected = meetupDate === dateStr;
+                          const isPast = dateStr < today;
+                          return (
+                            <button key={day} type="button" disabled={isPast}
+                              onClick={() => setMeetupDate(dateStr)}
+                              className={`h-8 w-full rounded-lg text-xs font-semibold transition-colors ${selected ? 'bg-emerald-600 text-white' : isPast ? 'text-gray-200 cursor-not-allowed' : 'text-gray-700 hover:bg-emerald-50 hover:text-emerald-600'}`}
+                            >{day}</button>
+                          );
+                        })}
+                      </div>
+                      {meetupDate && (
+                        <div className="px-4 pb-3">
+                          <span className="text-xs text-emerald-600 font-semibold">{new Date(meetupDate + 'T00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* Time picker */}
+                {(() => {
+                  const [hStr, mStr] = meetupTime.split(':');
+                  const hour24 = parseInt(hStr || '9', 10);
+                  const isPM = hour24 >= 12;
+                  const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+                  const minute = Math.round(parseInt(mStr || '0', 10) / 5) * 5 % 60;
+                  const hours = [12,1,2,3,4,5,6,7,8,9,10,11];
+                  const minutes = [0,5,10,15,20,25,30,35,40,45,50,55];
+                  const formatted = `${hour12}:${String(minute).padStart(2,'0')} ${isPM ? 'PM' : 'AM'}`;
+                  const setHour = (h12: number) => { const h24 = h12 === 12 ? (isPM ? 12 : 0) : isPM ? h12 + 12 : h12; setMeetupTime(`${String(h24).padStart(2,'0')}:${String(minute).padStart(2,'0')}`); };
+                  const setMin = (m: number) => { setMeetupTime(`${String(hour24).padStart(2,'0')}:${String(m).padStart(2,'0')}`); };
+                  const toggleAmPm = (pm: boolean) => { const h24 = hour12 === 12 ? (pm ? 12 : 0) : pm ? hour12 + 12 : hour12; setMeetupTime(`${String(h24).padStart(2,'0')}:${String(minute).padStart(2,'0')}`); };
+                  return (
+                    <div>
+                      <button type="button" onClick={() => setShowMeetupTimePicker(v => !v)}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-emerald-300 transition-colors">
+                        <span className="text-sm text-gray-500">Time</span>
+                        <span className="text-lg font-bold text-gray-900 font-mono">{formatted}</span>
+                      </button>
+                      {showMeetupTimePicker && (
+                        <div className="mt-2 rounded-2xl border border-gray-200 overflow-hidden shadow-md bg-white">
+                          <div className="relative" style={{height: 200}}>
+                            <div className="absolute inset-x-0 pointer-events-none z-10" style={{top: '50%', transform: 'translateY(-50%)', height: 40, background: 'rgba(16,185,129,0.07)', borderTop: '1.5px solid rgba(16,185,129,0.2)', borderBottom: '1.5px solid rgba(16,185,129,0.2)'}} />
+                            <div className="flex h-full">
+                              <div className="flex-1 overflow-y-scroll" style={{scrollSnapType:'y mandatory', scrollbarWidth:'none'}}
+                                ref={el => { if (el) { const idx = hours.indexOf(hour12); el.scrollTop = idx * 40; } }}>
+                                <div style={{paddingTop: 80, paddingBottom: 80}}>
+                                  {hours.map(h => (
+                                    <div key={h} onClick={() => setHour(h)} style={{scrollSnapAlign:'center', height: 40}}
+                                      className={`flex items-center justify-center text-xl font-bold cursor-pointer transition-colors ${h === hour12 ? 'text-emerald-600' : 'text-gray-300'}`}>
+                                      {String(h).padStart(2,'0')}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-center w-5 text-xl font-bold text-gray-300 flex-shrink-0 pointer-events-none">:</div>
+                              <div className="flex-1 overflow-y-scroll" style={{scrollSnapType:'y mandatory', scrollbarWidth:'none'}}
+                                ref={el => { if (el) { const idx = minutes.indexOf(minute); el.scrollTop = idx * 40; } }}>
+                                <div style={{paddingTop: 80, paddingBottom: 80}}>
+                                  {minutes.map(m => (
+                                    <div key={m} onClick={() => setMin(m)} style={{scrollSnapAlign:'center', height: 40}}
+                                      className={`flex items-center justify-center text-xl font-bold cursor-pointer transition-colors ${m === minute ? 'text-emerald-600' : 'text-gray-300'}`}>
+                                      {String(m).padStart(2,'0')}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-center justify-center gap-2 px-3 flex-shrink-0 border-l border-gray-100">
+                                <button type="button" onClick={() => toggleAmPm(false)} className={`w-12 py-2.5 rounded-xl text-sm font-bold transition-colors ${!isPM ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:bg-gray-100'}`}>AM</button>
+                                <button type="button" onClick={() => toggleAmPm(true)} className={`w-12 py-2.5 rounded-xl text-sm font-bold transition-colors ${isPM ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:bg-gray-100'}`}>PM</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Location</label>
                   <input
@@ -1510,7 +1741,7 @@ export default function CirclePage() {
                       } catch { /* silent */ }
                       finally { setSavingMeetup(false); }
                     }}
-                    className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold disabled:bg-gray-300 transition-colors"
+                    className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold disabled:bg-gray-300 transition-colors"
                   >
                     {savingMeetup ? 'Saving...' : 'Save meetup'}
                   </button>
@@ -1551,7 +1782,7 @@ export default function CirclePage() {
               {/* Post button */}
               <button
                 onClick={() => setShowBoardCreate(v => !v)}
-                className="w-full py-2.5 bg-gray-900 text-white text-sm font-semibold rounded-xl mb-4"
+                className="w-full py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl mb-4"
               >
                 {showBoardCreate ? 'Cancel' : '+ New post'}
               </button>
@@ -1618,7 +1849,7 @@ export default function CirclePage() {
                   <button
                     onClick={submitBoardPost}
                     disabled={boardPosting || !boardTitle.trim() || !boardContent.trim()}
-                    className="w-full py-2.5 bg-gray-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+                    className="w-full py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
                   >
                     {boardPosting ? 'Posting...' : 'Post'}
                   </button>
@@ -1781,8 +2012,8 @@ export default function CirclePage() {
           <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
             {/* Header */}
             <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xl font-bold text-gray-900">Circle Settings</h3>
+              <div className="flex justify-between items-center gap-2">
+                <h3 className="text-lg font-bold text-gray-900 truncate">Circle Settings</h3>
                 <button
                   onClick={() => setShowSettingsModal(false)}
                   className="text-gray-400 hover:text-gray-600 text-xl"
@@ -1991,35 +2222,48 @@ export default function CirclePage() {
                 </p>
               </div>
 
-              {/* Danger zone — admin only */}
+              {/* Visibility */}
               {isAdmin && (
-                <div className="pt-4 border-t border-red-100">
-                  <h4 className="font-semibold text-red-600 mb-3">Danger Zone</h4>
-                  {!confirmDeleteCircle ? (
-                    <button
-                      onClick={() => setConfirmDeleteCircle(true)}
-                      className="w-full p-3 text-left bg-red-50 hover:bg-red-100 rounded-xl transition-colors border border-red-200"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-red-700 font-medium text-sm">Delete Circle</span>
-                        <span className="text-red-400">→</span>
+                <div className="pt-4 border-t border-gray-100">
+                  <h4 className="font-semibold text-gray-900 mb-3">Visibility</h4>
+                  {!confirmPrivacyToggle ? (
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {circle?.is_public ? 'Public circle' : 'Private circle'}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {circle?.is_public
+                            ? 'Anyone can find and request to join this circle.'
+                            : 'Only invited members can see and join this circle.'}
+                        </p>
                       </div>
-                      <p className="text-xs text-red-500 mt-0.5">Permanently removes this circle, all messages and members</p>
-                    </button>
+                      <button
+                        onClick={() => setConfirmPrivacyToggle(true)}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${circle?.is_public ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                      >
+                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${circle?.is_public ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
                   ) : (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                      <p className="text-sm font-semibold text-red-700 mb-1">Delete this circle?</p>
-                      <p className="text-xs text-red-500 mb-3">This cannot be undone. All messages and members will be removed.</p>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <p className="text-sm font-semibold text-amber-800 mb-1">
+                        Make this circle {circle?.is_public ? 'private' : 'public'}?
+                      </p>
+                      <p className="text-xs text-amber-600 mb-3">
+                        {circle?.is_public
+                          ? 'The circle will no longer appear in Discover. All members will be notified.'
+                          : 'The circle will appear in Discover for anyone to find. All members will be notified.'}
+                      </p>
                       <div className="flex gap-2">
                         <button
-                          onClick={deleteCircle}
-                          disabled={deletingCircle}
-                          className="flex-1 py-2 bg-red-600 text-white text-sm font-semibold rounded-xl hover:bg-red-700 disabled:opacity-50"
+                          onClick={toggleCirclePrivacy}
+                          className="flex-1 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700"
                         >
-                          {deletingCircle ? 'Deleting...' : 'Yes, delete'}
+                          Yes, confirm
                         </button>
                         <button
-                          onClick={() => setConfirmDeleteCircle(false)}
+                          onClick={() => setConfirmPrivacyToggle(false)}
                           className="flex-1 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200"
                         >
                           Cancel
@@ -2029,6 +2273,59 @@ export default function CirclePage() {
                   )}
                 </div>
               )}
+
+              {/* Danger zone — all members */}
+              <div className="pt-4 border-t border-red-100">
+                <h4 className="font-semibold text-red-600 mb-3">Danger Zone</h4>
+                {!confirmDeleteCircle ? (
+                  <button
+                    onClick={() => setConfirmDeleteCircle(true)}
+                    className="w-full p-3 text-left bg-red-50 hover:bg-red-100 rounded-xl transition-colors border border-red-200"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-red-700 font-medium text-sm">
+                        {members.length <= 1 ? 'Close Circle' : 'Leave Circle'}
+                      </span>
+                      <span className="text-red-400">→</span>
+                    </div>
+                    <p className="text-xs text-red-500 mt-0.5">
+                      {members.length <= 1
+                        ? 'You are the last member. Closing will permanently delete this circle.'
+                        : isAdmin
+                          ? 'You will leave and ownership will pass to the next member.'
+                          : 'You will be removed from this circle.'}
+                    </p>
+                  </button>
+                ) : (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                    <p className="text-sm font-semibold text-red-700 mb-1">
+                      {members.length <= 1 ? 'Close this circle?' : 'Leave this circle?'}
+                    </p>
+                    <p className="text-xs text-red-500 mb-3">
+                      {members.length <= 1
+                        ? 'This cannot be undone. All messages will be deleted.'
+                        : isAdmin
+                          ? 'Ownership will transfer to the next most senior member.'
+                          : 'You will be removed from the circle.'}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={leaveOrCloseCircle}
+                        disabled={deletingCircle}
+                        className="flex-1 py-2 bg-red-600 text-white text-sm font-semibold rounded-xl hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {deletingCircle ? 'Please wait...' : members.length <= 1 ? 'Yes, close' : 'Yes, leave'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteCircle(false)}
+                        className="flex-1 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2133,7 +2430,7 @@ export default function CirclePage() {
                 {selectedMember.member_id !== currentUserId && (
                   <Link
                     href={`/messages?user=${selectedMember.member_id}`}
-                    className="flex-1 px-4 py-3 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors text-center"
+                    className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors text-center"
                     onClick={() => setSelectedMember(null)}
                   >
                     Message
@@ -2161,7 +2458,6 @@ export default function CirclePage() {
           onClose={() => setContextMenuMsg(null)}
           onCopy={() => { navigator.clipboard.writeText(contextMenuMsg.content).catch(() => {}); toast('Copied!', 'success'); }}
           onSave={() => { navigator.clipboard.writeText(contextMenuMsg.content).catch(() => {}); toast('Message saved', 'success'); }}
-          onDelete={() => deleteCircleMessage(contextMenuMsg.id)}
         />
       )}
     </div>

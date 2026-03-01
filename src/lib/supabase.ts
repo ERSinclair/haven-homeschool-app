@@ -78,6 +78,12 @@ export type Profile = {
   is_banned: boolean
   is_verified: boolean
   is_active: boolean
+  is_supporter?: boolean
+  supporter_since?: string
+  supporter_tier?: string
+  supporter_display_name?: string
+  stripe_customer_id?: string
+  stripe_subscription_id?: string
   last_seen_at: string
 }
 

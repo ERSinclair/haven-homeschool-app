@@ -75,7 +75,12 @@
 }
 
 body {
-  background: var(--background);
+  background: repeating-linear-gradient(
+    to bottom,
+    #ecfdf5 0px,
+    #ffffff 400px,
+    #ecfdf5 800px
+  );
   color: var(--foreground);
   font-family: var(--font-nunito), system-ui, sans-serif;
   overflow-x: hidden; /* clips horizontal overflow; propagates to viewport (not a scroll container) */

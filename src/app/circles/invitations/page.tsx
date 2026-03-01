@@ -198,7 +198,7 @@ export default function CircleInvitationsPage() {
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-2 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 text-sm"
+            className="px-2 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
           >
             Try Again
           </button>

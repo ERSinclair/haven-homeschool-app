@@ -13,6 +13,7 @@ import AvatarUpload from '@/components/AvatarUpload';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AdminBadge from '@/components/AdminBadge';
+import SupporterBadge from '@/components/SupporterBadge';
 import { createNotification } from '@/lib/notifications';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 import { loadSearchRadius } from '@/lib/preferences';
@@ -44,6 +45,9 @@ type Family = {
   age_groups_taught?: string[];
   services?: string;
   contact_info?: string;
+  is_supporter?: boolean;
+  supporter_tier?: string;
+  is_founding_supporter?: boolean;
   location_lat?: number;
   location_lng?: number;
 };
@@ -835,7 +839,7 @@ function EnhancedDiscoverPage() {
           type: 'connection_request',
           title: `${senderName} wants to connect`,
           body: 'Tap to accept or decline',
-          link: '/connections',
+          link: '/connections?tab=pending',
           referenceId: session.user.id,
           accessToken: session.access_token,
         });
@@ -1078,7 +1082,7 @@ function EnhancedDiscoverPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+      <div className="min-h-screen bg-transparent">
         <div className="max-w-md mx-auto px-4 pt-2">
           <div className="h-16 flex items-center">
             <div className="w-16 h-4 bg-gray-200 rounded-lg animate-pulse" />
@@ -1091,7 +1095,7 @@ function EnhancedDiscoverPage() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+    <div className="min-h-screen bg-transparent">
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
         <AppHeader />
 
@@ -1111,13 +1115,13 @@ function EnhancedDiscoverPage() {
         <>
 
         {/* Account type tab bar — always visible */}
-        <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
+        <div className="flex justify-evenly mb-3 bg-white rounded-xl p-0.5 border border-gray-200">
           {([
             { value: 'all',       label: 'All' },
             { value: 'family',    label: 'Families' },
-            { value: 'playgroup', label: 'Playgroups' },
+            { value: 'playgroup', label: 'Playgroup' },
             { value: 'teacher',   label: 'Teachers' },
-            { value: 'business',  label: 'Businesses' },
+            { value: 'business',  label: 'Business' },
           ] as const).map(tab => (
             <button
               key={tab.value}
@@ -1133,7 +1137,7 @@ function EnhancedDiscoverPage() {
                 setBusinessTypeFilter('all');
                 setBusinessCustomFilter('');
               }}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${
                 activeTab === tab.value
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
@@ -1470,31 +1474,11 @@ function EnhancedDiscoverPage() {
               )
             ) : (
               <>
-                {/* New families near you banner — above first card */}
-                {!dismissedBanner && (() => {
-                  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-                  const userSuburb = profile?.location_name?.split(',')[0]?.trim().toLowerCase() || '';
-                  const newNearby = families.filter(f => {
-                    if (!f.created_at || f.created_at < sevenDaysAgo) return false;
-                    if (!userSuburb) return false;
-                    return (f.location_name || '').split(',')[0].trim().toLowerCase() === userSuburb;
-                  });
-                  if (newNearby.length === 0) return null;
-                  return (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-3 flex items-center justify-between gap-3">
-                      <p className="text-sm text-emerald-800 font-medium">
-                        {newNearby.length === 1
-                          ? `1 new family joined near ${profile?.location_name?.split(',')[0] || 'you'} this week`
-                          : `${newNearby.length} new families joined near ${profile?.location_name?.split(',')[0] || 'you'} this week`}
-                      </p>
-                      <button onClick={() => { setDismissedBanner(true); sessionStorage.setItem('haven-nearby-banner-dismissed', 'true'); }} className="text-emerald-600 hover:text-emerald-800 text-lg flex-shrink-0 font-bold">×</button>
-                    </div>
-                  );
-                })()}
+
                 {filteredFamilies.map((family) => (
                 <div
                   key={family.id}
-                  className={`w-full bg-white rounded-xl shadow-sm border-l-4 border border-gray-100 hover:shadow-md active:scale-[0.99] transition-all overflow-hidden ${
+                  className={`w-full bg-white/60 rounded-xl shadow-sm border-l-4 border border-gray-100 hover:shadow-md active:scale-[0.99] transition-all overflow-hidden ${
                     family.user_type === 'teacher' ? 'border-l-blue-400' :
                     family.user_type === 'business' || family.user_type === 'facility' ? 'border-l-amber-400' :
                     family.user_type === 'playgroup' ? 'border-l-purple-400' :
@@ -1516,7 +1500,7 @@ function EnhancedDiscoverPage() {
                     <div className="flex-1 min-w-0">
                       {/* Name + badges */}
                       <div className="flex items-center gap-1.5 overflow-hidden mb-0.5">
-                        <h3 className="font-semibold text-emerald-600 text-sm leading-tight truncate min-w-0">
+                        <h3 className="font-semibold text-gray-900 text-sm leading-tight truncate min-w-0">
                           {family.display_name || family.family_name.split(' ')[0] || family.family_name}
                         </h3>
                         <AdminBadge adminLevel={family.admin_level || null} />
@@ -1535,9 +1519,11 @@ function EnhancedDiscoverPage() {
                       <div className="flex items-center gap-1 mb-1">
                         <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         <p className="text-xs text-gray-400 truncate">{family.location_name}</p>
-                        {family.is_online && <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full flex-shrink-0 ml-1" />}
-                        {!family.is_online && family.last_active && (
-                          <span className="text-xs text-gray-400 flex-shrink-0 ml-0.5">· {formatLastActive(family.last_active)}</span>
+                        {family.last_active && (
+                          <span className="inline-flex items-center gap-1 ml-1">
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${family.is_online ? 'bg-green-500' : 'bg-red-400'}`} />
+                            <span className="text-xs text-gray-400">{family.is_online ? 'Online' : formatLastActive(family.last_active)}</span>
+                          </span>
                         )}
                       </div>
                       {/* Kids ages (families) */}
@@ -1552,21 +1538,18 @@ function EnhancedDiscoverPage() {
                       )}
                       {/* Ages served (playgroups) */}
                       {family.user_type === 'playgroup' && family.kids_ages && family.kids_ages.length > 0 && (
-                        <div className="flex items-center gap-1 mb-1 overflow-hidden">
-                          <span className="text-xs text-gray-400 flex-shrink-0">Ages:</span>
-                          {family.kids_ages.sort((a: number, b: number) => a - b).slice(0, 4).map((age: number, index: number) => (
-                            <span key={index} className="px-1.5 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full border border-purple-100 flex-shrink-0">
-                              {age === 5 ? '5+' : `${age}–${age + 1}`}
-                            </span>
-                          ))}
-                          {family.kids_ages.length > 4 && <span className="text-xs text-gray-400 flex-shrink-0">+{family.kids_ages.length - 4}</span>}
+                        <div className="flex items-center gap-1 mb-1">
+                          <span className="text-xs text-gray-400">Ages:</span>
+                          <span className="text-xs text-gray-700 font-medium">
+                            {Math.min(...family.kids_ages)}–{Math.max(...family.kids_ages) === 5 ? '5+' : Math.max(...family.kids_ages)}
+                          </span>
                         </div>
                       )}
                       {/* Approach chips */}
                       {(!family.user_type || family.user_type === 'family') && family.homeschool_approaches && family.homeschool_approaches.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {family.homeschool_approaches.slice(0, 2).map((a, i) => (
-                            <span key={i} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-xs rounded-full border border-emerald-100">{a}</span>
+                            <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full border border-gray-200">{a}</span>
                           ))}
                           {family.homeschool_approaches.length > 2 && (
                             <span className="text-xs text-gray-400">+{family.homeschool_approaches.length - 2}</span>
@@ -1628,8 +1611,8 @@ function EnhancedDiscoverPage() {
       
       {/* Message Modal */}
       {selectedFamily && !showCircleModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl max-w-md w-full p-6 border border-white/60 shadow-xl">
             <div className="flex items-center gap-3 mb-4">
               <AvatarUpload
                 userId={selectedFamily.id}
@@ -1826,11 +1809,11 @@ function EnhancedDiscoverPage() {
 
       {/* User Details Modal */}
       {selectedFamilyDetails && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl max-w-md w-full max-h-[85vh] overflow-y-auto border border-white/60 shadow-xl">
 
             {/* Close button */}
-            <div className="sticky top-0 bg-white rounded-t-2xl flex justify-end px-4 pt-3 pb-0 z-10">
+            <div className="sticky top-0 bg-white/80 backdrop-blur-md rounded-t-2xl flex justify-end px-4 pt-3 pb-0 z-10">
               <button onClick={() => setSelectedFamilyDetails(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 text-xl leading-none">&times;</button>
             </div>
 
@@ -1851,19 +1834,37 @@ function EnhancedDiscoverPage() {
                   {selectedFamilyDetails.display_name || selectedFamilyDetails.family_name.split(' ')[0] || selectedFamilyDetails.family_name}
                 </h3>
                 <AdminBadge adminLevel={selectedFamilyDetails.admin_level || null} size="md" />
-                {selectedFamilyDetails.is_verified && <span className="text-emerald-500 font-bold">✓</span>}
+                {selectedFamilyDetails.is_verified && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full border border-emerald-200">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                    Verified
+                  </span>
+                )}
+                {selectedFamilyDetails.created_at && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-50 text-gray-500 text-xs font-medium rounded-full border border-gray-200">
+                    Joined {new Date(selectedFamilyDetails.created_at).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })}
+                  </span>
+                )}
+
               </div>
               {getUserTypeBadge(selectedFamilyDetails.user_type) && (
                 <span className={`inline-block px-3 py-0.5 text-xs font-semibold rounded-full mb-1 ${getUserTypeBadge(selectedFamilyDetails.user_type)!.style}`}>
                   {getUserTypeBadge(selectedFamilyDetails.user_type)!.label}
                 </span>
               )}
+              {selectedFamilyDetails.is_supporter && (
+                <div className="mb-1">
+                  <SupporterBadge tier={selectedFamilyDetails.supporter_tier} isFounding={selectedFamilyDetails.is_founding_supporter} size="sm" />
+                </div>
+              )}
               <div className="flex items-center gap-1.5 text-sm text-gray-400">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                 <span>{selectedFamilyDetails.location_name}</span>
-                {selectedFamilyDetails.is_online && <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full ml-1" />}
-                {!selectedFamilyDetails.is_online && selectedFamilyDetails.last_active && (
-                  <span className="text-gray-400">· {formatLastActive(selectedFamilyDetails.last_active)}</span>
+                {selectedFamilyDetails.last_active && (
+                  <span className="inline-flex items-center gap-1 ml-1">
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${selectedFamilyDetails.is_online ? 'bg-green-500' : 'bg-red-400'}`} />
+                    <span className="text-gray-400 text-sm">{selectedFamilyDetails.is_online ? 'Online' : formatLastActive(selectedFamilyDetails.last_active)}</span>
+                  </span>
                 )}
               </div>
             </div>
@@ -1910,7 +1911,7 @@ function EnhancedDiscoverPage() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Interests</p>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedFamilyDetails.interests.map((interest, index) => (
-                      <span key={index} className="px-2.5 py-1 bg-purple-50 text-purple-700 rounded-full text-sm font-medium border border-purple-100">{interest}</span>
+                      <span key={index} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100">{interest}</span>
                     ))}
                   </div>
                 </div>
@@ -2001,7 +2002,7 @@ function EnhancedDiscoverPage() {
       {/* Hidden Families Modal */}
       {showHiddenModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] flex flex-col">
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl max-w-md w-full max-h-[80vh] flex flex-col border border-white/60 shadow-xl">
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-gray-900">Hidden Families</h3>

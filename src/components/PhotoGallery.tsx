@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Compressor from 'compressorjs';
+import ImageCropModal from '@/components/ImageCropModal';
 
 interface Photo {
   id: string;
@@ -10,6 +11,13 @@ interface Photo {
   thumbnail_url?: string;
   uploaded_at: string;
   file_name: string;
+  caption?: string;
+}
+
+interface PendingPhoto {
+  file: File;
+  preview: string;
+  caption: string;
 }
 
 interface PhotoGalleryProps {
@@ -46,6 +54,46 @@ export default function PhotoGallery({
   const [tempPrivacy, setTempPrivacy] = useState<'public' | 'private' | 'connections' | 'selected'>('public');
   const [tempSelectedUsers, setTempSelectedUsers] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processFilesForCrop = (files: File[]) => {
+    const valid = files.filter(f => f.type.startsWith('image/'));
+    if (!valid.length) return;
+    const remaining = maxPhotos - photos.length - pendingPhotos.length;
+    const toProcess = valid.slice(0, remaining);
+    const queue = toProcess.map(f => ({ src: URL.createObjectURL(f), file: f }));
+    setCropQueue(queue.slice(1));
+    setCurrentCrop(queue[0]);
+    setShowPickerModal(false);
+  };
+
+  const handleCropConfirm = (blob: Blob) => {
+    if (!currentCrop) return;
+    const croppedFile = new File([blob], currentCrop.file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+    const preview = URL.createObjectURL(blob);
+    setPendingPhotos(prev => [...prev, { file: croppedFile, preview, caption: '' }]);
+    URL.revokeObjectURL(currentCrop.src);
+    if (cropQueue.length > 0) {
+      setCurrentCrop(cropQueue[0]);
+      setCropQueue(prev => prev.slice(1));
+    } else {
+      setCurrentCrop(null);
+      setShowUploadModal(true);
+    }
+  };
+
+  const handleCropCancel = () => {
+    if (currentCrop) URL.revokeObjectURL(currentCrop.src);
+    cropQueue.forEach(q => URL.revokeObjectURL(q.src));
+    setCropQueue([]);
+    setCurrentCrop(null);
+    if (pendingPhotos.length > 0) setShowUploadModal(true);
+  };
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showPickerModal, setShowPickerModal] = useState(false);
+  const [cropQueue, setCropQueue] = useState<{ src: string; file: File }[]>([]);
+  const [currentCrop, setCurrentCrop] = useState<{ src: string; file: File } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Load photos and privacy settings on mount
   useEffect(() => {
@@ -186,6 +234,9 @@ export default function PhotoGallery({
       setUploading(true);
       const newPhotos: Photo[] = [];
 
+      const captions: string[] = (window as any).__pendingCaptions || [];
+      delete (window as any).__pendingCaptions;
+
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         
@@ -243,12 +294,14 @@ export default function PhotoGallery({
             .from('profile-photos')
             .getPublicUrl(`${userId}/${thumbnailName}`);
 
+          const caption = captions[i] || '';
           const newPhoto: Photo = {
             id: `${userId}-${timestamp}-${i}`,
             url: `${urlData.publicUrl}?t=${timestamp}`,
             thumbnail_url: thumbnailError ? undefined : `${thumbUrlData.publicUrl}?t=${timestamp}`,
             uploaded_at: new Date().toISOString(),
-            file_name: fileName
+            file_name: fileName,
+            caption,
           };
 
           // Try to save to database (if table exists)
@@ -259,7 +312,8 @@ export default function PhotoGallery({
               url: newPhoto.url,
               thumbnail_url: newPhoto.thumbnail_url,
               uploaded_at: newPhoto.uploaded_at,
-              file_name: newPhoto.file_name
+              file_name: newPhoto.file_name,
+              caption,
             });
           } catch (dbError) {
             console.log('Database insert failed (table may not exist):', dbError);
@@ -518,7 +572,7 @@ export default function PhotoGallery({
   if (loading) {
     return (
       <div className="bg-white rounded-2xl shadow-sm p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">Photo Gallery</h3>
+        <h3 className="text-lg font-bold text-gray-900 mb-4">Gallery</h3>
         <div className="flex items-center justify-center py-8">
           <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
         </div>
@@ -531,7 +585,7 @@ export default function PhotoGallery({
     return (
       <div className="bg-white rounded-2xl shadow-sm p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-900">Photo Gallery</h3>
+          <h3 className="text-lg font-bold text-gray-900">Gallery</h3>
         </div>
         <div className="text-center py-8 text-gray-500">
           <div className="w-16 h-16 bg-gray-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
@@ -552,8 +606,8 @@ export default function PhotoGallery({
     <>
       <div className="bg-white rounded-2xl shadow-sm p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-900">Photo Gallery</h3>
-          <div className="flex gap-3 items-center">
+          {photos.length === 0 && <h3 className="text-lg font-bold text-gray-900">Gallery</h3>}
+          <div className="flex gap-3 items-center ml-auto">
             {editable && (
               <button
                 onClick={openPrivacySettings}
@@ -564,7 +618,7 @@ export default function PhotoGallery({
             )}
             {editable && photos.length < maxPhotos && (
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setShowPickerModal(true)}
                 disabled={uploading}
                 className="text-xs font-medium text-emerald-600 hover:text-emerald-700 disabled:text-gray-400 transition-colors"
               >
@@ -599,7 +653,7 @@ export default function PhotoGallery({
             <p className="text-sm">No photos yet</p>
             {editable && (
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setShowPickerModal(true)}
                 className="mt-2 text-emerald-600 text-sm font-medium hover:text-emerald-700"
               >
                 Add your first photo
@@ -712,11 +766,160 @@ export default function PhotoGallery({
             type="file"
             accept="image/*"
             multiple
-            onChange={uploadPhotos}
+            onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              if (!files.length) return;
+              processFilesForCrop(files);
+              e.target.value = '';
+            }}
             className="hidden"
           />
         )}
       </div>
+
+      {/* Haven Photo Picker Modal */}
+      {showPickerModal && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-6 z-[60]">
+          <div
+            className={`bg-white/80 backdrop-blur-md rounded-2xl w-full max-w-md border border-white/60 shadow-xl transition-colors ${isDragging ? 'bg-emerald-50/80' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+              const files = Array.from(e.dataTransfer.files);
+              processFilesForCrop(files);
+            }}
+          >
+            <div className="px-6 pt-5 pb-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-lg">Add Photos</h3>
+                  <p className="text-xs text-emerald-600 mt-0.5">{maxPhotos - photos.length - pendingPhotos.length} slots remaining</p>
+                </div>
+                <button onClick={() => setShowPickerModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200">×</button>
+              </div>
+
+              {/* Drop zone */}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className={`relative flex flex-col items-center justify-center gap-3 py-10 rounded-2xl border-2 border-dashed cursor-pointer transition-all mb-4 ${isDragging ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/40'}`}
+              >
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${isDragging ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+                  <svg className={`w-7 h-7 ${isDragging ? 'text-emerald-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-800">{isDragging ? 'Drop photos here' : 'Tap to choose photos'}</p>
+                  <p className="text-xs text-gray-400 mt-1">or drag and drop · JPG, PNG, HEIC</p>
+                </div>
+              </div>
+
+              {/* Tips */}
+              <div className="flex gap-4 text-xs text-gray-400 justify-center">
+                <span>Auto-compressed to JPEG</span>
+                <span>·</span>
+                <span>Crop before adding</span>
+                <span>·</span>
+                <span>Up to {maxPhotos} photos</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Crop Modal */}
+      {currentCrop && (
+        <ImageCropModal
+          imageSrc={currentCrop.src}
+          title={cropQueue.length > 0 ? `Crop photo ${pendingPhotos.length + 1} of ${pendingPhotos.length + 1 + cropQueue.length}` : 'Crop photo'}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
+
+      {/* Upload Preview Modal */}
+      {showUploadModal && pendingPhotos.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end justify-center z-[60]">
+          <div className="bg-white/90 backdrop-blur-md rounded-t-2xl w-full max-w-md max-h-[92vh] flex flex-col border-t border-x border-white/60 shadow-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Add Photos</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{pendingPhotos.length} {pendingPhotos.length === 1 ? 'photo' : 'photos'} selected</p>
+              </div>
+              <button
+                onClick={() => { setShowUploadModal(false); pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview)); setPendingPhotos([]); }}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500"
+              >×</button>
+            </div>
+
+            {/* Photo list */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {pendingPhotos.map((p, i) => (
+                <div key={i} className="flex gap-3 items-start bg-gray-50 rounded-2xl p-3">
+                  {/* Preview */}
+                  <div className="relative flex-shrink-0">
+                    <img src={p.preview} alt="" className="w-24 h-24 object-contain rounded-xl border border-gray-200 bg-gray-50" />
+                    <button
+                      onClick={() => setPendingPhotos(prev => {
+                        const updated = prev.filter((_, idx) => idx !== i);
+                        if (updated.length === 0) { setShowUploadModal(false); }
+                        URL.revokeObjectURL(p.preview);
+                        return updated;
+                      })}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center text-gray-500 hover:text-red-500 shadow-sm text-xs"
+                    >×</button>
+                  </div>
+                  {/* Caption */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-500 mb-1.5 truncate">{p.file.name}</p>
+                    <textarea
+                      placeholder="Add a description (optional)"
+                      rows={3}
+                      value={p.caption}
+                      onChange={(e) => setPendingPhotos(prev => prev.map((ph, idx) => idx === i ? { ...ph, caption: e.target.value } : ph))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-400 focus:border-transparent resize-none bg-white placeholder-gray-400"
+                    />
+                  </div>
+                </div>
+              ))}
+
+              {/* Add more button */}
+              {photos.length + pendingPhotos.length < maxPhotos && (
+                <button
+                  onClick={() => setShowPickerModal(true)}
+                  className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-sm text-emerald-600 font-medium hover:border-emerald-300 hover:bg-emerald-50 transition-colors"
+                >
+                  + Add more photos
+                </button>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 pb-6 pt-3 border-t border-gray-100 flex gap-3 flex-shrink-0">
+              <button
+                onClick={() => { setShowUploadModal(false); pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview)); setPendingPhotos([]); }}
+                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 text-sm transition-colors"
+              >Cancel</button>
+              <button
+                disabled={uploading}
+                onClick={async () => {
+                  setShowUploadModal(false);
+                  const fakeEvent = { target: { files: pendingPhotos.map(p => p.file), value: '' } } as any;
+                  // Store captions for use during upload
+                  (window as any).__pendingCaptions = pendingPhotos.map(p => p.caption);
+                  pendingPhotos.forEach(p => URL.revokeObjectURL(p.preview));
+                  setPendingPhotos([]);
+                  await uploadPhotos(fakeEvent);
+                }}
+                className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 disabled:opacity-50 text-sm transition-colors"
+              >{uploading ? 'Uploading…' : `Upload ${pendingPhotos.length} ${pendingPhotos.length === 1 ? 'photo' : 'photos'}`}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Photo Modal */}
       {showModal && selectedPhoto && (
@@ -744,9 +947,14 @@ export default function PhotoGallery({
             <img
               src={selectedPhoto.url}
               alt="Full size photo"
-              className="max-w-full max-h-full object-contain rounded-lg"
+              className="max-w-full max-h-[80vh] object-contain rounded-lg"
               onClick={closeModal}
             />
+            {selectedPhoto.caption && (
+              <div className="mt-3 px-2">
+                <p className="text-white/85 text-sm text-center leading-relaxed">{selectedPhoto.caption}</p>
+              </div>
+            )}
           </div>
         </div>
       )}

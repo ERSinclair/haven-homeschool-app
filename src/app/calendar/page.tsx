@@ -182,7 +182,7 @@ function CalendarContent() {
     try {
       const [hostedRes, rsvpRes, circleRes, notesRes] = await Promise.all([
         // Events I'm hosting
-        fetch(`${supabaseUrl}/rest/v1/events?host_id=eq.${session.user.id}&is_cancelled=eq.false&select=id,title,event_date,event_time,location_name,description`, { headers: h }),
+        fetch(`${supabaseUrl}/rest/v1/events?host_id=eq.${session.user.id}&is_cancelled=eq.false&select=id,title,event_date,event_time,location_name,description,recurrence_rule,recurrence_end_date`, { headers: h }),
         // Events I've RSVPed to
         fetch(`${supabaseUrl}/rest/v1/event_rsvps?profile_id=eq.${session.user.id}&status=eq.going&select=event_id`, { headers: h }),
         // Circles I'm in that have meetup dates
@@ -193,19 +193,21 @@ function CalendarContent() {
 
       const allItems: CalItem[] = [];
 
-      // Hosted events
+      // Hosted events (expand recurring)
       if (hostedRes.ok) {
         const hosted = await hostedRes.json();
         hosted.forEach((e: any) => {
-          allItems.push({
-            id: `hosted-${e.id}`,
-            title: e.title,
-            date: e.event_date,
-            time: e.event_time,
-            type: 'hosting',
-            location: e.location_name,
-            description: e.description,
-            eventId: e.id,
+          expandRecurringEvent(e, 'hosting').forEach((inst: any, idx: number) => {
+            allItems.push({
+              id: `hosted-${e.id}-${idx}`,
+              title: inst.title + (idx > 0 ? '' : ''),
+              date: inst.event_date,
+              time: inst.event_time,
+              type: 'hosting' as const,
+              location: inst.location_name,
+              description: inst.description,
+              eventId: e.id,
+            });
           });
         });
       }
@@ -216,23 +218,24 @@ function CalendarContent() {
         const eventIds: string[] = rsvps.map((r: any) => r.event_id);
         if (eventIds.length > 0) {
           const evRes = await fetch(
-            `${supabaseUrl}/rest/v1/events?id=in.(${eventIds.join(',')})&is_cancelled=eq.false&select=id,title,event_date,event_time,location_name,description`,
+            `${supabaseUrl}/rest/v1/events?id=in.(${eventIds.join(',')})&is_cancelled=eq.false&select=id,title,event_date,event_time,location_name,description,recurrence_rule,recurrence_end_date`,
             { headers: h }
           );
           if (evRes.ok) {
             const evs = await evRes.json();
             evs.forEach((e: any) => {
-              // Skip if already added as hosted
-              if (allItems.find(i => i.eventId === e.id)) return;
-              allItems.push({
-                id: `attending-${e.id}`,
-                title: e.title,
-                date: e.event_date,
-                time: e.event_time,
-                type: 'attending',
-                location: e.location_name,
-                description: e.description,
-                eventId: e.id,
+              expandRecurringEvent(e, 'attending').forEach((inst: any, idx: number) => {
+                if (allItems.find(i => i.eventId === e.id && i.date === inst.event_date)) return;
+                allItems.push({
+                  id: `attending-${e.id}-${idx}`,
+                  title: inst.title,
+                  date: inst.event_date,
+                  time: inst.event_time,
+                  type: 'attending' as const,
+                  location: inst.location_name,
+                  description: inst.description,
+                  eventId: e.id,
+                });
               });
             });
           }
@@ -486,14 +489,14 @@ function CalendarContent() {
   const upcoming = items.filter(i => i.date >= todayStr && i.date <= new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
 
   if (loading) return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
+    <div className="min-h-screen bg-transparent flex items-center justify-center">
       <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
     </div>
   );
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white pb-32">
+      <div className="min-h-screen bg-transparent pb-32">
         <div className="max-w-md mx-auto px-4 pb-8 pt-2">
           <div className="mb-6">
             <Link href="/profile" className="text-emerald-600 hover:text-emerald-700 font-medium">← Profile</Link>
@@ -630,13 +633,14 @@ function CalendarContent() {
 
               {/* Note creation / edit form */}
               {addingNote && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-3 space-y-3">
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-3 space-y-4 shadow-sm">
+                  <h3 className="text-lg font-bold text-gray-900">{editingNote ? 'Edit note' : 'Add note'}</h3>
                   <input
                     type="text"
                     value={noteTitle}
                     onChange={e => setNoteTitle(e.target.value)}
                     placeholder="Title (optional)"
-                    className="w-full px-3 py-2 border border-emerald-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 bg-white"
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400 text-sm"
                   />
                   <textarea
                     value={noteContent}
@@ -644,21 +648,19 @@ function CalendarContent() {
                     placeholder="What's on your mind for this day?"
                     rows={3}
                     autoFocus
-                    className="w-full px-3 py-2 border border-emerald-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 bg-white resize-none"
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400 text-sm resize-none"
                   />
-                  {/* Recurrence picker */}
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-emerald-800">Repeats</p>
-                    <div className="flex gap-2 flex-wrap">
+                  {/* Recurrence */}
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Repeats</p>
+                    <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200">
                       {(['none', 'weekly', 'monthly', 'yearly'] as const).map(opt => (
                         <button
                           key={opt}
                           type="button"
                           onClick={() => setNoteRecurrence(opt)}
-                          className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                            noteRecurrence === opt
-                              ? 'bg-emerald-500 text-white border-emerald-500'
-                              : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            noteRecurrence === opt ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
                           }`}
                         >
                           {opt === 'none' ? 'Never' : opt.charAt(0).toUpperCase() + opt.slice(1)}
@@ -666,30 +668,30 @@ function CalendarContent() {
                       ))}
                     </div>
                     {noteRecurrence !== 'none' && (
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-emerald-700 whitespace-nowrap">End date (optional)</label>
+                      <div className="mt-3">
+                        <label className="text-xs text-gray-500 mb-1 block">End date (optional)</label>
                         <input
                           type="date"
                           value={noteRecurrenceEnd}
                           onChange={e => setNoteRecurrenceEnd(e.target.value)}
-                          className="flex-1 px-2 py-1 border border-emerald-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-emerald-400"
+                          className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 text-sm"
                         />
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
+                    <button
+                      onClick={cancelNote}
+                      className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors text-sm"
+                    >
+                      Cancel
+                    </button>
                     <button
                       onClick={saveNote}
                       disabled={!noteContent.trim() || savingNote}
-                      className="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold disabled:bg-gray-200 disabled:text-gray-400 hover:bg-emerald-700 transition-colors"
+                      className="flex-1 py-3.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold disabled:bg-gray-300 disabled:text-gray-500 hover:bg-emerald-700 transition-colors"
                     >
-                      {savingNote ? 'Saving...' : editingNote ? 'Update note' : 'Save note'}
-                    </button>
-                    <button
-                      onClick={cancelNote}
-                      className="px-4 py-2 bg-white text-gray-600 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50"
-                    >
-                      Cancel
+                      {savingNote ? 'Saving...' : editingNote ? 'Update' : 'Save note'}
                     </button>
                   </div>
                 </div>
@@ -785,10 +787,30 @@ function CalendarContent() {
   );
 }
 
+// Expand a recurring event into multiple CalItem instances within a window
+function expandRecurringEvent(e: any, baseType: 'hosting' | 'attending', windowMonths = 3): any[] {
+  if (!e.recurrence_rule || e.recurrence_rule === 'none') return [e];
+  const items: any[] = [];
+  const start = new Date(e.event_date + 'T12:00:00');
+  const end = e.recurrence_end_date
+    ? new Date(e.recurrence_end_date + 'T12:00:00')
+    : new Date(Date.now() + windowMonths * 30 * 86400000);
+  let cur = new Date(start);
+  while (cur <= end) {
+    items.push({ ...e, event_date: cur.toISOString().split('T')[0], _instanceOf: e.id });
+    if (e.recurrence_rule === 'weekly') cur.setDate(cur.getDate() + 7);
+    else if (e.recurrence_rule === 'monthly') cur.setMonth(cur.getMonth() + 1);
+    else if (e.recurrence_rule === 'yearly') cur.setFullYear(cur.getFullYear() + 1);
+    else break;
+  }
+  return items;
+}
+
+
 export default function CalendarPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
       </div>
     }>

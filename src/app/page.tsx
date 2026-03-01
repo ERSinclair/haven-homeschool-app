@@ -32,9 +32,9 @@ export default function Home() {
         <div className="relative max-w-3xl mx-auto px-6 pt-20 pb-20 text-center">
           {/* Two overlapping circles logo — matches nav bar icon, scaled up */}
           <div className="flex justify-center mb-8">
-            <svg width="93" height="56" viewBox="0 0 93 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="27" cy="28" r="25" stroke="#374151" strokeWidth="4" />
-              <circle cx="66" cy="28" r="25" stroke="#374151" strokeWidth="4" />
+            <svg width="74" height="49" viewBox="-3 -3 74 49" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="21" cy="22" r="19" stroke="#9ca3af" strokeWidth="5" />
+              <circle cx="48" cy="22" r="19" stroke="#9ca3af" strokeWidth="5" />
             </svg>
           </div>
 
@@ -183,7 +183,7 @@ export default function Home() {
           <Link href="/terms" className="text-xs text-gray-400 hover:text-gray-600">Terms</Link>
           <Link href="/community-guidelines" className="text-xs text-gray-400 hover:text-gray-600">Guidelines</Link>
           <Link href="/privacy" className="text-xs text-gray-400 hover:text-gray-600">Privacy</Link>
-          <a href="mailto:hello@familyhaven.app" className="text-xs text-gray-400 hover:text-gray-600">Contact</a>
+          <a href="mailto:cane@familyhaven.app" className="text-xs text-gray-400 hover:text-gray-600">Contact</a>
         </div>
       </footer>
 

@@ -259,21 +259,30 @@ export default function SignupPage() {
         return;
       }
 
-      if (!authData.user) {
+      // With email confirmation enabled, Supabase may return user at top level or under .user
+      const userObj = authData.user || (authData.id ? authData : null);
+      if (!userObj) {
+        console.error('Signup response:', JSON.stringify(authData));
         setError('Account creation failed. Please try again.');
         setLoading(false);
         return;
       }
+      // Normalise — put user under .user for consistency
+      if (!authData.user && authData.id) {
+        authData.user = authData;
+      }
 
       // Store session
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        access_token: authData.access_token,
-        refresh_token: authData.refresh_token,
-        expires_at: authData.expires_at,
-        expires_in: authData.expires_in,
-        token_type: authData.token_type,
-        user: authData.user,
-      }));
+      if (authData.access_token) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          access_token: authData.access_token,
+          refresh_token: authData.refresh_token,
+          expires_at: authData.expires_at,
+          expires_in: authData.expires_in,
+          token_type: authData.token_type,
+          user: authData.user,
+        }));
+      }
 
       // Step 2: Create the profile (INSERT since no auto-trigger)
       const profileData = {
@@ -298,7 +307,7 @@ export default function SignupPage() {
           ? children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18)
           : userType === 'playgroup'
             // Store min age of each selected bracket e.g. '0-1' → 0, '1-2' → 1
-            ? playgroupAges.map(a => parseInt(a)).filter(n => !isNaN(n))
+            ? playgroupAges.map(a => a === '5+' ? 5 : parseInt(a)).filter(n => !isNaN(n))
             : userType === 'teacher' && relationship.includes('no-kids')
               ? []
               : userType === 'teacher'
@@ -376,24 +385,27 @@ export default function SignupPage() {
         return;
       }
 
-      // Success! Clear any cached state and redirect to welcome/celebration screen
+      // Clear form state
       if (typeof window !== 'undefined') {
-        // Clear any form state from localStorage
         localStorage.removeItem('haven-signup-step');
         localStorage.removeItem('haven-signup-data');
-        // Set a temporary flag to bypass profile completion check
         localStorage.setItem('haven-signup-complete', Date.now().toString());
       }
-      
-      // Send welcome email (best-effort, don't block redirect)
-      fetch('/api/email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'welcome', to: email, name: firstName || 'there' }),
-      }).catch(() => {});
 
-      // Force navigation to welcome screen
-      window.location.href = '/welcome?fromSignup=true';
+      // If Supabase returned an access_token, email confirmation is disabled — go straight to welcome
+      // If no access_token, email confirmation is enabled — show verify-email screen
+      if (authData.access_token) {
+        // Send welcome email (best-effort)
+        fetch('/api/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'welcome', to: email, name: firstName || 'there' }),
+        }).catch(() => {});
+        window.location.href = '/welcome?fromSignup=true';
+      } else {
+        // Email confirmation required — send to check-your-email screen
+        window.location.href = `/verify-email?email=${encodeURIComponent(email)}`;
+      }
     } catch (err) {
       console.error('Signup error:', err);
       setError('Something went wrong. Please try again.');
@@ -1673,7 +1685,7 @@ export default function SignupPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">What ages does your group cater to? (optional)</label>
                   <div className="grid grid-cols-3 gap-2">
-                    {['0–1', '1–2', '2–3', '3–4', '4–5', '5+'].map(age => (
+                    {['0', '1', '2', '3', '4', '5+'].map(age => (
                       <button
                         key={age}
                         type="button"
@@ -1684,7 +1696,7 @@ export default function SignupPage() {
                             : 'border-gray-200 text-gray-600 hover:border-purple-300'
                         }`}
                       >
-                        {age} yrs
+                        {age === '5+' ? '5+ yrs' : `${age}–${parseInt(age)+1} yrs`}
                       </button>
                     ))}
                   </div>

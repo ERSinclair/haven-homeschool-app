@@ -175,7 +175,7 @@ export default function MyEventsPage() {
           {isHosting ? (
             <button
               onClick={() => router.push(`/events?manage=${event.id}`)}
-              className="px-3 py-1.5 text-xs font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
             >
               Manage
             </button>

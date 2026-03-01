@@ -30,7 +30,14 @@ export default function ConnectionsPage() {
   const [pendingRequests, setPendingRequests] = useState<Connection[]>([]);
   const [sentRequests, setSentRequests] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'connections' | 'requests' | 'sent'>('connections');
+  const [autoSwitched, setAutoSwitched] = useState(false);
+  const [activeTab, setActiveTab] = useState<'connections' | 'requests' | 'sent'>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search).get('tab');
+      if (p === 'pending' || p === 'requests') return 'requests';
+    }
+    return 'connections';
+  });
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -314,6 +321,12 @@ export default function ConnectionsPage() {
       setError('Failed to load connections');
     } finally {
       setLoading(false);
+      // Auto-switch to requests if pending and no explicit tab in URL
+      if (!autoSwitched) {
+        setAutoSwitched(true);
+        const tabParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+        if (!tabParam && pendingRequests.length > 0) setActiveTab('requests');
+      }
     }
   };
 
@@ -428,7 +441,7 @@ export default function ConnectionsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+      <div className="min-h-screen bg-transparent">
         <div className="max-w-md mx-auto px-4 pt-2">
           <div className="h-16 flex items-center">
             <div className="w-16 h-4 bg-gray-200 rounded-lg animate-pulse" />
@@ -441,7 +454,7 @@ export default function ConnectionsPage() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+    <div className="min-h-screen bg-transparent">
       <div className="max-w-md mx-auto px-4 pt-2 pb-8">
         <AppHeader />
 

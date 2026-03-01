@@ -262,14 +262,14 @@ export default function NotificationsPage() {
   const groups = groupByDate(displayed);
 
   if (loading) return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
+    <div className="min-h-screen bg-transparent flex items-center justify-center">
       <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
     </div>
   );
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white pb-32">
+      <div className="min-h-screen bg-transparent pb-32">
         <div className="max-w-md mx-auto px-4 pt-2 pb-8">
           <AppHeader onBack={() => router.back()} />
 

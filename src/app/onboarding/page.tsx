@@ -390,7 +390,7 @@ export default function OnboardingPage() {
             <button
               onClick={handleNext}
               disabled={saving || !canProceed()}
-              className="w-full py-3.5 bg-gray-900 text-white rounded-2xl font-bold text-base disabled:opacity-50 transition-all"
+              className="w-full py-3.5 bg-emerald-600 text-white rounded-2xl font-bold text-base disabled:opacity-50 transition-all"
             >
               {saving ? 'Saving...' : step === TOTAL_STEPS ? "I'm all set — go to Haven" : 'Next'}
             </button>

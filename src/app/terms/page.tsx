@@ -41,7 +41,7 @@ export default function TermsPage() {
             <ul className="text-sm leading-relaxed space-y-1 list-disc pl-4">
               <li>You&apos;re responsible for keeping your login credentials secure.</li>
               <li>Don&apos;t share your account with anyone else.</li>
-              <li>If you think your account has been compromised, contact us immediately at <strong>hello@familyhaven.app</strong>.</li>
+              <li>If you think your account has been compromised, contact us immediately at <strong>cane@familyhaven.app</strong>.</li>
               <li>You can delete your account at any time in Settings. Deletion removes your profile and content from Haven.</li>
             </ul>
           </section>
@@ -95,7 +95,7 @@ export default function TermsPage() {
               We can suspend or terminate accounts that violate these terms or our Community Guidelines. For serious violations (child safety, threats, fraud), this happens immediately and without warning.
             </p>
             <p className="text-sm leading-relaxed">
-              For lesser violations, we&apos;ll generally give you a heads-up first. If you think a decision was made in error, contact us at <strong>hello@familyhaven.app</strong>.
+              For lesser violations, we&apos;ll generally give you a heads-up first. If you think a decision was made in error, contact us at <strong>cane@familyhaven.app</strong>.
             </p>
           </section>
 
@@ -116,7 +116,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-base font-bold text-gray-900 mb-2">Contact</h2>
             <p className="text-sm leading-relaxed">
-              Questions or concerns? Email us at <strong>hello@familyhaven.app</strong>. We&apos;re a small team and we read everything.
+              Questions or concerns? Email us at <strong>cane@familyhaven.app</strong>. We&apos;re a small team and we read everything.
             </p>
           </section>
 

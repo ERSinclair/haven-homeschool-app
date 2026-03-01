@@ -128,8 +128,8 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
         <div className="sticky top-0 bg-white rounded-t-2xl p-6 pb-4 border-b border-gray-100">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xl font-bold text-gray-900">Event Settings</h3>
+          <div className="flex justify-between items-center gap-2">
+            <h3 className="text-lg font-bold text-gray-900 truncate">Event Settings</h3>
             <button onClick={() => { onClose(); setConfirmCancelEvent(false); }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
           </div>
         </div>

@@ -246,7 +246,7 @@ export default function CirclesDiscoverPage() {
                           <button
                             onClick={() => joinCircle(circle.id)}
                             disabled={circle.isJoining}
-                            className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-full hover:bg-gray-800 disabled:opacity-50"
+                            className="px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-full hover:bg-emerald-700 disabled:opacity-50"
                           >
                             {circle.isJoining ? 'Joining...' : 'Join'}
                           </button>

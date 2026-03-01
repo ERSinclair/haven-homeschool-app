@@ -35,6 +35,7 @@ type Message = {
   created_at: string;
   file_url?: string | null;
   file_type?: string | null;
+  read_at?: string | null;
 };
 
 function MessagesContent() {
@@ -217,8 +218,21 @@ function MessagesContent() {
         setMessages(msgs);
         fetchDmReactions(msgs.map((m: { id: string }) => m.id));
 
-        // Mark conversation as read by clearing unread status
-        // This happens when user opens a conversation
+        // Mark unread messages as read (messages from others without read_at)
+        const unreadIds = Array.isArray(msgs)
+          ? msgs.filter((m: any) => m.sender_id !== session.user.id && !m.read_at).map((m: any) => m.id)
+          : [];
+        if (unreadIds.length > 0) {
+          fetch(
+            `${supabaseUrl}/rest/v1/messages?id=in.(${unreadIds.join(',')})`,
+            {
+              method: 'PATCH',
+              headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+              body: JSON.stringify({ read_at: new Date().toISOString() }),
+            }
+          ).catch(() => {});
+        }
+
         await fetch(
           `${supabaseUrl}/rest/v1/conversations?id=eq.${selectedId}`,
           {
@@ -228,10 +242,7 @@ function MessagesContent() {
               'Authorization': `Bearer ${session.access_token}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              // We can use a specific field for marking as read, or just not update last_message_by
-              // For now, we'll leave it as is since the main unread logic is in BottomNav
-            }),
+            body: JSON.stringify({ last_message_by: null }),
             signal: abortController.signal,
           }
         );
@@ -1319,7 +1330,7 @@ function MessagesContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -1327,7 +1338,7 @@ function MessagesContent() {
 
   if (selected) {
     return (
-      <div className="fixed top-0 left-0 right-0 bg-gradient-to-b from-emerald-50 to-white flex flex-col overflow-hidden" style={{ bottom: '72px' }}>
+      <div className="fixed top-0 left-0 right-0 bg-transparent flex flex-col overflow-hidden" style={{ bottom: '72px' }}>
         <div className="flex-shrink-0 z-30 bg-white/90 backdrop-blur-sm border-b border-gray-100" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="max-w-md mx-auto">
             <AppHeader onBack={() => setSelectedId(null)} />
@@ -1421,6 +1432,7 @@ function MessagesContent() {
               sender_profile: m.sender_id !== userId
                 ? { display_name: selected.other_user.family_name || selected.other_user.display_name, avatar_url: selected.other_user.avatar_url }
                 : null,
+              read_at: m.read_at || null,
             }))}
             currentUserId={userId!}
             reactions={reactions}
@@ -1618,7 +1630,7 @@ function MessagesContent() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white pb-24">
+    <div className="min-h-screen bg-transparent pb-24">
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
         <AppHeader />
 
@@ -1860,7 +1872,7 @@ function MessagesContent() {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && selected && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6">
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl max-w-sm w-full p-6 border border-white/60 shadow-xl">
             <div className="text-center">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">🗑️</span>
@@ -1891,7 +1903,7 @@ function MessagesContent() {
       {/* Delete Messages Modal */}
       {showDeleteMessageModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6">
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl max-w-sm w-full p-6 border border-white/60 shadow-xl">
             <div className="text-center">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">🗑️</span>
@@ -1929,7 +1941,7 @@ function MessagesContent() {
       {/* Delete Conversations Modal */}
       {showDeleteConversationModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6">
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl max-w-sm w-full p-6 border border-white/60 shadow-xl">
             <div className="text-center">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">🗑️</span>
@@ -2135,10 +2147,10 @@ function MessagesContent() {
       {/* New Message Modal */}
       {showNewMessageModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col border border-white/60 shadow-xl">
             <div className="p-6 border-b border-gray-100">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-900">New Message</h2>
+
                 <button 
                   onClick={() => {
                     setShowNewMessageModal(false);
@@ -2310,7 +2322,7 @@ function MessagesContent() {
 export default function MessagesPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     }>

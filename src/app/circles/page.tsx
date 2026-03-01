@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { getCached, setCached } from '@/lib/pageCache';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -71,6 +71,15 @@ export default function CirclesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  useEffect(() => {
+    if (showCreateModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [showCreateModal]);
   const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newCircleLocation, setNewCircleLocation] = useState<{ name: string; address: string; lat: number; lng: number } | null>(null);
@@ -104,6 +113,8 @@ export default function CirclesPage() {
 
   // Discover tab state
   const [discoverCircles, setDiscoverCircles] = useState<DiscoverCircle[]>([]);
+  const [hiddenCircles, setHiddenCircles] = useState<Set<string>>(new Set());
+  const [showHiddenCirclesModal, setShowHiddenCirclesModal] = useState(false);
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverLoaded, setDiscoverLoaded] = useState(false);
   const [discoverSearch, setDiscoverSearch] = useState('');
@@ -157,7 +168,7 @@ export default function CirclesPage() {
       });
       if (res.ok || res.status === 409) {
         if (circle) await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`, { method: 'PATCH', headers, body: JSON.stringify({ member_count: (circle.member_count || 0) + 1 }) });
-        setDiscoverCircles(prev => prev.map(c => c.id === circleId ? { ...c, isMember: true, isJoining: false, member_count: (c.member_count || 0) + 1 } : c));
+        setDiscoverCircles(prev => prev.filter(c => c.id !== circleId));
         toast('Joined circle!', 'success');
       } else throw new Error();
     } catch {
@@ -170,10 +181,6 @@ export default function CirclesPage() {
   const publicCircles = circles.filter(c => c.is_public);
   const [showAllPrivate, setShowAllPrivate] = useState(false);
   const [showAllPublic, setShowAllPublic] = useState(false);
-  const [selectedCircles, setSelectedCircles] = useState<Set<string>>(new Set());
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visiblePrivate = showAllPrivate ? privateCircles : privateCircles.slice(0, 3);
   const visiblePublic = showAllPublic ? publicCircles : publicCircles.slice(0, 3);
 
@@ -311,64 +318,9 @@ export default function CirclesPage() {
     }
   };
 
-  const handleLongPress = (circleId: string) => {
-    setSelectionMode(true);
-    setSelectedCircles(new Set([circleId]));
-  };
 
-  const toggleSelect = (circleId: string) => {
-    if (!selectionMode) return;
-    setSelectedCircles(prev => {
-      const next = new Set(prev);
-      next.has(circleId) ? next.delete(circleId) : next.add(circleId);
-      return next;
-    });
-  };
 
-  const cancelSelection = () => {
-    setSelectionMode(false);
-    setSelectedCircles(new Set());
-  };
 
-  const deleteSelected = async () => {
-    if (selectedCircles.size === 0) return;
-    setDeleting(true);
-    try {
-      const session = getStoredSession();
-      if (!session) return;
-      const headers = {
-        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        'Authorization': `Bearer ${session.access_token}`,
-      };
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-      for (const circleId of selectedCircles) {
-        const circle = circles.find(c => c.id === circleId);
-        if (!circle) continue;
-
-        if (circle.role === 'admin') {
-          // Admin: delete the whole circle
-          await fetch(`${supabaseUrl}/rest/v1/circles?id=eq.${circleId}`, {
-            method: 'DELETE', headers,
-          });
-        } else {
-          // Member: just leave
-          await fetch(
-            `${supabaseUrl}/rest/v1/circle_members?circle_id=eq.${circleId}&member_id=eq.${session.user.id}`,
-            { method: 'DELETE', headers }
-          );
-        }
-      }
-
-      setCircles(prev => prev.filter(c => !selectedCircles.has(c.id)));
-      cancelSelection();
-      toast(`Removed ${selectedCircles.size} circle${selectedCircles.size > 1 ? 's' : ''}`, 'success');
-    } catch {
-      toast('Failed to remove circles', 'error');
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   const createCircle = async () => {
     if (!newCircleData.name.trim()) return;
@@ -477,7 +429,7 @@ export default function CirclesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+      <div className="min-h-screen bg-transparent">
         <div className="max-w-md mx-auto px-4 pt-2">
           <div className="h-16 flex items-center">
             <div className="w-16 h-4 bg-gray-200 rounded-lg animate-pulse" />
@@ -490,11 +442,11 @@ export default function CirclesPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white p-4 flex items-center justify-center">
+      <div className="min-h-screen bg-transparent p-4 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button onClick={() => { setError(''); setLoading(true); loadCircles(); }}
-            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm">
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">
             Try Again
           </button>
         </div>
@@ -503,28 +455,15 @@ export default function CirclesPage() {
   }
 
   const CircleCard = ({ circle }: { circle: Circle }) => {
-    const isSelected = selectedCircles.has(circle.id);
     const handlePress = () => {
-      if (selectionMode) { toggleSelect(circle.id); return; }
       router.push(`/circles/${circle.id}`);
-    };
-    const onLongPressStart = () => {
-      longPressTimer.current = setTimeout(() => handleLongPress(circle.id), 600);
-    };
-    const onLongPressEnd = () => {
-      if (longPressTimer.current) clearTimeout(longPressTimer.current);
     };
 
     return (
       <div
         onClick={handlePress}
-        onMouseDown={onLongPressStart}
-        onMouseUp={onLongPressEnd}
-        onMouseLeave={onLongPressEnd}
-        onTouchStart={onLongPressStart}
-        onTouchEnd={onLongPressEnd}
         className={`rounded-xl shadow-sm border p-3 transition-all cursor-pointer active:scale-[0.99] ${
-          isSelected ? 'border-emerald-500 bg-emerald-50' : 'border-gray-100 bg-white hover:shadow-md hover:border-gray-200'
+          'border-gray-100 bg-white hover:shadow-md hover:border-gray-200'
         }`}
       >
         {/* Cover image */}
@@ -535,20 +474,9 @@ export default function CirclesPage() {
           </div>
         )}
         <div className="flex items-start gap-3">
-          {selectionMode && (
-            <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center ${
-              isSelected ? 'border-emerald-600 bg-emerald-600' : 'border-gray-300'
-            }`}>
-              {isSelected && <span className="text-white text-xs">✓</span>}
-            </div>
-          )}
           {circle.emoji ? (
             <span className="text-2xl flex-shrink-0">{circle.emoji}</span>
-          ) : (
-            <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
-              <span className="text-emerald-700 font-bold">{circle.name[0]?.toUpperCase()}</span>
-            </div>
-          )}
+          ) : null}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="font-semibold text-gray-900 truncate">{circle.name}</h3>
@@ -571,29 +499,11 @@ export default function CirclesPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+      <div className="min-h-screen bg-transparent">
         <div className="max-w-md mx-auto px-4 pb-8 pt-2">
           <AppHeader />
 
-          {/* Selection toolbar */}
-          {selectionMode && (
-            <div className="flex items-center justify-between mb-4 py-2">
-              <button onClick={cancelSelection} className="text-sm text-gray-500 font-medium">Cancel</button>
-              <span className="text-sm font-medium text-gray-700">{selectedCircles.size} selected</span>
-              <button
-                onClick={deleteSelected}
-                disabled={deleting || selectedCircles.size === 0}
-                className="text-sm font-medium text-red-600 disabled:text-gray-300"
-              >
-                {deleting ? 'Removing...' : selectedCircles.size > 0
-                  ? circles.find(c => selectedCircles.has(c.id))?.role === 'admin' ? 'Delete' : 'Leave'
-                  : 'Remove'}
-              </button>
-            </div>
-          )}
-
           {/* Tab bar */}
-          {!selectionMode && (
             <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
               <button
                 onClick={() => setMainTab('my')}
@@ -614,7 +524,6 @@ export default function CirclesPage() {
                 + Create
               </button>
             </div>
-          )}
 
           {/* My Circles tab */}
           {mainTab === 'my' && (
@@ -771,9 +680,15 @@ export default function CirclesPage() {
                   <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
                 </div>
               )}
+              {!discoverLoading && hiddenCircles.size > 0 && (
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <span className="text-xs text-gray-400">{hiddenCircles.size} {hiddenCircles.size === 1 ? 'circle' : 'circles'} hidden</span>
+                  <button onClick={() => setShowHiddenCirclesModal(true)} className="text-xs text-emerald-600 font-medium hover:text-emerald-700">Manage hidden</button>
+                </div>
+              )}
               {!discoverLoading && (() => {
                 const activeLocation = discoverBrowseLocation ?? discoverUserLocation;
-                const filtered = discoverCircles.filter(c => {
+                const filtered = discoverCircles.filter(c => !hiddenCircles.has(c.id)).filter(c => {
                   if (activeLocation && c.location_lat && c.location_lng) {
                     const d = distanceKm(activeLocation.lat, activeLocation.lng, c.location_lat, c.location_lng);
                     if (d > searchRadius) return false;
@@ -804,12 +719,8 @@ export default function CirclesPage() {
                         )}
                         <div className="p-3">
                           <div className="flex items-start gap-2.5">
-                            {circle.emoji ? (
+                            {circle.emoji && (
                               <span className="text-xl flex-shrink-0 leading-tight mt-0.5">{circle.emoji}</span>
-                            ) : (
-                              <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                <span className="text-emerald-700 font-bold text-sm">{circle.name[0]?.toUpperCase()}</span>
-                              </div>
                             )}
                             <div className="flex-1 min-w-0">
                               <h3 className="font-semibold text-gray-900 text-sm mb-0.5">{circle.name}</h3>
@@ -817,13 +728,22 @@ export default function CirclesPage() {
                               {circle.location_name && <p className="text-xs text-gray-400 mb-1.5">{circle.location_name}</p>}
                               <div className="flex items-center justify-between">
                                 <span className="text-xs text-gray-400">{circle.member_count} {circle.member_count === 1 ? 'member' : 'members'}</span>
-                                {circle.isMember ? (
-                                  <button onClick={() => router.push(`/circles/${circle.id}`)} className="px-3 py-1.5 text-xs font-medium text-emerald-600 border border-emerald-200 rounded-full hover:bg-emerald-50">Open</button>
-                                ) : (
-                                  <button onClick={() => joinCircle(circle.id)} disabled={circle.isJoining} className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-full hover:bg-gray-800 disabled:opacity-50">
-                                    {circle.isJoining ? 'Joining...' : 'Join'}
-                                  </button>
-                                )}
+                                <div className="flex items-center gap-1.5">
+                                  {!circle.isMember && (
+                                    <button
+                                      onClick={() => setHiddenCircles(prev => new Set([...prev, circle.id]))}
+                                      className="px-2 py-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                                      title="Hide"
+                                    >Hide</button>
+                                  )}
+                                  {circle.isMember ? (
+                                    <button onClick={() => router.push(`/circles/${circle.id}`)} className="px-3 py-1.5 text-xs font-medium text-emerald-600 border border-emerald-200 rounded-xl hover:bg-emerald-50">Open</button>
+                                  ) : (
+                                    <button onClick={() => joinCircle(circle.id)} disabled={circle.isJoining} className="px-4 py-2 text-xs font-semibold text-emerald-600 border border-emerald-200 rounded-xl hover:bg-emerald-50 disabled:opacity-50 transition-colors">
+                                      {circle.isJoining ? 'Joining...' : 'Join'}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -837,12 +757,55 @@ export default function CirclesPage() {
           )}
         </div>
 
-        {/* Create Circle Modal */}
-        {showCreateModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50">
-            <div className="bg-white rounded-t-2xl w-full max-w-md p-6 pb-36 max-h-[92vh] overflow-y-auto">
-              <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">New Circle</h3>
+        {/* Hidden Circles Modal */}
+      {showHiddenCirclesModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl max-w-md w-full max-h-[80vh] flex flex-col border border-white/60 shadow-xl">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Hidden Circles</h3>
+                <p className="text-sm text-gray-500 mt-0.5">{hiddenCircles.size} {hiddenCircles.size === 1 ? 'circle' : 'circles'} hidden from discover</p>
+              </div>
+              <button onClick={() => setShowHiddenCirclesModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {discoverCircles.filter(c => hiddenCircles.has(c.id)).length === 0 ? (
+                <p className="text-center text-sm text-gray-400 py-8">No hidden circles</p>
+              ) : (
+                discoverCircles.filter(c => hiddenCircles.has(c.id)).map(c => (
+                  <div key={c.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      {c.emoji && <span className="text-lg">{c.emoji}</span>}
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{c.name}</p>
+                        <p className="text-xs text-gray-400">{c.member_count} members{c.location_name ? ` · ${c.location_name}` : ''}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setHiddenCircles(prev => { const n = new Set(prev); n.delete(c.id); return n; })}
+                      className="px-3 py-1.5 text-xs font-semibold text-emerald-600 border border-emerald-200 rounded-xl hover:bg-emerald-50 transition-colors"
+                    >Unhide</button>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-100 flex gap-3">
+              <button onClick={() => setShowHiddenCirclesModal(false)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm">Close</button>
+              {hiddenCircles.size > 0 && (
+                <button onClick={() => { setHiddenCircles(new Set()); setShowHiddenCirclesModal(false); }} className="flex-1 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 text-sm">Unhide All</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* Create Circle Modal */}
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-end justify-center z-50" onTouchMove={e => e.stopPropagation()}>
+            <div className="bg-white/85 backdrop-blur-md rounded-t-2xl w-full max-w-md max-h-[92vh] flex flex-col border-t border-x border-white/60 shadow-xl">
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto px-6 pt-6 pb-2">
+              <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">New Circle</h3>
               <div className="space-y-4">
 
                 {/* Cover image picker */}
@@ -928,7 +891,10 @@ export default function CirclesPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              </div>{/* end scrollable */}
+
+              {/* Sticky footer buttons */}
+              <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex gap-3">
                 <button
                   onClick={() => { setShowCreateModal(false); setNewCircleData({ name: '', description: '', is_public: false }); setNewCircleLocation(null); setNewCircleLocationError(false); }}
                   className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"

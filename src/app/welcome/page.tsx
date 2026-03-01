@@ -9,11 +9,49 @@ import AppHeader from '@/components/AppHeader';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// Confetti pieces — varied shapes for a refined look
+const CONFETTI = [
+  { shape: 'circle', color: '#10b981', size: 8,  left: 5,  delay: 0,    dur: 3.8 },
+  { shape: 'square', color: '#6ee7b7', size: 6,  left: 11, delay: 0.3,  dur: 4.2 },
+  { shape: 'rect',   color: '#f59e0b', size: 10, left: 18, delay: 0.1,  dur: 3.5 },
+  { shape: 'circle', color: '#a78bfa', size: 5,  left: 24, delay: 0.6,  dur: 4.5 },
+  { shape: 'square', color: '#10b981', size: 7,  left: 31, delay: 0.2,  dur: 3.9 },
+  { shape: 'rect',   color: '#34d399', size: 9,  left: 38, delay: 0.8,  dur: 4.1 },
+  { shape: 'circle', color: '#fbbf24', size: 6,  left: 45, delay: 0.4,  dur: 3.6 },
+  { shape: 'square', color: '#6ee7b7', size: 8,  left: 52, delay: 0.9,  dur: 4.3 },
+  { shape: 'rect',   color: '#a78bfa', size: 5,  left: 59, delay: 0.2,  dur: 3.7 },
+  { shape: 'circle', color: '#10b981', size: 10, left: 65, delay: 0.5,  dur: 4.0 },
+  { shape: 'square', color: '#f59e0b', size: 6,  left: 72, delay: 0.1,  dur: 3.5 },
+  { shape: 'rect',   color: '#34d399', size: 8,  left: 78, delay: 0.7,  dur: 4.4 },
+  { shape: 'circle', color: '#a78bfa', size: 5,  left: 84, delay: 0.3,  dur: 3.8 },
+  { shape: 'square', color: '#10b981', size: 7,  left: 90, delay: 0.6,  dur: 4.1 },
+  { shape: 'rect',   color: '#fbbf24', size: 9,  left: 96, delay: 0.0,  dur: 3.6 },
+];
+
+// Haven house icon — clean SVG, on-brand emerald
+function HavenIcon({ size = 64 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M28 8L6 26h6v20h32V26h6L28 8z" fill="#d1fae5" stroke="#10b981" strokeWidth="2.5" strokeLinejoin="round" />
+      <rect x="22" y="34" width="12" height="12" rx="6" fill="#10b981" />
+      <rect x="11" y="29" width="7" height="7" rx="1.5" fill="#10b981" opacity="0.35" />
+      <rect x="38" y="29" width="7" height="7" rx="1.5" fill="#10b981" opacity="0.35" />
+    </svg>
+  );
+}
+
 export default function WelcomePage() {
+  const [userData, setUserData] = useState<any>(null);
+  const [profileData, setProfileData] = useState<any>(null);
+  const [step, setStep] = useState(0);
+  const [isFromSignup, setIsFromSignup] = useState(false);
+  const [stats, setStats] = useState({ families: 0, events: 0, similarAges: 0 });
+  const router = useRouter();
+
   const fetchProfileData = async (userId: string, accessToken: string) => {
     try {
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=family_name,display_name,location_name,bio,user_type`,
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=family_name,display_name,location_name,bio,user_type,kids_ages`,
         {
           headers: {
             'apikey': supabaseKey!,
@@ -31,25 +69,17 @@ export default function WelcomePage() {
       console.error('Error fetching profile:', error);
     }
   };
-  const [userData, setUserData] = useState<any>(null);
-  const [profileData, setProfileData] = useState<any>(null);
-  const [step, setStep] = useState(0);
-  const [isFromSignup, setIsFromSignup] = useState(false);
-  const [stats, setStats] = useState({ families: 0, events: 0, similarAges: 0 });
-  const router = useRouter();
 
   const fetchStats = async (userId: string, accessToken: string, userProfile?: any) => {
     try {
       const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${accessToken}` };
 
-      // Total families (excluding self)
       const familiesRes = await fetch(
         `${supabaseUrl}/rest/v1/profiles?id=neq.${userId}&select=id,kids_ages`,
         { headers }
       );
       const families = familiesRes.ok ? await familiesRes.json() : [];
 
-      // Upcoming events
       const today = new Date().toISOString().split('T')[0];
       const eventsRes = await fetch(
         `${supabaseUrl}/rest/v1/events?event_date=gte.${today}&select=id`,
@@ -57,7 +87,6 @@ export default function WelcomePage() {
       );
       const events = eventsRes.ok ? await eventsRes.json() : [];
 
-      // Families with overlapping kids ages
       const myKidsAges: number[] = userProfile?.kids_ages || [];
       let similarAges = 0;
       if (myKidsAges.length > 0) {
@@ -68,7 +97,6 @@ export default function WelcomePage() {
           );
         }).length;
       } else {
-        // Fallback: count families who have kids listed
         similarAges = families.filter((f: any) => f.kids_ages && f.kids_ages.length > 0).length;
       }
 
@@ -77,8 +105,8 @@ export default function WelcomePage() {
         events: Array.isArray(events) ? events.length : 0,
         similarAges,
       });
-    } catch (err) {
-      // Keep zeroes on error — better than fake numbers
+    } catch {
+      // Keep zeroes on error
     }
   };
 
@@ -86,7 +114,6 @@ export default function WelcomePage() {
     const fromSignup = new URLSearchParams(window.location.search).get('fromSignup') === 'true';
     setIsFromSignup(fromSignup);
 
-    // Returning users who land here directly → go to discover
     if (!fromSignup) {
       const session = getStoredSession();
       if (session?.user) {
@@ -97,22 +124,19 @@ export default function WelcomePage() {
       return;
     }
 
-    // Coming from signup — session may take a moment to settle; retry up to 5 times
     let attempts = 0;
     const trySession = () => {
       const session = getStoredSession();
       if (session?.user) {
         setUserData(session.user);
         fetchProfileData(session.user.id, session.access_token);
-        // Animate in steps
         setTimeout(() => setStep(1), 300);
-        setTimeout(() => setStep(2), 800);
-        setTimeout(() => setStep(3), 1300);
+        setTimeout(() => setStep(2), 900);
+        setTimeout(() => setStep(3), 1400);
       } else if (attempts < 5) {
         attempts++;
         setTimeout(trySession, 400);
       } else {
-        // Gave up — send back to signup
         router.push('/signup');
       }
     };
@@ -122,167 +146,144 @@ export default function WelcomePage() {
 
   if (!userData) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
+  const firstName = (profileData?.family_name || profileData?.display_name || '').split(' ')[0];
+
+  const similarLabel =
+    profileData?.user_type === 'teacher'
+      ? 'Seeking help'
+      : profileData?.user_type === 'business'
+      ? 'Potential clients'
+      : 'Similar ages';
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
       <style jsx>{`
-        @keyframes fall {
-          0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+        @keyframes confettiFall {
+          0%   { transform: translateY(-20px) rotate(0deg);   opacity: 1; }
+          85%  { opacity: 0.7; }
+          100% { transform: translateY(105vh) rotate(500deg); opacity: 0; }
         }
-        .fall { animation: fall 4s linear infinite; }
+        .confetti-piece {
+          animation: confettiFall linear infinite;
+          position: absolute;
+          top: 0;
+        }
       `}</style>
 
-      {/* Falling confetti balls - only for celebration mode */}
+      {/* Confetti — new signup only */}
       {isFromSignup && (
-        <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          {[...Array(20)].map((_, i) => (
+        <div className="fixed inset-0 overflow-hidden pointer-events-none z-10">
+          {CONFETTI.map((p, i) => (
             <div
               key={i}
-              className="absolute w-3 h-3 rounded-full fall opacity-80"
+              className="confetti-piece"
               style={{
-                backgroundColor: ['#10b981', '#06b6d4', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#3b82f6', '#f97316', '#84cc16'][i % 10],
-                left: `${2 + i * 4.8}%`,
-                animationDelay: `${i * 0.2}s`,
-                animationDuration: `${3 + (i % 4)}s`
+                left: `${p.left}%`,
+                width: p.shape === 'rect' ? Math.round(p.size * 0.45) : p.size,
+                height: p.size,
+                backgroundColor: p.color,
+                borderRadius: p.shape === 'circle' ? '50%' : '2px',
+                animationDelay: `${p.delay}s`,
+                animationDuration: `${p.dur}s`,
               }}
             />
           ))}
         </div>
       )}
 
-      <div className="max-w-md mx-auto px-4 py-8">
-        {/* Haven header — same position as other pages */}
-        <AppHeader backHref="/discover" backLabel="Close" />
+      <AppHeader />
+      <div className="max-w-md mx-auto px-5 flex flex-col min-h-screen">
 
-        {/* Welcome Message — sits where the top button row sits on other pages */}
-        <div className={`transition-all duration-500 text-center mb-6 ${step >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          {isFromSignup && (
-            <div className="w-14 h-14 bg-emerald-600 rounded-full mx-auto mb-4"></div>
-          )}
-          <h1 className="text-3xl font-bold text-emerald-700 mb-16" style={{ fontFamily: 'var(--font-fredoka)' }}>
-            {(() => {
-              const firstName = (profileData?.family_name || profileData?.display_name || '').split(' ')[0];
-              return isFromSignup
-                ? <>Welcome to Haven{firstName ? `, ${firstName}` : ''}!</>
-                : <>Welcome{firstName ? `, ${firstName}` : ''}!</>;
-            })()}
+        {/* ── Hero ── */}
+        <div
+          className={`flex flex-col items-center text-center pt-6 pb-10 transition-all duration-500 ${
+            step >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'
+          }`}
+        >
+          {/* Headline */}
+          <h1 className="text-gray-900 font-bold text-2xl mb-2 leading-snug">
+            {isFromSignup
+              ? <>Welcome{firstName ? `, ${firstName}` : ''}.</>
+              : <>Good to have you back{firstName ? `, ${firstName}` : ''}.</>}
           </h1>
-          {isFromSignup && (
-            <p className="text-emerald-600 text-base">
-              {profileData?.user_type === 'family'
-                ? "Your family community awaits"
-                : profileData?.user_type === 'teacher'
-                  ? "Ready to connect with homeschool families"
-                  : "Welcome to the homeschool community"}
-            </p>
-          )}
+
+          {/* Subline */}
+          <p className="text-gray-500 text-sm leading-relaxed max-w-[260px]">
+            {isFromSignup
+              ? profileData?.user_type === 'teacher'
+                ? 'Your profile is live. Homeschool families can find you now.'
+                : profileData?.user_type === 'business'
+                ? 'Your listing is live. Local families can discover you.'
+                : "You're part of the community. Let's find your people."
+              : 'Pick up where you left off.'}
+          </p>
         </div>
 
-        {/* Stats Preview */}
-        <div className={`bg-white rounded-2xl p-5 mb-6 transition-all duration-500 shadow-sm border border-emerald-100 ${step >= 2 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          <p className="text-emerald-500 text-xs font-medium uppercase tracking-wide mb-4 text-center">
-            Near {profileData?.location_name || 'your area'}
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-emerald-50 rounded-xl py-3 px-2 text-center">
-              <p className="text-2xl font-bold text-emerald-600">{stats.families}</p>
-              <p className="text-xs text-emerald-500 mt-0.5">Families</p>
-            </div>
-            <div className="bg-emerald-50 rounded-xl py-3 px-2 text-center">
-              <p className="text-2xl font-bold text-emerald-600">{stats.similarAges}</p>
-              <p className="text-xs text-emerald-500 mt-0.5">
-                {profileData?.user_type === 'teacher' ? 'Seeking help' : 
-                 profileData?.user_type === 'business' ? 'Potential clients' : 'Similar ages'}
-              </p>
-            </div>
-            <div className="bg-emerald-50 rounded-xl py-3 px-2 text-center">
-              <p className="text-2xl font-bold text-emerald-600">{stats.events}</p>
-              <p className="text-xs text-emerald-500 mt-0.5">Events</p>
+        {/* ── Stats card ── */}
+        <div
+          className={`transition-all duration-500 mb-5 ${
+            step >= 2 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          }`}
+        >
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-5">
+            <p className="text-gray-400 text-xs font-semibold uppercase tracking-widest text-center mb-4">
+              {profileData?.location_name ? `Near ${profileData.location_name}` : 'In your community'}
+            </p>
+            <div className="grid grid-cols-3 divide-x divide-gray-200">
+              <div className="text-center px-2">
+                <p className="text-2xl font-bold text-gray-900 tabular-nums">{stats.families}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Families</p>
+              </div>
+              <div className="text-center px-2">
+                <p className="text-2xl font-bold text-gray-900 tabular-nums">{stats.similarAges}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{similarLabel}</p>
+              </div>
+              <div className="text-center px-2">
+                <p className="text-2xl font-bold text-gray-900 tabular-nums">{stats.events}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Events</p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className={`transition-all duration-500 space-y-3 ${step >= 3 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        {/* ── CTA buttons ── */}
+        <div
+          className={`transition-all duration-500 space-y-3 ${
+            step >= 3 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          }`}
+        >
           {isFromSignup ? (
             <>
-              {profileData?.user_type === 'family' && (
-                <>
-                  {!profileData?.bio && (
-                    <Link
-                      href="/profile?edit=true&focus=bio"
-                      className="block w-full bg-white text-emerald-600 border-2 border-emerald-200 text-base font-medium py-3 px-8 rounded-xl hover:border-emerald-400 hover:bg-emerald-50 active:scale-[0.98] transition-all text-center"
-                    >
-                      Write a Family Bio
-                    </Link>
-                  )}
-                  <Link
-                    href="/onboarding"
-                    className="block w-full bg-emerald-600 text-white text-base font-semibold py-3 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm text-center"
-                  >
-                    Set up my profile
-                  </Link>
-                </>
-              )}
-              {profileData?.user_type === 'teacher' && (
-                <>
-                  <Link
-                    href="/onboarding"
-                    className="block w-full bg-emerald-600 text-white text-base font-semibold py-3 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm text-center"
-                  >
-                    Set up my profile
-                  </Link>
-                  <Link
-                    href="/profile"
-                    className="block w-full bg-white text-emerald-600 border-2 border-emerald-200 text-base font-medium py-3 px-8 rounded-xl hover:border-emerald-400 hover:bg-emerald-50 active:scale-[0.98] transition-all text-center"
-                  >
-                    View My Profile
-                  </Link>
-                </>
-              )}
-              {profileData?.user_type === 'business' && (
-                <>
-                  <Link
-                    href="/onboarding"
-                    className="block w-full bg-emerald-600 text-white text-base font-semibold py-3 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm text-center"
-                  >
-                    Set up my profile
-                  </Link>
-                  <Link
-                    href="/profile"
-                    className="block w-full bg-white text-emerald-600 border-2 border-emerald-200 text-base font-medium py-3 px-8 rounded-xl hover:border-emerald-400 hover:bg-emerald-50 active:scale-[0.98] transition-all text-center"
-                  >
-                    View My Profile
-                  </Link>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              {profileData?.user_type === 'family' && !profileData?.bio && (
-                <Link
-                  href="/profile?edit=true&focus=bio"
-                  className="block w-full bg-white text-emerald-600 border-2 border-emerald-200 text-base font-medium py-3 px-8 rounded-xl hover:border-emerald-400 hover:bg-emerald-50 active:scale-[0.98] transition-all text-center"
-                >
-                  Complete Your Bio
-                </Link>
-              )}
+              <Link
+                href="/onboarding"
+                className="block w-full bg-emerald-600 text-white text-sm font-semibold py-3.5 px-6 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all text-center"
+              >
+                Complete my profile
+              </Link>
               <Link
                 href="/discover"
-                className="block w-full bg-emerald-600 text-white text-base font-semibold py-3 px-8 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-sm text-center"
+                className="block w-full bg-white text-emerald-600 text-sm font-medium py-3.5 px-6 rounded-xl border border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 active:scale-[0.98] transition-all text-center"
               >
-                Explore Families
+                Explore the community
               </Link>
             </>
+          ) : (
+            <Link
+              href="/discover"
+              className="block w-full bg-emerald-600 text-white text-sm font-semibold py-3.5 px-6 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all text-center"
+            >
+              Go to Discover
+            </Link>
           )}
         </div>
 
+        <div className="flex-1 min-h-16" />
       </div>
     </div>
   );

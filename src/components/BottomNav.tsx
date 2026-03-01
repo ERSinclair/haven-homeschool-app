@@ -46,13 +46,18 @@ export default function BottomNav() {
           `${supabaseUrl}/rest/v1/conversations?or=(participant_1.eq.${session.user.id},participant_2.eq.${session.user.id})&select=last_message_by`,
           { headers }
         );
+        // Pending connection requests
+        const connRes = await fetch(
+          `${supabaseUrl}/rest/v1/connections?receiver_id=eq.${session.user.id}&status=eq.pending&select=id`,
+          { headers }
+        );
+        const pendingConns = connRes.ok ? (await connRes.json()).length : 0;
         if (convRes.ok) {
           const convs = await convRes.json();
-          setMessagesBadge(
-            Array.isArray(convs)
-              ? convs.filter((c: any) => c.last_message_by && c.last_message_by !== session.user.id).length
-              : 0
-          );
+          const unreadMsgs = Array.isArray(convs)
+            ? convs.filter((c: any) => c.last_message_by && c.last_message_by !== session.user.id).length
+            : 0;
+          setMessagesBadge(unreadMsgs + pendingConns);
         }
 
         // Pending circle invitations
@@ -98,7 +103,7 @@ export default function BottomNav() {
     { href: circlesHref,    label: 'Circles',  badge: circlesBadge, rootHref: '/circles' },
     { href: '/events',      label: 'Events',   badge: 0 },
     { href: '/messages',    label: 'Message',  badge: messagesBadge },
-    { href: '/profile',     label: 'Profile',  badge: notifBadge },
+    { href: '/profile',     label: 'Profile',  badge: 0 },
   ];
 
   const handleNavClick = (href: string) => {
@@ -146,7 +151,7 @@ export default function BottomNav() {
       className="fixed bottom-0 left-0 right-0 z-50"
       style={{ height: '72px' }}
     >
-      <div className="h-full bg-white/95 backdrop-blur-sm border-t border-gray-100 shadow-[0_-1px_12px_rgba(0,0,0,0.06)]">
+      <div className="h-full bg-white/20 backdrop-blur-lg border-t border-white/10">
         <div className="max-w-md mx-auto h-full flex justify-around items-center px-1">
           {navItems.map((item) => {
             const rootHref = (item as any).rootHref || item.href;

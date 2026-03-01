@@ -231,7 +231,7 @@ export default function PublicProfilePage() {
           </div>
         ) : (
           <div className="space-y-2">
-            <Link href="/profile" className="block w-full py-3.5 bg-gray-900 text-white rounded-2xl font-bold text-base text-center hover:bg-gray-800 transition-colors">
+            <Link href="/profile" className="block w-full py-3.5 bg-emerald-600 text-white rounded-2xl font-bold text-base text-center hover:bg-emerald-700 transition-colors">
               Edit my profile
             </Link>
           </div>

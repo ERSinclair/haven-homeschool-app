@@ -8,7 +8,8 @@ export type NotifType =
   | 'connection_accepted'
   | 'circle_invite'
   | 'event_rsvp'
-  | 'message';
+  | 'message'
+  | 'circle_update';
 
 export interface CreateNotifParams {
   userId: string;       // recipient

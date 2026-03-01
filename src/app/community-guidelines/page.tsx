@@ -83,7 +83,7 @@ export default function CommunityGuidelinesPage() {
               You can report any profile or message in the app using the report button. Reports go directly to us and are taken seriously.
             </p>
             <p className="text-sm leading-relaxed">
-              For urgent safety concerns — especially anything involving children — email us immediately at <strong>hello@familyhaven.app</strong>.
+              For urgent safety concerns — especially anything involving children — email us immediately at <strong>cane@familyhaven.app</strong>.
             </p>
           </section>
 
