@@ -219,8 +219,8 @@ export default function CreateEventModal({
         onCancel={() => { URL.revokeObjectURL(coverCropSrc); setCoverCropSrc(null); }}
       />
     )}
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-end justify-center z-50">
-      <div className="bg-white/85 backdrop-blur-md rounded-t-2xl w-full max-w-md flex flex-col max-h-[92vh] border-t border-x border-white/60 shadow-xl">
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white/85 backdrop-blur-md rounded-2xl w-full max-w-md flex flex-col max-h-[92vh] border border-white/60 shadow-xl">
         {/* Sticky modal header */}
         <div className="flex-shrink-0 flex justify-between items-center px-6 py-4 border-b border-gray-100">
           <h2 className="text-2xl font-bold text-gray-900">Create Event</h2>
@@ -327,7 +327,7 @@ export default function CreateEventModal({
                     <button type="button" onClick={() => setShowPicker(v => !v)}
                       className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-emerald-300 transition-colors">
                       <span className="text-sm text-gray-500">Time</span>
-                      <span className="text-lg font-bold text-gray-900 font-mono">{formatted}</span>
+                      <span className="text-sm font-medium text-gray-900 font-mono">{formatted}</span>
                     </button>
 
                     {showPicker && (

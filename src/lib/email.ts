@@ -79,3 +79,31 @@ export async function sendWelcomeEmail(to: string, name: string) {
     `,
   });
 }
+
+export async function sendExternalInviteEmail(
+  to: string,
+  fromName: string,
+  type: 'event' | 'circle',
+  targetName: string,
+  token: string
+) {
+  if (!process.env.RESEND_API_KEY) return;
+  const typeLabel = type === 'event' ? 'event' : 'circle';
+  const joinUrl = `${BASE_URL}/invite/${token}`;
+  await getResend().emails.send({
+    from: FROM,
+    to,
+    subject: `${fromName} invited you to "${targetName}" on Haven`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <h2 style="color:#059669;margin-bottom:8px">You've been invited!</h2>
+        <p style="color:#374151"><strong>${fromName}</strong> has invited you to join the ${typeLabel} <strong>${targetName}</strong> on Haven — a community app for homeschool families.</p>
+        <a href="${joinUrl}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#059669;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">
+          Create account to join
+        </a>
+        <p style="color:#6b7280;font-size:13px;margin-top:16px">This invite link expires in 7 days.</p>
+        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your homeschool community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
+      </div>
+    `,
+  });
+}

@@ -16,6 +16,7 @@ interface AppHeaderProps {
   left?: React.ReactNode;
   right?: React.ReactNode;
   transparent?: boolean;
+  hideBell?: boolean;
 }
 
 export default function AppHeader({
@@ -26,6 +27,7 @@ export default function AppHeader({
   left,
   right,
   transparent = false,
+  hideBell = false,
 }: AppHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -34,7 +36,10 @@ export default function AppHeader({
   const showBack = !!(backHref || onBack);
   const handleBack = onBack ?? (backHref ? () => router.push(backHref) : () => router.back());
   const mainNavPaths = ['/discover', '/circles', '/events', '/messages', '/profile'];
+  const calendarNavPaths = ['/discover', '/circles', '/events', '/messages'];
   const isMainNav = mainNavPaths.some(p => pathname === p);
+  const isExactMainNav = mainNavPaths.includes(pathname ?? '');
+  const showCalendar = calendarNavPaths.some(p => pathname === p);
   const isOnFeed = pathname === '/feed' || pathname === '/notifications';
 
   useEffect(() => {
@@ -72,15 +77,24 @@ export default function AppHeader({
         {showBack ? (
           <button
             onClick={handleBack}
-            className="flex items-center gap-1 text-emerald-600 font-semibold text-sm hover:text-emerald-700 transition-colors"
+            className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-emerald-50 transition-colors text-gray-500 hover:text-emerald-600"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
             </svg>
-            {backLabel || 'Back'}
           </button>
         ) : left ? (
           left
+        ) : showCalendar ? (
+          <button
+            onClick={() => router.push('/calendar?from=' + pathname)}
+            className="p-1 rounded-xl hover:bg-emerald-50 transition-colors -ml-1"
+            aria-label="Calendar"
+          >
+            <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
+            </svg>
+          </button>
         ) : null}
       </div>
 
@@ -99,10 +113,10 @@ export default function AppHeader({
       {/* Right — feed bell + custom slot */}
       <div className="w-20 flex items-center justify-end gap-3 relative z-10">
         {right}
-        {isMainNav && !isOnFeed && (
+        {isExactMainNav && !isOnFeed && !hideBell && (
           <button
             onClick={() => router.push('/notifications')}
-            className="relative p-1 rounded-xl hover:bg-emerald-50 transition-colors -mt-1" style={{ marginRight: "-20px" }}
+            className="relative p-1 rounded-xl hover:bg-emerald-50 transition-colors mt-1 mr-[-8px]"
             aria-label="Activity feed"
           >
             <span className="relative inline-flex">

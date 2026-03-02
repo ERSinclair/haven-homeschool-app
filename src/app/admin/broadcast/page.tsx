@@ -26,6 +26,8 @@ export default function BroadcastPage() {
   const [sending, setSending] = useState(false);
   const [history, setHistory] = useState<BroadcastHistory[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [broadcastType, setBroadcastType] = useState<'message' | 'poll'>('message');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
   const router = useRouter();
 
   useEffect(() => {
@@ -107,9 +109,13 @@ export default function BroadcastPage() {
 
     setSending(true);
     try {
+      const pollSuffix = broadcastType === 'poll'
+        ? '\n\nOptions:\n' + pollOptions.filter(o => o.trim()).map((o, i) => (i + 1) + '. ' + o).join('\n')
+        : '';
+      const fullContent = content.trim() + pollSuffix;
       await sendBroadcast(
         title.trim(),
-        content.trim(),
+        fullContent,
         targetType,
         targetType === 'location' ? targetLocation.trim() : undefined
       );
@@ -197,6 +203,47 @@ export default function BroadcastPage() {
               />
               <div className="text-sm text-gray-500 mt-1">{content.length}/500 characters</div>
             </div>
+
+            {/* Broadcast type toggle */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
+              <div className="flex gap-2">
+                {(['message', 'poll'] as const).map(t => (
+                  <button key={t} type="button" onClick={() => setBroadcastType(t)}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${broadcastType === t ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'}`}>
+                    {t === 'message' ? 'Announcement' : 'Poll / Vote'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Poll options */}
+            {broadcastType === 'poll' && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Vote options</label>
+                <div className="space-y-2">
+                  {pollOptions.map((opt, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={opt}
+                        onChange={e => { const o = [...pollOptions]; o[i] = e.target.value; setPollOptions(o); }}
+                        placeholder={`Option ${i + 1}`}
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      />
+                      {pollOptions.length > 2 && (
+                        <button type="button" onClick={() => setPollOptions(prev => prev.filter((_, j) => j !== i))}
+                          className="text-gray-400 hover:text-red-500 px-2">×</button>
+                      )}
+                    </div>
+                  ))}
+                  {pollOptions.length < 6 && (
+                    <button type="button" onClick={() => setPollOptions(prev => [...prev, ''])}
+                      className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">+ Add option</button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Target Audience */}
             <div className="mb-6">

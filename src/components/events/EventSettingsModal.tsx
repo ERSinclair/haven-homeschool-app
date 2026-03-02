@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
 import ImageCropModal from '@/components/ImageCropModal';
+import EmailInviteInput from '@/components/EmailInviteInput';
+import ReminderPicker, { ReminderConfig, offsetToMs } from '@/components/ReminderPicker';
 
 type Props = {
   event: any;
@@ -29,6 +31,8 @@ const formatTime = (timeStr: string) => {
 export default function EventSettingsModal({ event, userId: _userId, onClose, onUpdated, onCancelled }: Props) {
   const [confirmCancelEvent, setConfirmCancelEvent] = useState(false);
   const [cancellingEvent, setCancellingEvent] = useState(false);
+  const [reminder, setReminder] = useState<ReminderConfig>({ offset: null, delivery: ['push', 'notification'] });
+  const [savedReminder, setSavedReminder] = useState(false);
   const [uploadingEventCover, setUploadingEventCover] = useState(false);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
 
@@ -217,6 +221,36 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
               </label>
             )}
           </div>
+
+          {/* Reminder */}
+          <div className="border border-gray-100 rounded-xl p-4 mb-2">
+            <ReminderPicker value={reminder} onChange={setReminder} />
+            {reminder.offset && (
+              <button
+                onClick={async () => {
+                  const session = getStoredSession();
+                  if (!session) return;
+                  const eventDate = new Date(event.event_date + 'T' + (event.event_time || '09:00') + ':00');
+                  const remindAt = new Date(eventDate.getTime() - offsetToMs(reminder.offset!));
+                  if (remindAt > new Date()) {
+                    await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/reminders`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, 'Authorization': `Bearer ${session.access_token}`, 'Prefer': 'return=minimal' },
+                      body: JSON.stringify({ user_id: session.user.id, type: 'event', target_id: event.id, target_title: event.title, remind_at: remindAt.toISOString(), delivery: reminder.delivery }),
+                    }).catch(() => {});
+                    setSavedReminder(true);
+                    setTimeout(() => setSavedReminder(false), 3000);
+                  }
+                }}
+                className="mt-3 w-full py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700"
+              >
+                {savedReminder ? 'Reminder set!' : 'Set reminder'}
+              </button>
+            )}
+          </div>
+
+          {/* Invite by email */}
+          <EmailInviteInput type="event" targetId={event.id} targetName={event.title} />
 
           {/* Danger Zone */}
           <div className="border border-red-200 rounded-xl p-4">

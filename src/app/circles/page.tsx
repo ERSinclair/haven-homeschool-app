@@ -801,8 +801,8 @@ export default function CirclesPage() {
 
       {/* Create Circle Modal */}
         {showCreateModal && (
-          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-end justify-center z-50" onTouchMove={e => e.stopPropagation()}>
-            <div className="bg-white/85 backdrop-blur-md rounded-t-2xl w-full max-w-md max-h-[92vh] flex flex-col border-t border-x border-white/60 shadow-xl">
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4" onTouchMove={e => e.stopPropagation()}>
+            <div className="bg-white/85 backdrop-blur-md rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col border border-white/60 shadow-xl">
               {/* Scrollable content */}
               <div className="flex-1 overflow-y-auto px-6 pt-6 pb-2">
               <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">New Circle</h3>

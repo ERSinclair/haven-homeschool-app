@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
+import { undoDelete } from '@/lib/undo';
+import ReminderPicker, { ReminderConfig, offsetToMs } from '@/components/ReminderPicker';
+import DatePickerModal from '@/components/DatePickerModal';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
@@ -23,7 +26,7 @@ type CalItem = {
   eventId?: string;      // links back to /events
   circleId?: string;     // links back to /circles/[id]
   noteId?: string;       // links to calendar_notes.id
-  recurrenceRule?: 'weekly' | 'monthly' | 'yearly' | null;
+  recurrenceRule?: 'weekly' | 'fortnightly' | 'monthly' | 'yearly' | null;
 };
 
 type CalNote = {
@@ -31,7 +34,7 @@ type CalNote = {
   note_date: string;
   title?: string;
   content: string;
-  recurrence_rule?: 'weekly' | 'monthly' | 'yearly' | null;
+  recurrence_rule?: 'weekly' | 'fortnightly' | 'monthly' | 'yearly' | null;
   recurrence_end_date?: string | null;
 };
 
@@ -58,6 +61,9 @@ function expandRecurringNote(note: CalNote): { date: string; instanceId: string 
     if (note.recurrence_rule === 'weekly') {
       current = new Date(current);
       current.setDate(current.getDate() + 7);
+    } else if (note.recurrence_rule === 'fortnightly') {
+      current = new Date(current);
+      current.setDate(current.getDate() + 14);
     } else if (note.recurrence_rule === 'monthly') {
       current = new Date(current);
       current.setMonth(current.getMonth() + 1);
@@ -128,21 +134,21 @@ function downloadICS(items: CalItem[]) {
 
 const DOT_COLORS: Record<CalItem['type'], string> = {
   hosting:   'bg-emerald-500',
-  attending: 'bg-blue-400',
+  attending: 'bg-sky-400',
   circle:    'bg-violet-400',
-  note:      'bg-emerald-500',
+  note:      'bg-amber-400',
 };
 
 const LABEL_COLORS: Record<CalItem['type'], string> = {
   hosting:   'bg-emerald-100 text-emerald-800 border-emerald-200',
-  attending: 'bg-blue-100 text-blue-800 border-blue-200',
+  attending: 'bg-sky-100 text-sky-800 border-sky-200',
   circle:    'bg-violet-100 text-violet-800 border-violet-200',
-  note:      'bg-emerald-100 text-emerald-800 border-emerald-200',
+  note:      'bg-amber-100 text-amber-800 border-amber-200',
 };
 
 const TYPE_LABELS: Record<CalItem['type'], string> = {
   hosting:   'Hosting',
-  attending: 'Attending',
+  attending: 'Event',
   circle:    'Circle meetup',
   note:      'Note',
 };
@@ -162,15 +168,19 @@ function CalendarContent() {
     const d = searchParams.get('date');
     return d ? new Date(d + 'T12:00:00') : new Date();
   });
-  const [selectedDate, setSelectedDate] = useState<string | null>(() => searchParams.get('date'));
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState<string>(() => searchParams.get('date') || todayStr);
   const [userId, setUserId] = useState<string | null>(null);
   // Note editing state
   const [addingNote, setAddingNote] = useState(false);
   const [editingNote, setEditingNote] = useState<CalNote | null>(null);
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
-  const [noteRecurrence, setNoteRecurrence] = useState<'none' | 'weekly' | 'monthly' | 'yearly'>('none');
+  const [noteRecurrence, setNoteRecurrence] = useState<'none' | 'weekly' | 'fortnightly' | 'monthly' | 'yearly'>('none');
   const [noteRecurrenceEnd, setNoteRecurrenceEnd] = useState('');
+  const [noteReminder, setNoteReminder] = useState<ReminderConfig>({ offset: null, delivery: ['push', 'notification'] });
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [endDateMonth, setEndDateMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [savingNote, setSavingNote] = useState(false);
 
   const loadCalendarData = useCallback(async () => {
@@ -329,9 +339,8 @@ function CalendarContent() {
     itemsByDate[item.date].push(item);
   });
 
-  const todayStr = new Date().toISOString().slice(0, 10);
 
-  const dayItems = selectedDate ? (itemsByDate[selectedDate] || []) : [];
+  const dayItems = itemsByDate[selectedDate] || [];
 
   const handleItemClick = (item: CalItem) => {
     if (item.eventId) router.push(`/events?manage=${item.eventId}`);
@@ -456,22 +465,49 @@ function CalendarContent() {
           }
         }
       }
+      // Save reminder if set
+      if (noteReminder.offset) {
+        const noteDate = new Date(selectedDate + 'T09:00:00');
+        const remindAt = new Date(noteDate.getTime() - offsetToMs(noteReminder.offset));
+        if (remindAt > new Date()) {
+          await fetch(`${supabaseUrl}/rest/v1/reminders`, {
+            method: 'POST',
+            headers: { ...h, 'Prefer': 'return=minimal' },
+            body: JSON.stringify({
+              user_id: session.user.id,
+              type: 'note',
+              target_id: session.user.id, // placeholder — note id not needed for routing
+              target_title: noteTitle.trim() || noteContent.trim().slice(0, 40),
+              remind_at: remindAt.toISOString(),
+              delivery: noteReminder.delivery,
+            }),
+          }).catch(() => {});
+        }
+      }
       cancelNote();
     } catch { /* silent */ }
     finally { setSavingNote(false); }
   };
 
-  const deleteNote = async (noteId: string) => {
+  const deleteNote = (noteId: string) => {
     const session = getStoredSession();
     if (!session) return;
-    try {
-      await fetch(`${supabaseUrl}/rest/v1/calendar_notes?id=eq.${noteId}`, {
-        method: 'DELETE',
-        headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
-      });
-      setNotes(prev => prev.filter(n => n.id !== noteId));
-      setItems(prev => prev.filter(i => i.noteId !== noteId));
-    } catch { /* silent */ }
+    // Optimistically remove from UI
+    const removedNote = notes.find(n => n.id === noteId);
+    setNotes(prev => prev.filter(n => n.id !== noteId));
+    setItems(prev => prev.filter(i => i.noteId !== noteId));
+    undoDelete({
+      label: 'Note',
+      onDelete: async () => {
+        await fetch(`${supabaseUrl}/rest/v1/calendar_notes?id=eq.${noteId}`, {
+          method: 'DELETE',
+          headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+        });
+      },
+      onUndo: () => {
+        if (removedNote) setNotes(prev => [...prev, removedNote]);
+      },
+    });
   };
 
   const formatTime = (t?: string) => {
@@ -494,15 +530,20 @@ function CalendarContent() {
     </div>
   );
 
+  const from = searchParams?.get('from') || '/discover';
+
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-transparent pb-32">
-        <div className="max-w-md mx-auto px-4 pb-8 pt-2">
-          <div className="mb-6">
-            <Link href="/profile" className="text-emerald-600 hover:text-emerald-700 font-medium">← Profile</Link>
-          </div>
-
-          <AppHeader />
+      {/* Backdrop */}
+      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40" onClick={() => router.push(from)} />
+      {/* Sheet — centred, frosted */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+        <div className="bg-white/85 backdrop-blur-md rounded-2xl w-full max-w-md border border-white/60 shadow-xl pointer-events-auto" style={{ maxHeight: '92dvh', overflowY: 'auto' }}>
+        {/* Header */}
+        <div className="sticky top-0 bg-transparent px-4 pt-2 pb-1 z-10 flex justify-end">
+          <button onClick={() => router.push(from)} className="p-1 text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="px-4 pb-8 pt-1">
 
           {/* Upcoming strip */}
           {upcoming.length === 0 && (
@@ -547,14 +588,14 @@ function CalendarContent() {
             {/* Month nav */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <button
-                onClick={() => { setCurrentMonth(new Date(year, month - 1, 1)); setSelectedDate(null); }}
+                onClick={() => { setCurrentMonth(new Date(year, month - 1, 1)); }}
                 className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               </button>
               <h3 className="font-semibold text-gray-900">{MONTH_NAMES[month]} {year}</h3>
               <button
-                onClick={() => { setCurrentMonth(new Date(year, month + 1, 1)); setSelectedDate(null); }}
+                onClick={() => { setCurrentMonth(new Date(year, month + 1, 1)); }}
                 className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -584,7 +625,7 @@ function CalendarContent() {
                 return (
                   <button
                     key={day}
-                    onClick={() => { setSelectedDate(prev => prev === dateStr ? null : dateStr); cancelNote(); }}
+                    onClick={() => { setSelectedDate(dateStr); cancelNote(); }}
                     className={`h-12 flex flex-col items-center justify-start pt-1.5 border-b border-r border-gray-50 last:border-r-0 transition-colors ${
                       isSelected ? 'bg-emerald-600' : isToday ? 'bg-emerald-50' : isPast ? 'bg-gray-50/50' : 'hover:bg-gray-50'
                     }`}
@@ -616,7 +657,7 @@ function CalendarContent() {
           </div>
 
           {/* Selected day events */}
-          {selectedDate && (
+          {(
             <div>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold text-gray-700">{formatDateLong(selectedDate)}</p>
@@ -627,14 +668,14 @@ function CalendarContent() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Add note
+
                 </button>
               </div>
 
               {/* Note creation / edit form */}
               {addingNote && (
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-3 space-y-4 shadow-sm">
-                  <h3 className="text-lg font-bold text-gray-900">{editingNote ? 'Edit note' : 'Add note'}</h3>
+                  <h3 className="text-lg font-bold text-gray-900">{editingNote ? 'Edit note' : ''}</h3>
                   <input
                     type="text"
                     value={noteTitle}
@@ -652,34 +693,50 @@ function CalendarContent() {
                   />
                   {/* Recurrence */}
                   <div>
-                    <p className="text-sm font-medium text-gray-700 mb-2">Repeats</p>
-                    <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200">
-                      {(['none', 'weekly', 'monthly', 'yearly'] as const).map(opt => (
+                    <p className="text-sm font-medium text-gray-700 mb-2">Repeat</p>
+                    <div className="flex gap-2 flex-wrap justify-center">
+                      {(['weekly', 'fortnightly', 'monthly', 'yearly'] as const).map(opt => (
                         <button
                           key={opt}
                           type="button"
-                          onClick={() => setNoteRecurrence(opt)}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                            noteRecurrence === opt ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                          onClick={() => setNoteRecurrence(prev => prev === opt ? 'none' : opt)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                            noteRecurrence === opt
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
                           }`}
                         >
-                          {opt === 'none' ? 'Never' : opt.charAt(0).toUpperCase() + opt.slice(1)}
+                          {opt === 'fortnightly' ? '2 Weeks' : opt.charAt(0).toUpperCase() + opt.slice(1)}
                         </button>
                       ))}
                     </div>
                     {noteRecurrence !== 'none' && (
                       <div className="mt-3">
                         <label className="text-xs text-gray-500 mb-1 block">End date (optional)</label>
-                        <input
-                          type="date"
-                          value={noteRecurrenceEnd}
-                          onChange={e => setNoteRecurrenceEnd(e.target.value)}
-                          className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 text-sm"
-                        />
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setShowEndDatePicker(v => !v)}
+                            className="w-full p-3 border border-gray-200 rounded-xl bg-white text-gray-900 text-sm text-left hover:border-emerald-400 transition-colors"
+                          >
+                            {noteRecurrenceEnd ? new Date(noteRecurrenceEnd + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Select end date'}
+                          </button>
+                          {showEndDatePicker && (
+                            <DatePickerModal
+                              value={noteRecurrenceEnd}
+                              onChange={setNoteRecurrenceEnd}
+                              onClose={() => setShowEndDatePicker(false)}
+                              minDate={new Date().toISOString().slice(0, 10)}
+                              month={endDateMonth}
+                              onMonthChange={setEndDateMonth}
+                            />
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-3">
+                  <ReminderPicker value={noteReminder} onChange={setNoteReminder} />
+                  <div className="flex gap-3 mt-2">
                     <button
                       onClick={cancelNote}
                       className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors text-sm"
@@ -781,6 +838,7 @@ function CalendarContent() {
               </Link>
             </div>
           )}
+        </div>
         </div>
       </div>
     </ProtectedRoute>

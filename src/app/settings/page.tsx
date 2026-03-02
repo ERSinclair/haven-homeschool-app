@@ -65,6 +65,12 @@ export default function SettingsPage() {
       nearbyFamilies: true,
       events: true,
       digest: false,
+      push_messages: true,
+      push_connections: true,
+      push_events: true,
+      push_circles: true,
+      push_announcements: true,
+      email_digest: true,
     },
     privacy: {
       showDistance: true,
@@ -107,6 +113,26 @@ export default function SettingsPage() {
     };
     setSettings(newSettings);
     localStorage.setItem('familyFinderSettings', JSON.stringify(newSettings));
+
+    // Persist notification prefs to DB
+    if (category === 'notifications') {
+      const session = getStoredSession();
+      if (session) {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const updatedPrefs = { ...newSettings.notifications };
+        fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: supabaseKey!,
+            Authorization: `Bearer ${session.access_token}`,
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({ notification_prefs: updatedPrefs }),
+        }).catch(() => {});
+      }
+    }
   };
 
   const handleLogout = () => {
@@ -258,49 +284,59 @@ export default function SettingsPage() {
         {/* Notifications */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-600">NOTIFICATIONS</h2>
+            <h2 className="text-sm font-semibold text-gray-600">PUSH NOTIFICATIONS</h2>
           </div>
-          
           <div className="divide-y divide-gray-100">
             <div className="flex items-center justify-between p-4">
               <div>
-                <p className="font-medium text-gray-900">New messages</p>
-                <p className="text-sm text-gray-500">When families message you</p>
+                <p className="font-medium text-gray-900">Messages</p>
+                <p className="text-sm text-gray-500">New messages from families</p>
               </div>
-              <Toggle 
-                enabled={settings.notifications.messages} 
-                onChange={() => updateSetting('notifications', 'messages', !settings.notifications.messages)}
-              />
+              <Toggle enabled={settings.notifications.push_messages} onChange={() => updateSetting('notifications', 'push_messages', !settings.notifications.push_messages)} />
             </div>
             <div className="flex items-center justify-between p-4">
               <div>
-                <p className="font-medium text-gray-900">Nearby families</p>
-                <p className="text-sm text-gray-500">New families in your area</p>
+                <p className="font-medium text-gray-900">Connections</p>
+                <p className="text-sm text-gray-500">New connection requests</p>
               </div>
-              <Toggle 
-                enabled={settings.notifications.nearbyFamilies}
-                onChange={() => updateSetting('notifications', 'nearbyFamilies', !settings.notifications.nearbyFamilies)}
-              />
+              <Toggle enabled={settings.notifications.push_connections} onChange={() => updateSetting('notifications', 'push_connections', !settings.notifications.push_connections)} />
             </div>
             <div className="flex items-center justify-between p-4">
               <div>
                 <p className="font-medium text-gray-900">Events</p>
-                <p className="text-sm text-gray-500">Reminders and updates</p>
+                <p className="text-sm text-gray-500">Invites, RSVPs and reminders</p>
               </div>
-              <Toggle 
-                enabled={settings.notifications.events}
-                onChange={() => updateSetting('notifications', 'events', !settings.notifications.events)}
-              />
+              <Toggle enabled={settings.notifications.push_events} onChange={() => updateSetting('notifications', 'push_events', !settings.notifications.push_events)} />
             </div>
             <div className="flex items-center justify-between p-4">
               <div>
-                <p className="font-medium text-gray-900">Weekly digest</p>
-                <p className="text-sm text-gray-500">Summary of activity</p>
+                <p className="font-medium text-gray-900">Circles</p>
+                <p className="text-sm text-gray-500">Invitations and circle activity</p>
               </div>
-              <Toggle 
-                enabled={settings.notifications.digest}
-                onChange={() => updateSetting('notifications', 'digest', !settings.notifications.digest)}
-              />
+              <Toggle enabled={settings.notifications.push_circles} onChange={() => updateSetting('notifications', 'push_circles', !settings.notifications.push_circles)} />
+            </div>
+            <div className="flex items-center justify-between p-4">
+              <div>
+                <p className="font-medium text-gray-900">Announcements</p>
+                <p className="text-sm text-gray-500">Haven updates and news</p>
+              </div>
+              <Toggle enabled={settings.notifications.push_announcements} onChange={() => updateSetting('notifications', 'push_announcements', !settings.notifications.push_announcements)} />
+            </div>
+          </div>
+        </div>
+
+        {/* Email */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+            <h2 className="text-sm font-semibold text-gray-600">EMAIL</h2>
+          </div>
+          <div className="divide-y divide-gray-100">
+            <div className="flex items-center justify-between p-4">
+              <div>
+                <p className="font-medium text-gray-900">Daily digest</p>
+                <p className="text-sm text-gray-500">One morning email with all your updates</p>
+              </div>
+              <Toggle enabled={settings.notifications.email_digest} onChange={() => updateSetting('notifications', 'email_digest', !settings.notifications.email_digest)} />
             </div>
           </div>
         </div>

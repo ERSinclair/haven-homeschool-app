@@ -9,6 +9,7 @@ import AvatarUpload from '@/components/AvatarUpload';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { ConnectionsPageSkeleton } from '@/components/SkeletonLoader';
+import InviteToHaven from '@/components/InviteToHaven';
 
 type Connection = {
   id: string;
@@ -566,6 +567,7 @@ export default function ConnectionsPage() {
         {/* Connections Tab */}
         {activeTab === 'connections' && (
           <div className="space-y-4">
+            <InviteToHaven />
             {filteredConnections.length === 0 ? (
               searchTerm ? (
                 <div className="text-center py-10 px-6">                  <p className="font-semibold text-gray-700 mb-1">No connections match &ldquo;{searchTerm}&rdquo;</p>

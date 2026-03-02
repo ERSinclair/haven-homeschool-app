@@ -44,14 +44,31 @@ export async function createNotification(params: CreateNotifParams): Promise<voi
       }),
     });
 
-    // Fire push notification — non-blocking, silent failure
-    sendPushNotification({
-      recipientId: params.userId,
-      title: params.title,
-      body: params.body ?? '',
-      url: params.link ?? '/notifications',
-      accessToken: params.accessToken,
-    });
+    // Check recipient's push prefs before firing
+    const prefsRes = await fetch(
+      `${supabaseUrl}/rest/v1/profiles?id=eq.${params.userId}&select=notification_prefs`,
+      { headers: { apikey: supabaseKey!, Authorization: `Bearer ${params.accessToken}` } }
+    ).catch(() => null);
+    const prefsData = prefsRes?.ok ? await prefsRes.json() : [];
+    const prefs = prefsData?.[0]?.notification_prefs ?? {};
+
+    const pushAllowed = (() => {
+      if (params.type === 'message') return prefs.push_messages !== false;
+      if (params.type === 'connection_request' || params.type === 'connection_accepted') return prefs.push_connections !== false;
+      if (params.type === 'event_rsvp') return prefs.push_events !== false;
+      if (params.type === 'circle_invite' || params.type === 'circle_update') return prefs.push_circles !== false;
+      return true;
+    })();
+
+    if (pushAllowed) {
+      sendPushNotification({
+        recipientId: params.userId,
+        title: params.title,
+        body: params.body ?? '',
+        url: params.link ?? '/notifications',
+        accessToken: params.accessToken,
+      });
+    }
   } catch {
     // Non-critical — never let notification failure break the main action
   }

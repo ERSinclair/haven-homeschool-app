@@ -1,5 +1,6 @@
 'use client';
 import { toast } from '@/lib/toast';
+import { undoDelete } from '@/lib/undo';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { getCached, setCached } from '@/lib/pageCache';
@@ -416,10 +417,11 @@ function MessagesContent() {
         setNewMessage('');
         setSelectedFile(null);
         
-        // Reset textarea height
+        // Reset textarea height and refocus
         const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
         if (textarea) {
           textarea.style.height = '48px';
+          textarea.focus();
         }
         
         // Scroll handled by useEffect on messages state change
@@ -651,42 +653,35 @@ function MessagesContent() {
     }
   };
 
-  const deleteSelectedMessages = async () => {
+  const deleteSelectedMessages = () => {
     if (selectedMessages.length === 0 || !userId) return;
-    
     const session = getStoredSession();
     if (!session) return;
 
-    try {
-      // Delete all selected messages
-      for (const messageId of selectedMessages) {
-        const deleteRes = await fetch(
-          `${supabaseUrl}/rest/v1/messages?id=eq.${messageId}`,
-          {
+    const toDelete = [...selectedMessages];
+    const removed = messages.filter(m => toDelete.includes(m.id));
+
+    setMessages(prev => prev.filter(m => !toDelete.includes(m.id)));
+    setSelectedMessages([]);
+    setSelectionMode(false);
+    setShowDeleteMessageModal(false);
+
+    undoDelete({
+      label: toDelete.length === 1 ? 'Message' : `${toDelete.length} messages`,
+      onDelete: async () => {
+        for (const messageId of toDelete) {
+          await fetch(`${supabaseUrl}/rest/v1/messages?id=eq.${messageId}`, {
             method: 'DELETE',
-            headers: {
-              'apikey': supabaseKey!,
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-          }
-        );
-
-        if (!deleteRes.ok) {
-          throw new Error(`Failed to delete message ${messageId}: ${deleteRes.status}`);
+            headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+          });
         }
-      }
-
-      // Update local state only after successful deletion
-      setMessages(prev => prev.filter(m => !selectedMessages.includes(m.id)));
-      setSelectedMessages([]);
-      setSelectionMode(false);
-      setShowDeleteMessageModal(false);
-    } catch (err) {
-      if (err instanceof Error && err.name !== 'AbortError') {
-        console.error('Error deleting messages:', err);
-        toast('Failed to delete messages. Please try again.', 'error');
-      }
-    }
+      },
+      onUndo: () => {
+        setMessages(prev => [...removed, ...prev].sort((a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        ));
+      },
+    });
   };
 
   const fetchDmReactions = async (msgIds: string[]) => {

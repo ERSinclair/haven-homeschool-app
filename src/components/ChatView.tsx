@@ -130,6 +130,7 @@ export default function ChatView({
     setText('');
     if (textareaRef.current) {
       textareaRef.current.style.height = '40px';
+      textareaRef.current.focus();
     }
   }, [text, pendingFile, onSend, onSendFile]);
 

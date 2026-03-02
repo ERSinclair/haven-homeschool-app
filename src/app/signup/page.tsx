@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 // SimpleLocationPicker removed - using simple town/state inputs
 
@@ -12,6 +12,8 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams?.get('invite') ?? null;
 
   // Step 1: Account
   const [userType, setUserType] = useState('');
@@ -401,6 +403,28 @@ export default function SignupPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'welcome', to: email, name: firstName || 'there' }),
         }).catch(() => {});
+        // Apply pending invite if came from invite link
+        if (inviteToken) {
+          await fetch(`/api/invite/accept?token=${inviteToken}`, { method: 'POST' }).catch(() => {});
+          // Also apply the join action via lookup
+          const lookupRes = await fetch(`/api/invite/lookup?token=${inviteToken}`).catch(() => null);
+          if (lookupRes?.ok) {
+            const { invite } = await lookupRes.json();
+            if (invite?.type === 'circle') {
+              await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/circle_members`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '', 'Authorization': `Bearer ${authData.access_token}` },
+                body: JSON.stringify({ circle_id: invite.target_id, member_id: authData.user?.id, role: 'member' }),
+              }).catch(() => {});
+            } else if (invite?.type === 'event') {
+              await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/event_rsvps`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '', 'Authorization': `Bearer ${authData.access_token}` },
+                body: JSON.stringify({ event_id: invite.target_id, user_id: authData.user?.id, status: 'going' }),
+              }).catch(() => {});
+            }
+          }
+        }
         window.location.href = '/welcome?fromSignup=true';
       } else {
         // Email confirmation required — send to check-your-email screen

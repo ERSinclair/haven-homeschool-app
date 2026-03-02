@@ -1505,6 +1505,9 @@ function EnhancedDiscoverPage() {
                         </h3>
                         <AdminBadge adminLevel={family.admin_level || null} />
                         {family.is_verified && <span className="text-emerald-500 text-xs font-bold">✓</span>}
+                        {(!family.user_type || family.user_type === 'family') && (
+                          <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded">Family</span>
+                        )}
                         {family.user_type === 'teacher' && (
                           <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">Teacher</span>
                         )}
