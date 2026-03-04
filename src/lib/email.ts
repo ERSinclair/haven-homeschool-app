@@ -17,7 +17,7 @@ export async function sendConnectionRequestEmail(to: string, fromName: string) {
         <a href="${BASE_URL}/connections" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#059669;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">
           View request
         </a>
-        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your homeschool community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
+        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
       </div>
     `,
   });
@@ -36,7 +36,7 @@ export async function sendRsvpEmail(to: string, eventTitle: string, eventDate: s
         <a href="${BASE_URL}/events" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#059669;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">
           View event
         </a>
-        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your homeschool community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
+        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
       </div>
     `,
   });
@@ -55,7 +55,7 @@ export async function sendCircleInviteEmail(to: string, fromName: string, circle
         <a href="${BASE_URL}/circles/invitations" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#059669;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">
           View invitation
         </a>
-        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your homeschool community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
+        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
       </div>
     `,
   });
@@ -74,7 +74,7 @@ export async function sendWelcomeEmail(to: string, name: string) {
         <a href="${BASE_URL}/onboarding" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#059669;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">
           Set up my profile
         </a>
-        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your homeschool community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
+        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
       </div>
     `,
   });
@@ -102,7 +102,7 @@ export async function sendExternalInviteEmail(
           Create account to join
         </a>
         <p style="color:#6b7280;font-size:13px;margin-top:16px">This invite link expires in 7 days.</p>
-        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your homeschool community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
+        <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
       </div>
     `,
   });

@@ -54,6 +54,7 @@ function MessagesContent() {
   const [sending, setSending] = useState(false);
   const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [isNewUser, setIsNewUser] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showDeleteMessageModal, setShowDeleteMessageModal] = useState(false);
@@ -159,6 +160,14 @@ function MessagesContent() {
         return;
       }
       setUserId(session.user.id);
+
+      // Check if new user (signed up within last 7 days)
+      try {
+        const signupTs = localStorage.getItem('haven-signup-complete');
+        if (signupTs && Date.now() - parseInt(signupTs) < 7 * 24 * 60 * 60 * 1000) {
+          setIsNewUser(true);
+        }
+      } catch { /* ignore */ }
 
       try {
         await reloadConversations(abortController.signal);
@@ -1778,7 +1787,7 @@ function MessagesContent() {
             ? [savedMessagesConvo, ...sortedConversations]
             : sortedConversations;
 
-          return allConversations.length === 0 ? (
+          return allConversations.length === 0 && !isNewUser ? (
             <div className="text-center py-12">
               <div className="mb-4 flex justify-center">
                 <AvatarUpload
@@ -1811,6 +1820,31 @@ function MessagesContent() {
             </div>
           ) : (
             <div className="space-y-2 mt-6">
+              {/* Welcome message card for new users */}
+              {isNewUser && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-2">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-fredoka)' }}>H</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">Haven</p>
+                      <p className="text-xs text-gray-400">Just now</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed">
+                    Welcome to Haven! You're one of the first families here. Head to Discover to find families near you, or create an event or circle to get things started.
+                  </p>
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={() => router.push('/discover')} className="flex-1 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 transition-colors">
+                      Find Families
+                    </button>
+                    <button onClick={() => router.push('/events')} className="flex-1 py-2 bg-white text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-xl hover:bg-emerald-50 transition-colors">
+                      Create Event
+                    </button>
+                  </div>
+                </div>
+              )}
               {allConversations.map((convo) => (
               <div key={convo.id} className="relative">
                 {conversationSelectionMode && (
