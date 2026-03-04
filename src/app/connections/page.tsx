@@ -484,7 +484,7 @@ export default function ConnectionsPage() {
   return (
     <ProtectedRoute>
     <div className="min-h-screen bg-transparent">
-      <div className="max-w-md mx-auto px-4 pt-2 pb-8">
+      <div className="max-w-md mx-auto px-4 pt-2 pb-40">
         <AppHeader />
 
         {/* Tab bar: Messages | Connections */}
@@ -500,21 +500,7 @@ export default function ConnectionsPage() {
           </div>
         </div>
 
-        {/* Search bar */}
-        <div className="mb-3 relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <input
-            type="text"
-            placeholder="Search connections..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-          />
-        </div>
+
 
         {/* Tab Navigation */}
         <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
@@ -585,6 +571,21 @@ export default function ConnectionsPage() {
         {/* Connections Tab */}
         {activeTab === 'connections' && (
           <div className="space-y-4">
+            {/* Search */}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                placeholder="Search connections..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              />
+            </div>
             {filteredConnections.length === 0 ? (
               searchTerm ? (
                 <div className="text-center py-10 px-6">                  <p className="font-semibold text-gray-700 mb-1">No connections match &ldquo;{searchTerm}&rdquo;</p>
@@ -704,7 +705,6 @@ export default function ConnectionsPage() {
                 );
               })
             )}
-            <InviteToHaven />
           </div>
         )}
 
@@ -1110,8 +1110,11 @@ export default function ConnectionsPage() {
         </div>
       )}
       
-      {/* Bottom spacing for mobile nav */}
-      <div className="h-20"></div>
+      {/* Invite a friend — sticky above nav */}
+      <div className="fixed bottom-16 left-0 right-0 z-30 px-4 pb-2 max-w-md mx-auto" style={{ left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '28rem' }}>
+        <InviteToHaven />
+      </div>
+
     </div>
     </ProtectedRoute>
   );
