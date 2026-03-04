@@ -1656,8 +1656,11 @@ function MessagesContent() {
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
         <AppHeader />
 
-        {/* Main View Toggle with Search */}
+        {/* Tab bar: Messages | Connections */}
         <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+          <div className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-center bg-emerald-600 text-white shadow-sm">
+            Messages
+          </div>
           <button
             onClick={() => router.push('/connections')}
             className="relative flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
@@ -1669,17 +1672,21 @@ function MessagesContent() {
             )}
             Connections
           </button>
+        </div>
+
+        {/* Search + New row */}
+        <div className="flex gap-2 mb-4">
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              showSearch ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all border ${
+              showSearch ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'
             }`}
           >
             Search
           </button>
           <button
             onClick={() => setShowNewMessageModal(true)}
-            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700"
+            className="flex-1 py-2 bg-white text-gray-500 border border-gray-200 rounded-xl text-xs font-semibold hover:text-gray-700 transition-all"
           >
             + New
           </button>

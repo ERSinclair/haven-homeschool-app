@@ -487,7 +487,7 @@ export default function ConnectionsPage() {
       <div className="max-w-md mx-auto px-4 pt-2 pb-8">
         <AppHeader />
 
-        {/* Main View Toggle with Search */}
+        {/* Tab bar: Messages | Connections */}
         <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
           <button
             onClick={() => router.push('/messages')}
@@ -495,10 +495,17 @@ export default function ConnectionsPage() {
           >
             Messages
           </button>
+          <div className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-center bg-emerald-600 text-white shadow-sm">
+            Connections
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="mb-3">
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              showSearch || searchTerm ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`w-full py-2 rounded-xl text-xs font-semibold transition-all border ${
+              showSearch || searchTerm ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'
             }`}
           >
             Search
