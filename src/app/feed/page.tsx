@@ -43,6 +43,7 @@ export default function FeedPage() {
   const [verifyDismissed, setVerifyDismissed] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [pendingPrompts, setPendingPrompts] = useState<ProfilePrompt[]>([]);
+  const [todayBirthdays, setTodayBirthdays] = useState<string[]>([]);
 
   useEffect(() => {
     const session = getStoredSession();
@@ -68,7 +69,6 @@ export default function FeedPage() {
     const checkBirthdays = async () => {
       const today = new Date().toISOString().split('T')[0];
       const lastCheck = localStorage.getItem('haven-birthday-check-date');
-      if (lastCheck === today) return;
       const h = { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` };
       const mm = String(new Date().getMonth() + 1).padStart(2, '0');
       const dd = String(new Date().getDate()).padStart(2, '0');
@@ -106,13 +106,17 @@ export default function FeedPage() {
             }
           }
         }
-        if (birthdayNames.length > 0 && 'serviceWorker' in navigator) {
-          const reg = await navigator.serviceWorker.ready;
-          await reg.showNotification('Birthdays today', {
-            body: birthdayNames.join(', '),
-            icon: '/icons/icon-192.png',
-            tag: 'birthday-digest',
-          }).catch(() => {});
+        if (birthdayNames.length > 0) {
+          setTodayBirthdays(birthdayNames);
+          // Push notification — once per day
+          if (lastCheck !== today && 'serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.ready;
+            await reg.showNotification('Birthdays today', {
+              body: birthdayNames.join(', '),
+              icon: '/icons/icon-192.png',
+              tag: 'birthday-digest',
+            }).catch(() => {});
+          }
         }
       } catch { /* silent */ }
       localStorage.setItem('haven-birthday-check-date', today);
@@ -473,6 +477,23 @@ export default function FeedPage() {
               </svg>
             </button>
           </section>
+
+          {/* Birthdays today */}
+          {todayBirthdays.length > 0 && (
+            <section className="mb-4">
+              <div className="bg-pink-50 border border-pink-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">🎂</span>
+                  <p className="font-semibold text-pink-800 text-sm">Birthdays today</p>
+                </div>
+                <div className="space-y-1">
+                  {todayBirthdays.map((name, i) => (
+                    <p key={i} className="text-sm text-pink-700">{name}</p>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Search */}
           <section className="mb-6">

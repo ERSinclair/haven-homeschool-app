@@ -187,6 +187,8 @@ function CalendarContent() {
   const [endDateMonth, setEndDateMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [savingNote, setSavingNote] = useState(false);
   const [isBirthday, setIsBirthday] = useState(false);
+  const [birthdayName, setBirthdayName] = useState('');
+  const [birthdayYear, setBirthdayYear] = useState('');
 
   const loadCalendarData = useCallback(async () => {
     const session = getStoredSession();
@@ -387,21 +389,25 @@ function CalendarContent() {
   const startAddBirthday = () => {
     if (addingNote && isBirthday) { cancelNote(); return; }
     setEditingNote(null);
-    setNoteTitle('');
-    setNoteContent('');
-    setNoteRecurrence('yearly');
-    setNoteRecurrenceEnd('');
+    setBirthdayName('');
+    setBirthdayYear('');
     setIsBirthday(true);
     setAddingNote(true);
   };
 
   const startEditNote = (note: CalNote) => {
     setEditingNote(note);
-    setNoteTitle(note.title || '');
-    setNoteContent(note.content);
+    if (note.note_type === 'birthday') {
+      setBirthdayName(note.title || '');
+      setBirthdayYear(note.content || '');
+      setIsBirthday(true);
+    } else {
+      setNoteTitle(note.title || '');
+      setNoteContent(note.content);
+      setIsBirthday(false);
+    }
     setNoteRecurrence(note.recurrence_rule || 'none');
     setNoteRecurrenceEnd(note.recurrence_end_date || '');
-    setIsBirthday(note.note_type === 'birthday');
     setAddingNote(true);
   };
 
@@ -413,9 +419,46 @@ function CalendarContent() {
     setNoteRecurrence('none');
     setNoteRecurrenceEnd('');
     setIsBirthday(false);
+    setBirthdayName('');
+    setBirthdayYear('');
+  };
+
+  const saveBirthday = async () => {
+    if (!birthdayName.trim() || !selectedDate) return;
+    setSavingNote(true);
+    const session = getStoredSession();
+    if (!session) { setSavingNote(false); return; }
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' };
+    const payload = {
+      profile_id: session.user.id,
+      note_date: selectedDate,
+      title: birthdayName.trim(),
+      content: birthdayYear.trim() || '',
+      recurrence_rule: 'yearly' as const,
+      recurrence_end_date: null,
+      note_type: 'birthday' as const,
+    };
+    try {
+      if (editingNote) {
+        await fetch(`${supabaseUrl}/rest/v1/calendar_notes?id=eq.${editingNote.id}`, {
+          method: 'PATCH', headers: { ...h, Prefer: 'return=representation' }, body: JSON.stringify(payload),
+        });
+        setNotes(prev => prev.map(n => n.id === editingNote.id ? { ...n, ...payload } : n));
+      } else {
+        const res = await fetch(`${supabaseUrl}/rest/v1/calendar_notes`, {
+          method: 'POST', headers: { ...h, Prefer: 'return=representation' }, body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const [created] = await res.json();
+          if (created) setNotes(prev => [...prev, created]);
+        }
+      }
+      cancelNote();
+    } catch { /* ignore */ } finally { setSavingNote(false); }
   };
 
   const saveNote = async () => {
+    if (isBirthday) { await saveBirthday(); return; }
     if (!noteContent.trim() || !selectedDate) return;
     setSavingNote(true);
     const session = getStoredSession();
@@ -730,27 +773,61 @@ function CalendarContent() {
                 </div>
               </div>
 
-              {/* Note form moved to sticky bottom — see below */}
+              {/* Note / Birthday form */}
               {addingNote && (
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-3 space-y-4 shadow-sm">
-                  <h3 className="text-lg font-bold text-gray-900">{editingNote ? 'Edit note' : ''}</h3>
-                  <input
-                    type="text"
-                    value={noteTitle}
-                    onChange={e => setNoteTitle(e.target.value)}
-                    placeholder="Title (optional)"
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400 text-sm"
-                  />
-                  <textarea
-                    value={noteContent}
-                    onChange={e => setNoteContent(e.target.value)}
-                    placeholder="What's on your mind for this day?"
-                    rows={3}
-                    autoFocus
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400 text-sm resize-none"
-                  />
-                  {/* Recurrence */}
-                  <div>
+                  {isBirthday ? (
+                    <>
+                      <h3 className="text-base font-bold text-pink-600">Birthday</h3>
+                      <input
+                        type="text"
+                        value={birthdayName}
+                        onChange={e => setBirthdayName(e.target.value)}
+                        placeholder="Whose birthday?"
+                        autoFocus
+                        className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-400 bg-white text-gray-900 placeholder-gray-400 text-sm"
+                      />
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Birth year (optional — shows age)</label>
+                        <input
+                          type="number"
+                          value={birthdayYear}
+                          onChange={e => setBirthdayYear(e.target.value)}
+                          placeholder={`e.g. ${new Date().getFullYear() - 5}`}
+                          min={1900}
+                          max={new Date().getFullYear()}
+                          className="w-32 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-400 bg-white text-gray-900 text-sm"
+                        />
+                        {birthdayYear && parseInt(birthdayYear) > 1900 && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            Turns {new Date().getFullYear() - parseInt(birthdayYear)} this year
+                          </p>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400">Repeats every year · no end date</p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-lg font-bold text-gray-900">{editingNote ? 'Edit note' : ''}</h3>
+                      <input
+                        type="text"
+                        value={noteTitle}
+                        onChange={e => setNoteTitle(e.target.value)}
+                        placeholder="Title (optional)"
+                        className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400 text-sm"
+                      />
+                      <textarea
+                        value={noteContent}
+                        onChange={e => setNoteContent(e.target.value)}
+                        placeholder="What's on your mind for this day?"
+                        rows={3}
+                        autoFocus
+                        className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400 text-sm resize-none"
+                      />
+                    </>
+                  )}
+                  {/* Recurrence — hidden for birthdays */}
+                  {!isBirthday && <div>
                     <p className="text-sm font-medium text-gray-700 mb-2">Repeat</p>
                     <div className="flex gap-2 flex-wrap justify-center">
                       {(['weekly', 'fortnightly', 'monthly', 'yearly'] as const).map(opt => (
@@ -792,8 +869,8 @@ function CalendarContent() {
                         </div>
                       </div>
                     )}
-                  </div>
-                  <ReminderPicker value={noteReminder} onChange={setNoteReminder} />
+                  </div>}
+                  {!isBirthday && <ReminderPicker value={noteReminder} onChange={setNoteReminder} />}
                   <div className="flex gap-3 mt-2">
                     <button
                       onClick={cancelNote}
@@ -803,10 +880,14 @@ function CalendarContent() {
                     </button>
                     <button
                       onClick={saveNote}
-                      disabled={!noteContent.trim() || savingNote}
-                      className="flex-1 py-3.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold disabled:bg-gray-300 disabled:text-gray-500 hover:bg-emerald-700 transition-colors"
+                      disabled={isBirthday ? !birthdayName.trim() || savingNote : !noteContent.trim() || savingNote}
+                      className={`flex-1 py-3.5 rounded-xl text-sm font-semibold transition-colors ${
+                        isBirthday
+                          ? 'bg-pink-500 text-white hover:bg-pink-600 disabled:bg-gray-300 disabled:text-gray-500'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300 disabled:text-gray-500'
+                      }`}
                     >
-                      {savingNote ? 'Saving...' : editingNote ? 'Update' : 'Save note'}
+                      {savingNote ? 'Saving...' : editingNote ? 'Update' : isBirthday ? 'Save birthday' : 'Save note'}
                     </button>
                   </div>
                 </div>
@@ -826,15 +907,20 @@ function CalendarContent() {
                           <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${item.type === 'birthday' ? 'bg-pink-400' : 'bg-emerald-500'}`} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              {item.title !== 'Note' && item.title !== 'Birthday' && <p className={`font-semibold text-sm ${item.type === 'birthday' ? 'text-pink-900' : 'text-emerald-900'}`}>{item.title}</p>}
-                              {item.type === 'birthday' && <p className="font-semibold text-pink-900 text-sm">{item.title || 'Birthday'}</p>}
+                              {item.type === 'birthday'
+                              ? <p className="font-semibold text-pink-900 text-sm">{item.title || 'Birthday'}</p>
+                              : item.title !== 'Note' && <p className="font-semibold text-sm text-emerald-900">{item.title}</p>
+                            }
                               {item.recurrenceRule && (
                                 <span className={`text-xs px-2 py-0.5 rounded-full border ${item.type === 'birthday' ? 'text-pink-600 bg-pink-100 border-pink-200' : 'text-emerald-600 bg-emerald-100 border-emerald-200'}`}>
                                   {item.recurrenceRule === 'weekly' ? 'Weekly' : item.recurrenceRule === 'monthly' ? 'Monthly' : 'Yearly'}
                                 </span>
                               )}
                             </div>
-                            <p className={`text-sm mt-0.5 whitespace-pre-wrap ${item.type === "birthday" ? "text-pink-800" : "text-emerald-800"}`}>{item.description}</p>
+                            {item.type === 'birthday' && item.description && parseInt(item.description) > 1900
+                              ? <p className="text-sm mt-0.5 text-pink-700">Turns {new Date(item.date + 'T12:00:00').getFullYear() - parseInt(item.description)}</p>
+                              : item.type !== 'birthday' && <p className="text-sm mt-0.5 whitespace-pre-wrap text-emerald-800">{item.description}</p>
+                            }
                           </div>
                           <div className="flex gap-2 flex-shrink-0">
                             <button
