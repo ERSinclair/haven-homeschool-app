@@ -1402,7 +1402,7 @@ function EnhancedDiscoverPage() {
               </div>
 
               {/* Kids age range + Map view on same row */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2">
                 <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Kids ages</span>
                 <input
                   type="number" min="0" max="17" value={ageRange.min}
@@ -1417,7 +1417,7 @@ function EnhancedDiscoverPage() {
                 />
                 <button
                   onClick={() => setViewMode(v => v === 'list' ? 'map' : 'list')}
-                  className="ml-auto text-xs text-gray-500 hover:text-emerald-600 transition-colors font-medium whitespace-nowrap flex-shrink-0"
+                  className="text-xs text-gray-500 hover:text-emerald-600 transition-colors font-medium whitespace-nowrap flex-shrink-0"
                 >
                   {viewMode === 'list' ? 'Map view' : 'List view'}
                 </button>
