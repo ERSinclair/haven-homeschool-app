@@ -6,11 +6,16 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export async function POST(req: NextRequest) {
   try {
-    webpush.setVapidDetails(
-      process.env.VAPID_EMAIL!,
-      process.env.VAPID_PUBLIC_KEY!,
-      process.env.VAPID_PRIVATE_KEY!
-    );
+    const vapidEmail = process.env.VAPID_EMAIL;
+    const vapidPublic = process.env.VAPID_PUBLIC_KEY;
+    const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
+
+    if (!vapidEmail || !vapidPublic || !vapidPrivate) {
+      console.error('[push/send] Missing VAPID env vars:', { vapidEmail: !!vapidEmail, vapidPublic: !!vapidPublic, vapidPrivate: !!vapidPrivate });
+      return NextResponse.json({ error: 'Push not configured' }, { status: 500 });
+    }
+
+    webpush.setVapidDetails(vapidEmail, vapidPublic, vapidPrivate);
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -62,7 +67,8 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({ sent });
-  } catch (err) {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  } catch (err: any) {
+    console.error('[push/send] error:', err?.message || err);
+    return NextResponse.json({ error: 'Server error', detail: err?.message }, { status: 500 });
   }
 }
