@@ -93,17 +93,24 @@ export default function SettingsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Batch state updates to avoid cascading renders
-    const saved = localStorage.getItem('familyFinderUser');
     const savedSettings = localStorage.getItem('familyFinderSettings');
-    
-    if (saved) {
-      setUserData(JSON.parse(saved));
-    }
-    
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    }
+    if (savedSettings) setSettings(JSON.parse(savedSettings));
+
+    // Load profile from Supabase
+    const session = getStoredSession();
+    if (!session?.user) return;
+    fetch(
+      `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=family_name,display_name,location_name&limit=1`,
+      { headers: { apikey: supabaseKey!, Authorization: `Bearer ${session.access_token}` } }
+    ).then(r => r.json()).then(data => {
+      if (data?.[0]) {
+        const p = data[0];
+        setUserData({
+          name: p.display_name || p.family_name || session.user.email,
+          location: p.location_name || '',
+        });
+      }
+    }).catch(() => {});
   }, []);
 
   const updateSetting = (category: 'notifications' | 'privacy', key: string, value: boolean) => {
