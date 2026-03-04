@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import DatePickerDropdown from '@/components/DatePickerModal';
+import DatePickerInline from '@/components/DatePickerInline';
 import { trackOnboarding } from '@/lib/analytics';
 // SimpleLocationPicker removed - using simple town/state inputs
 
@@ -610,16 +611,16 @@ function SignupPageInner() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           {step === 1 ? (
-            <Link href="/" className="text-emerald-600 hover:text-emerald-700 font-medium">← Back</Link>
+            <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-colors shadow-sm">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
+            </Link>
           ) : (
-            <button 
-              onClick={() => {
-                // Navigate to previous step
-                setStep(step - 1);
-              }} 
-              className="text-emerald-600 hover:text-emerald-700 font-medium"
+            <button
+              type="button"
+              onClick={() => setStep(step - 1)}
+              className="flex items-center justify-center w-9 h-9 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-colors shadow-sm"
             >
-              ← Back
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
             </button>
           )}
           <div className="flex items-center gap-2 pointer-events-none justify-center my-4">
@@ -925,25 +926,13 @@ function SignupPageInner() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Date of birth <span className="text-red-500">*</span>
                   </label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowDobPicker(v => !v)}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl text-left text-gray-900 bg-white focus:ring-2 focus:ring-emerald-500"
-                    >
-                      {dob ? new Date(dob + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : <span className="text-gray-400">Select date</span>}
-                    </button>
-                    {showDobPicker && (
-                      <DatePickerDropdown
-                        value={dob}
-                        onChange={v => { setDob(v); setShowDobPicker(false); }}
-                        onClose={() => setShowDobPicker(false)}
-                        maxDate={new Date().toISOString().slice(0, 10)}
-                        month={dobMonth}
-                        onMonthChange={setDobMonth}
-                      />
-                    )}
-                  </div>
+                  <DatePickerInline
+                    value={dob}
+                    onChange={setDob}
+                    maxDate={new Date().toISOString().slice(0, 10)}
+                    month={dobMonth}
+                    onMonthChange={setDobMonth}
+                  />
                   <p className="text-xs text-gray-400 mt-1">Not shown publicly unless you choose to.</p>
                   <label className="flex items-center gap-3 mt-2 cursor-pointer">
                     <div
@@ -1051,25 +1040,13 @@ function SignupPageInner() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Date of birth <span className="text-red-500">*</span>
                   </label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowDobPicker(v => !v)}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl text-left text-gray-900 bg-white focus:ring-2 focus:ring-emerald-500"
-                    >
-                      {dob ? new Date(dob + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : <span className="text-gray-400">Select date</span>}
-                    </button>
-                    {showDobPicker && (
-                      <DatePickerDropdown
-                        value={dob}
-                        onChange={v => { setDob(v); setShowDobPicker(false); }}
-                        onClose={() => setShowDobPicker(false)}
-                        maxDate={new Date().toISOString().slice(0, 10)}
-                        month={dobMonth}
-                        onMonthChange={setDobMonth}
-                      />
-                    )}
-                  </div>
+                  <DatePickerInline
+                    value={dob}
+                    onChange={setDob}
+                    maxDate={new Date().toISOString().slice(0, 10)}
+                    month={dobMonth}
+                    onMonthChange={setDobMonth}
+                  />
                   <p className="text-xs text-gray-400 mt-1">Not shown publicly unless you choose to.</p>
                   <label className="flex items-center gap-3 mt-2 cursor-pointer">
                     <div
@@ -1440,39 +1417,16 @@ function SignupPageInner() {
                   </div>
                 </div>
 
-                {/* Business Name Button */}
+                {/* Business Name */}
                 <div>
-                  <button
-                    type="button"
-                    onClick={() => setShowBusinessName(!showBusinessName)}
-                    className={`w-full p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
-                      showBusinessName || businessName 
-                        ? 'border-emerald-600 bg-emerald-50' 
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <span className={
-                      showBusinessName || businessName 
-                        ? 'text-emerald-700 font-medium'
-                        : 'text-gray-700'
-                    }>
-                      Business Name (Optional)
-                    </span>
-                  </button>
-                  
-                  {/* Business Name Input */}
-                  {showBusinessName && (
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        placeholder="Enter your business name..."
-                        value={businessName}
-                        onChange={(e) => setBusinessName(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
-                        autoFocus
-                      />
-                    </div>
-                  )}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Business Name <span className="text-gray-400 font-normal">(Optional)</span></label>
+                  <input
+                    type="text"
+                    placeholder="Enter your business name..."
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+                  />
                 </div>
                 
                 <div>
