@@ -479,3 +479,40 @@ input[type="checkbox"], input[type="radio"] {
   background: radial-gradient(circle, #d0eafc 0%, transparent 70%);
   animation-delay: 4s;
 }
+
+/* 3D button effect */
+.btn-3d {
+  box-shadow: 0 4px 0 0 rgba(0,0,0,0.18);
+  transform: translateY(0);
+  transition: box-shadow 0.1s, transform 0.1s;
+  position: relative;
+}
+.btn-3d:active:not(:disabled) {
+  box-shadow: 0 1px 0 0 rgba(0,0,0,0.18);
+  transform: translateY(3px);
+}
+.btn-3d:disabled {
+  box-shadow: none;
+}
+
+/* Apply 3D effect to all primary emerald buttons automatically */
+button.bg-emerald-600:not(:disabled),
+a.bg-emerald-600 {
+  box-shadow: 0 4px 0 0 #047857;
+  transform: translateY(0);
+  transition: box-shadow 0.1s, transform 0.1s, background-color 0.15s;
+  position: relative;
+}
+button.bg-emerald-600:active:not(:disabled),
+a.bg-emerald-600:active {
+  box-shadow: 0 1px 0 0 #047857;
+  transform: translateY(3px);
+}
+button.bg-pink-500:not(:disabled) {
+  box-shadow: 0 4px 0 0 #be185d;
+  transition: box-shadow 0.1s, transform 0.1s;
+}
+button.bg-pink-500:active:not(:disabled) {
+  box-shadow: 0 1px 0 0 #be185d;
+  transform: translateY(3px);
+}

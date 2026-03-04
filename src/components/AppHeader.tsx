@@ -71,7 +71,7 @@ export default function AppHeader({
 
   return (
     <>
-    <div className="fixed top-0 left-0 right-0 z-30 h-16 bg-white/10 backdrop-blur-lg border-b border-white/10">
+    <div className="fixed top-0 left-0 right-0 z-30 h-16 bg-amber-50/95 backdrop-blur-lg border-b border-amber-200/60">
       <div className="max-w-md mx-auto h-full flex items-center justify-between px-4">
       {/* Left */}
       <div className="w-20 flex items-center">
