@@ -1658,7 +1658,7 @@ function MessagesContent() {
 
         {/* Tab bar: Messages | Connections */}
         <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
-          <div className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-center bg-emerald-600 text-white shadow-sm">
+          <div className="flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center bg-emerald-600 text-white shadow-sm">
             Messages
           </div>
           <button

@@ -495,43 +495,26 @@ export default function ConnectionsPage() {
           >
             Messages
           </button>
-          <div className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-center bg-emerald-600 text-white shadow-sm">
+          <div className="flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center bg-emerald-600 text-white shadow-sm">
             Connections
           </div>
         </div>
 
-        {/* Search */}
-        <div className="mb-3">
-          <button
-            onClick={() => setShowSearch(!showSearch)}
-            className={`w-full py-2 rounded-xl text-xs font-semibold transition-all border ${
-              showSearch || searchTerm ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'
-            }`}
-          >
-            Search
-          </button>
-        </div>
-
-        {/* Expandable Search Bar — opens below the Search button */}
-        {showSearch && (
-          <div className="mb-3">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                placeholder="Search connections..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                autoFocus
-              />
-            </div>
+        {/* Search bar */}
+        <div className="mb-3 relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
           </div>
-        )}
+          <input
+            type="text"
+            placeholder="Search connections..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+          />
+        </div>
 
         {/* Tab Navigation */}
         <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
@@ -602,7 +585,6 @@ export default function ConnectionsPage() {
         {/* Connections Tab */}
         {activeTab === 'connections' && (
           <div className="space-y-4">
-            <InviteToHaven />
             {filteredConnections.length === 0 ? (
               searchTerm ? (
                 <div className="text-center py-10 px-6">                  <p className="font-semibold text-gray-700 mb-1">No connections match &ldquo;{searchTerm}&rdquo;</p>
@@ -722,6 +704,7 @@ export default function ConnectionsPage() {
                 );
               })
             )}
+            <InviteToHaven />
           </div>
         )}
 
