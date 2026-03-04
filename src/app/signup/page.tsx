@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import DatePickerDropdown from '@/components/DatePickerModal';
+import { trackOnboarding } from '@/lib/analytics';
 // SimpleLocationPicker removed - using simple town/state inputs
 
 const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
@@ -102,6 +103,28 @@ function SignupPageInner() {
       }
     }
   }, []);
+
+  // Analytics: track signup started (once)
+  const hasTrackedStart = useRef(false);
+  useEffect(() => {
+    if (hasTrackedStart.current) return;
+    hasTrackedStart.current = true;
+    trackOnboarding('signup_started');
+  }, []);
+
+  // Analytics: track step views
+  useEffect(() => {
+    trackOnboarding('step_viewed', { step, user_type: userType || null });
+  }, [step, userType]);
+
+  // Analytics: track abandonment on unload
+  useEffect(() => {
+    const handleUnload = () => {
+      trackOnboarding('signup_abandoned', { step, user_type: userType || null });
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [step, userType]);
 
   // Check username availability
   const checkUsernameAvailability = useCallback(async (usernameToCheck: string) => {
@@ -436,6 +459,7 @@ function SignupPageInner() {
             }
           }
         }
+        await trackOnboarding('signup_completed', { user_type: userType, user_id: authData.user?.id });
         window.location.href = '/welcome?fromSignup=true';
       } else {
         // Email confirmation required — send to check-your-email screen
@@ -547,6 +571,7 @@ function SignupPageInner() {
 
     // Clear any errors and navigate
     setError('');
+    trackOnboarding('step_completed', { step, user_type: userType || null });
     setStep(targetStep);
   };
 
@@ -710,7 +735,7 @@ function SignupPageInner() {
                       <button
                         key={type}
                         type="button"
-                        onClick={() => setUserType(type)}
+                        onClick={() => { setUserType(type); trackOnboarding('type_selected', { user_type: type }); }}
                         className={`px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all min-w-fit flex items-center justify-center ${
                           userType === type
                             ? 'bg-emerald-600 text-white shadow-md scale-105'

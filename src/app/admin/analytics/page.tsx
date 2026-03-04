@@ -49,6 +49,7 @@ export default function AnalyticsPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [locationFilter, setLocationFilter] = useState<string>('all');
   const [allProfiles, setAllProfiles] = useState<any[]>([]);
+  const [funnelData, setFunnelData] = useState<{ label: string; count: number; pct: number }[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -86,9 +87,24 @@ export default function AnalyticsPage() {
         if (!session) return;
         const h = { apikey: supabaseKey, Authorization: `Bearer ${session.access_token}` };
 
-        const [statsData, profiles] = await Promise.all([
+        const [statsData, profiles, funnelRaw] = await Promise.all([
           getAdminStats(),
           fetch(`${supabaseUrl}/rest/v1/profiles?select=id,created_at,user_type,location_name`, { headers: h }).then(r => r.json()),
+          fetch(`${supabaseUrl}/rest/v1/onboarding_events?select=event,session_id`, { headers: h }).then(r => r.ok ? r.json() : []),
+        ]);
+
+        // Build signup funnel
+        const countUniq = (evt: string) => new Set((funnelRaw as any[]).filter((e: any) => e.event === evt).map((e: any) => e.session_id)).size;
+        const started = countUniq('signup_started');
+        const typeSelected = countUniq('type_selected');
+        const anyStepDone = countUniq('step_completed');
+        const completed = countUniq('signup_completed');
+        const pct = (n: number) => started > 0 ? Math.round((n / started) * 100) : 0;
+        setFunnelData([
+          { label: 'Visited signup', count: started, pct: 100 },
+          { label: 'Selected user type', count: typeSelected, pct: pct(typeSelected) },
+          { label: 'Passed step 1', count: anyStepDone, pct: pct(anyStepDone) },
+          { label: 'Completed signup', count: completed, pct: pct(completed) },
         ]);
 
         setStats(statsData);
@@ -230,6 +246,30 @@ export default function AnalyticsPage() {
                 </div>
               ))}
             </div>
+
+            {/* Signup funnel */}
+            {funnelData.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h2 className="font-bold text-gray-900 mb-4">Signup Funnel</h2>
+                <div className="space-y-3">
+                  {funnelData.map((row, i) => (
+                    <div key={i}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-gray-700">{row.label}</span>
+                        <span className="font-semibold text-gray-900">{row.count} <span className="text-gray-400 font-normal">({row.pct}%)</span></span>
+                      </div>
+                      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-emerald-500 transition-all"
+                          style={{ width: `${row.pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-4">Tracked from {new Date().toLocaleDateString('en-AU')} onward. Historical data unavailable.</p>
+              </div>
+            )}
 
             <div className="grid md:grid-cols-2 gap-6">
               {/* Signup chart */}
