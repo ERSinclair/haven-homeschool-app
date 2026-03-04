@@ -1404,22 +1404,24 @@ function EnhancedDiscoverPage() {
         </div>
 
         {/* Kids age range + Map view */}
-        <div className="flex items-center justify-center gap-2 mb-3">
-          <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Kids ages</span>
-          <input
-            type="number" min="0" max="17" value={ageRange.min}
-            onChange={(e) => { const v = parseInt(e.target.value) || 0; setAgeRange(prev => ({ ...prev, min: Math.max(0, Math.min(v, prev.max - 1)) })); }}
-            className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-          />
-          <span className="text-gray-400 text-xs">–</span>
-          <input
-            type="number" min="1" max="18" value={ageRange.max}
-            onChange={(e) => { const v = parseInt(e.target.value) || 18; setAgeRange(prev => ({ ...prev, max: Math.max(prev.min + 1, Math.min(v, 18)) })); }}
-            className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-          />
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Kids ages</span>
+            <input
+              type="number" min="0" max="17" value={ageRange.min}
+              onChange={(e) => { const v = parseInt(e.target.value) || 0; setAgeRange(prev => ({ ...prev, min: Math.max(0, Math.min(v, prev.max - 1)) })); }}
+              className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+            />
+            <span className="text-gray-400 text-xs">–</span>
+            <input
+              type="number" min="1" max="18" value={ageRange.max}
+              onChange={(e) => { const v = parseInt(e.target.value) || 18; setAgeRange(prev => ({ ...prev, max: Math.max(prev.min + 1, Math.min(v, 18)) })); }}
+              className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+            />
+          </div>
           <button
             onClick={() => setViewMode(v => v === 'list' ? 'map' : 'list')}
-            className="text-xs text-gray-500 hover:text-emerald-600 transition-colors font-medium whitespace-nowrap flex-shrink-0"
+            className="text-xs text-gray-500 hover:text-emerald-600 transition-colors font-medium whitespace-nowrap"
           >
             {viewMode === 'list' ? 'Map view' : 'List view'}
           </button>
