@@ -1616,6 +1616,16 @@ function EnhancedDiscoverPage() {
 
                 </div>
               ))}
+              {/* End of results — radius nudge */}
+              {filteredFamilies.length > 0 && (
+                <div className="text-center py-6 text-sm text-gray-400">
+                  <p>That's everyone nearby.</p>
+                  <p className="mt-1">
+                    Try increasing your search radius in{' '}
+                    <a href="/settings" className="text-emerald-600 font-medium hover:underline">Settings</a>.
+                  </p>
+                </div>
+              )}
               </>
             )}
           </div>
