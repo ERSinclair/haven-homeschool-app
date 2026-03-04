@@ -635,9 +635,7 @@ function ProfilePageInner() {
         {!isViewingOtherUser && (
           <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-4 shadow-sm">
             <h3 className="font-bold text-lg mb-1 text-gray-900">Know someone who would like to join our community?</h3>
-            <p className="text-gray-500 text-sm mb-4">
-              Invite families, friends, educators and businesses to Haven and help grow our local communities.
-            </p>
+
             <button
               onClick={handleShare}
               className="w-full py-2.5 bg-emerald-50 text-emerald-700 font-semibold rounded-xl border border-emerald-200 hover:bg-emerald-100 hover:text-emerald-800 transition-colors text-sm"
