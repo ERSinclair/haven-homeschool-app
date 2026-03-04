@@ -951,7 +951,7 @@ function SignupPageInner() {
                       { value: 'considering', label: 'Community', icon: '' },
                       { value: 'new', label: 'Home Ed', icon: '' },
                       { value: 'experienced', label: 'Extracurricular', icon: '' },
-                      { value: 'connecting', label: 'Just Checking It Out', icon: '' },
+
                       { value: 'other', label: 'Other', icon: '' }
                     ].map((opt) => (
                       <label 
