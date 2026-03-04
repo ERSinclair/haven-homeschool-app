@@ -313,7 +313,7 @@ export default function FeedPage() {
         <AppHeader
           right={
             <button
-              onClick={() => router.back()}
+              onClick={() => router.replace('/discover')}
               className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
               aria-label="Close"
             >

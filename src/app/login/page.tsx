@@ -15,14 +15,19 @@ export default function LoginPage() {
 
   // Load saved email on component mount
   useEffect(() => {
-    // Only run on client side
-    if (typeof window !== 'undefined') {
-      const savedEmail = localStorage.getItem('haven-saved-email');
-      if (savedEmail && savedEmail.includes('@')) {
-        setEmail(savedEmail);
+    if (typeof window === 'undefined') return;
+    // Redirect away if already logged in
+    try {
+      const stored = sessionStorage.getItem('supabase-session') || localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.access_token) { router.replace('/discover'); return; }
       }
-    }
-  }, []);
+    } catch { /* no session */ }
+    // Pre-fill saved email
+    const savedEmail = localStorage.getItem('haven-saved-email');
+    if (savedEmail && savedEmail.includes('@')) setEmail(savedEmail);
+  }, [router]);
 
   // Save email when it changes
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
