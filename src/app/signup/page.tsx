@@ -433,7 +433,7 @@ function SignupPageInner() {
       // If no access_token, email confirmation is enabled — show verify-email screen
       if (authData.access_token) {
         // Send welcome email (best-effort)
-        fetch('/api/email', {
+        await fetch('/api/email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'welcome', to: email, name: firstName || 'there' }),
