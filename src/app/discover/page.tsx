@@ -1381,11 +1381,6 @@ function EnhancedDiscoverPage() {
 
         </>
 
-        {/* Location search */}
-        <div className="mb-2">
-          <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} alwaysOpen />
-        </div>
-
         {/* Kids age range + Map view */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -1408,6 +1403,11 @@ function EnhancedDiscoverPage() {
           >
             {viewMode === 'list' ? 'Map view' : 'List view'}
           </button>
+        </div>
+
+        {/* Location search */}
+        <div className="mb-2">
+          <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} alwaysOpen />
         </div>
 
         {/* Content */}

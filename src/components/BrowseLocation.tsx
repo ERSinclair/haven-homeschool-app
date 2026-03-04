@@ -142,7 +142,7 @@ export default function BrowseLocation({ current, onChange, alwaysOpen }: Props)
               type="text"
               value={input}
               onChange={e => handleInputChange(e.target.value)}
-              placeholder="Type a suburb e.g. Geelong"
+              placeholder="Search a different location"
               className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               autoFocus
             />
