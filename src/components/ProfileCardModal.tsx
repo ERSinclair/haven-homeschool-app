@@ -51,6 +51,7 @@ export default function ProfileCardModal({ userId, onClose, onMessage, currentUs
   const [loading, setLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<'none' | 'pending' | 'connected'>('none');
   const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -60,7 +61,11 @@ export default function ProfileCardModal({ userId, onClose, onMessage, currentUs
 
         const [profileRes, connRes] = await Promise.all([
           fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=*&limit=1`, { headers: h }),
-          session ? fetch(`${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&or=(requester_id.eq.${userId},receiver_id.eq.${userId})&select=status&limit=1`, { headers: h }) : Promise.resolve(null),
+          // Correct PostgREST AND-of-ORs: find any connection between current user and target user
+          session ? fetch(
+            `${supabaseUrl}/rest/v1/connections?and=(or(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id}),or(requester_id.eq.${userId},receiver_id.eq.${userId}))&select=status&limit=1`,
+            { headers: h }
+          ) : Promise.resolve(null),
         ]);
 
         const profiles = profileRes.ok ? await profileRes.json() : [];
@@ -84,15 +89,26 @@ export default function ProfileCardModal({ userId, onClose, onMessage, currentUs
     const session = getStoredSession();
     if (!session) return;
     setConnecting(true);
+    setConnectError('');
     try {
-      await fetch(`${supabaseUrl}/rest/v1/connections`, {
+      const res = await fetch(`${supabaseUrl}/rest/v1/connections`, {
         method: 'POST',
         headers: { apikey: supabaseKey, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ requester_id: session.user.id, receiver_id: userId, status: 'pending' }),
       });
-      setConnectionStatus('pending');
-    } catch { /* silent */ }
-    finally { setConnecting(false); }
+      if (res.ok || res.status === 409) {
+        setConnectionStatus('pending');
+      } else {
+        const text = await res.text();
+        console.error('[ProfileCardModal] connect failed:', res.status, text);
+        setConnectError('Failed to send request');
+      }
+    } catch (err) {
+      console.error('[ProfileCardModal] connect error:', err);
+      setConnectError('Failed to send request');
+    } finally {
+      setConnecting(false);
+    }
   };
 
   const name = profile?.display_name || profile?.family_name?.split(' ')[0] || profile?.family_name || 'Unknown';
@@ -208,32 +224,35 @@ export default function ProfileCardModal({ userId, onClose, onMessage, currentUs
 
             {/* Actions */}
             {!isOwnProfile && (
-              <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-2">
-                <button
-                  onClick={connect}
-                  disabled={connecting || connectionStatus !== 'none'}
-                  className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-colors ${
-                    connectionStatus === 'connected' ? 'bg-gray-100 text-gray-500 cursor-default' :
-                    connectionStatus === 'pending' ? 'bg-gray-100 text-gray-500 cursor-default' :
-                    'bg-emerald-600 text-white hover:bg-emerald-700'
-                  }`}
-                >
-                  {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'pending' ? 'Pending' : connecting ? 'Connecting...' : 'Connect'}
-                </button>
-                {onMessage && (
+              <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col gap-2">
+                {connectError && <p className="text-xs text-red-500 text-center">{connectError}</p>}
+                <div className="flex gap-2">
                   <button
-                    onClick={() => { onMessage(userId); onClose(); }}
-                    className="flex-1 py-2.5 bg-white text-emerald-700 border border-emerald-200 rounded-xl font-semibold hover:bg-emerald-50 text-sm transition-colors"
+                    onClick={connect}
+                    disabled={connecting || connectionStatus !== 'none'}
+                    className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-colors ${
+                      connectionStatus === 'connected' ? 'bg-gray-100 text-gray-500 cursor-default' :
+                      connectionStatus === 'pending' ? 'bg-gray-100 text-gray-500 cursor-default' :
+                      'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
                   >
-                    Message
+                    {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'pending' ? 'Pending' : connecting ? 'Connecting...' : 'Connect'}
                   </button>
-                )}
-                <button
-                  onClick={() => { window.location.href = `/u/${userId}`; }}
-                  className="flex-1 py-2.5 bg-white text-gray-600 border border-gray-200 rounded-xl font-semibold hover:bg-gray-50 text-sm transition-colors"
-                >
-                  Profile
-                </button>
+                  {onMessage && (
+                    <button
+                      onClick={() => { onMessage(userId); onClose(); }}
+                      className="flex-1 py-2.5 bg-white text-emerald-700 border border-emerald-200 rounded-xl font-semibold hover:bg-emerald-50 text-sm transition-colors"
+                    >
+                      Message
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { window.location.href = `/u/${userId}`; }}
+                    className="flex-1 py-2.5 bg-white text-gray-600 border border-gray-200 rounded-xl font-semibold hover:bg-gray-50 text-sm transition-colors"
+                  >
+                    Profile
+                  </button>
+                </div>
               </div>
             )}
           </>
