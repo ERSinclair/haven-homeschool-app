@@ -560,7 +560,7 @@ function ProfilePageInner() {
 
         {/* Nav chips — Calendar, Connections, Education, Board */}
         {!isEditing && !isViewingOtherUser && (
-          <div className="flex gap-1 mb-3 bg-amber-50 rounded-xl p-1 border border-amber-200">
+          <div className="flex gap-1 mb-3 bg-stone-100 rounded-xl p-1 border border-stone-200">
             <Link href="/connections?tab=pending" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 text-gray-500 hover:text-gray-700 relative">
               Connections
               {pendingConnections > 0 && (
