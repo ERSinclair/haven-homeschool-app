@@ -479,9 +479,7 @@ function SignupPageInner() {
   };
 
   const removeChild = (id: number) => {
-    if (children.length > 1) {
-      setChildren(children.filter(c => c.id !== id));
-    }
+    setChildren(children.filter(c => c.id !== id));
   };
 
   const updateChildAge = (id: number, age: string) => {
@@ -1699,25 +1697,25 @@ function SignupPageInner() {
               <div className="space-y-4 mb-6">
                 {children.map((child, index) => (
                   <div key={child.id} className="flex items-center gap-3">
-                    <label className="text-gray-700 font-medium min-w-[70px]">
+                    <label className="text-gray-500 text-sm min-w-[60px]">
                       Child {index + 1}
                     </label>
                     <input
-                      type="text"
+                      type="number"
+                      min={0}
+                      max={18}
                       value={child.age}
                       onChange={(e) => updateChildAge(child.id, e.target.value)}
                       className="w-28 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      placeholder="Age (0-18)"
-                      maxLength={2}
+                      placeholder="Age"
                     />
-                    {children.length > 1 && (
-                      <button
-                        onClick={() => removeChild(child.id)}
-                        className="text-emerald-600 hover:text-emerald-700 font-medium px-2"
-                      >
-                        Remove
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeChild(child.id)}
+                      className="text-gray-400 hover:text-red-500 transition-colors px-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
                   </div>
                 ))}
               </div>
