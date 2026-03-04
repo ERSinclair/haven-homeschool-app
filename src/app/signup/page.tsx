@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import DatePickerDropdown from '@/components/DatePickerModal';
 // SimpleLocationPicker removed - using simple town/state inputs
 
 const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
@@ -41,6 +42,14 @@ function SignupPageInner() {
   
   // Step 3: Additional fields
   const [bio, setBio] = useState('');
+  const [dob, setDob] = useState('');
+  const [showBirthday, setShowBirthday] = useState(false);
+  const [showDobPicker, setShowDobPicker] = useState(false);
+  const [dobMonth, setDobMonth] = useState(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 25);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [businessName, setBusinessName] = useState('');
   const [showBusinessName, setShowBusinessName] = useState(false);
@@ -343,6 +352,8 @@ function SignupPageInner() {
         age_groups_taught: teacherAgeGroups.length > 0 ? teacherAgeGroups : null,
         services: null, // businesses use bio for services during signup
         contact_info: businessContact.trim() || null,
+        dob: (userType === 'family' || userType === 'teacher') && dob ? dob : null,
+        show_birthday: (userType === 'family' || userType === 'teacher') ? showBirthday : false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -469,9 +480,13 @@ function SignupPageInner() {
     if (userType === 'playgroup') {
       return firstName.trim() && username.trim() && usernameAvailable === true && location.split(',')[0]?.trim() && !checkingUsername;
     }
-    return firstName.trim() && lastName.trim() && username.trim() && 
-           usernameAvailable === true && location.split(',')[0]?.trim() && 
-           status.length > 0 && !checkingUsername;
+    const baseValid = firstName.trim() && lastName.trim() && username.trim() &&
+      usernameAvailable === true && location.split(',')[0]?.trim() &&
+      status.length > 0 && !checkingUsername;
+    if (userType === 'family' || userType === 'teacher') {
+      return baseValid && dob.trim() !== '';
+    }
+    return baseValid;
   };
 
   const isStep3Valid = () => {
@@ -882,6 +897,40 @@ function SignupPageInner() {
                   )}
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Date of birth <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowDobPicker(v => !v)}
+                      className="w-full p-3.5 border border-gray-200 rounded-xl text-left text-gray-900 bg-white focus:ring-2 focus:ring-emerald-500"
+                    >
+                      {dob ? new Date(dob + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : <span className="text-gray-400">Select date</span>}
+                    </button>
+                    {showDobPicker && (
+                      <DatePickerDropdown
+                        value={dob}
+                        onChange={v => { setDob(v); setShowDobPicker(false); }}
+                        onClose={() => setShowDobPicker(false)}
+                        maxDate={new Date().toISOString().slice(0, 10)}
+                        month={dobMonth}
+                        onMonthChange={setDobMonth}
+                      />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Not shown publicly unless you choose to.</p>
+                  <label className="flex items-center gap-3 mt-2 cursor-pointer">
+                    <div
+                      onClick={() => setShowBirthday(v => !v)}
+                      className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 ${showBirthday ? 'bg-emerald-500' : 'bg-gray-200'}`}
+                    >
+                      <div className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-transform ${showBirthday ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </div>
+                    <span className="text-sm text-gray-600">Show my birthday to connections</span>
+                  </label>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">Why I'm here</label>
                   <div className="space-y-2">
                     {[
@@ -974,9 +1023,43 @@ function SignupPageInner() {
                 {/* Debug section removed for production */}
                 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Date of birth <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowDobPicker(v => !v)}
+                      className="w-full p-3.5 border border-gray-200 rounded-xl text-left text-gray-900 bg-white focus:ring-2 focus:ring-emerald-500"
+                    >
+                      {dob ? new Date(dob + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : <span className="text-gray-400">Select date</span>}
+                    </button>
+                    {showDobPicker && (
+                      <DatePickerDropdown
+                        value={dob}
+                        onChange={v => { setDob(v); setShowDobPicker(false); }}
+                        onClose={() => setShowDobPicker(false)}
+                        maxDate={new Date().toISOString().slice(0, 10)}
+                        month={dobMonth}
+                        onMonthChange={setDobMonth}
+                      />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Not shown publicly unless you choose to.</p>
+                  <label className="flex items-center gap-3 mt-2 cursor-pointer">
+                    <div
+                      onClick={() => setShowBirthday(v => !v)}
+                      className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 ${showBirthday ? 'bg-emerald-500' : 'bg-gray-200'}`}
+                    >
+                      <div className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-transform ${showBirthday ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </div>
+                    <span className="text-sm text-gray-600">Show my birthday to connections</span>
+                  </label>
+                </div>
+                <div>
                   <button
                     onClick={() => setStep(3)}
-                    disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim()))}
+                    disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim())) || !dob.trim()}
                     className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                   >
                     Continue
@@ -1297,7 +1380,7 @@ function SignupPageInner() {
                 <div>
                   <button
                     onClick={() => setStep(3)}
-                    disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim()))}
+                    disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim())) || !dob.trim()}
                     className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                   >
                     Continue

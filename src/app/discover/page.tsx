@@ -50,6 +50,8 @@ type Family = {
   is_founding_supporter?: boolean;
   location_lat?: number;
   location_lng?: number;
+  dob?: string;
+  show_birthday?: boolean;
 };
 
 type Profile = {
@@ -744,6 +746,35 @@ function EnhancedDiscoverPage() {
       default:
         return { text: 'Connect', disabled: false, style: 'bg-white text-gray-700 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200' };
     }
+  };
+
+  const addBirthdayToCalendar = async (family: { id: string; family_name: string; display_name?: string; dob?: string }) => {
+    if (!family.dob) return;
+    const session = getStoredSession();
+    if (!session) return;
+    const _supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const _supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const name = family.display_name || family.family_name.split(' ')[0] || family.family_name;
+    const [, month, day] = family.dob.split('-');
+    const noteDate = `${new Date().getFullYear()}-${month}-${day}`;
+    await fetch(`${_supabaseUrl}/rest/v1/calendar_notes`, {
+      method: 'POST',
+      headers: {
+        'apikey': _supabaseKey!,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({
+        profile_id: session.user.id,
+        note_date: noteDate,
+        title: `${name}'s birthday`,
+        content: '',
+        recurrence_rule: 'yearly',
+        note_type: 'birthday',
+      }),
+    });
+    toast(`${name}'s birthday added to your calendar`, 'success');
   };
 
   const sendConnectionRequest = async (familyId: string) => {
@@ -1478,26 +1509,22 @@ function EnhancedDiscoverPage() {
                 {filteredFamilies.map((family) => (
                 <div
                   key={family.id}
-                  className={`w-full bg-white/60 rounded-xl shadow-sm border-l-4 border border-gray-100 hover:shadow-md active:scale-[0.99] transition-all overflow-hidden ${
-                    family.user_type === 'teacher' ? 'border-l-blue-400' :
-                    family.user_type === 'business' || family.user_type === 'facility' ? 'border-l-amber-400' :
-                    family.user_type === 'playgroup' ? 'border-l-purple-400' :
-                    'border-l-emerald-400'
-                  }`}
+                  className="w-full bg-white/60 backdrop-blur-sm rounded-xl border border-white/40 shadow-sm active:scale-[0.99] transition-all overflow-hidden"
                 >
                   {/* Top row: avatar + info */}
-                  <div
-                    className="flex items-start gap-3 cursor-pointer p-3 pb-2"
-                    onClick={() => setSelectedFamilyDetails(family)}
-                  >
-                    <AvatarUpload
-                      userId={family.id}
-                      currentAvatarUrl={family.avatar_url}
-                      name={family.family_name || family.display_name || 'Family'}
-                      size="lg"
-                      editable={false}
-                    />
-                    <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-3 px-3 pt-3 pb-0">
+                    {/* Left: avatar */}
+                    <div className="flex-shrink-0">
+                      <AvatarUpload
+                        userId={family.id}
+                        currentAvatarUrl={family.avatar_url}
+                        name={family.family_name || family.display_name || 'Family'}
+                        size="lg"
+                        editable={false}
+                      />
+                    </div>
+                    {/* Right: info */}
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedFamilyDetails(family)}>
                       {/* Name + badges */}
                       <div className="flex items-center gap-1.5 overflow-hidden mb-0.5">
                         <h3 className="font-semibold text-gray-900 text-sm leading-tight truncate min-w-0">
@@ -1579,29 +1606,44 @@ function EnhancedDiscoverPage() {
                       )}
                     </div>
                   </div>
-
-                  {/* Bottom row: actions */}
-                  <div className="flex items-center gap-2 px-3 pb-3 pt-2 border-t border-gray-50">
-                    <button
-                      onClick={() => sendConnectionRequest(family.id)}
-                      disabled={getConnectionButtonState(family.id).disabled}
-                      className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors text-xs ${getConnectionButtonState(family.id).style}`}
-                    >
-                      {getConnectionButtonState(family.id).text}
-                    </button>
-                    <button
-                      onClick={() => setSelectedFamily(family)}
-                      className="flex-1 py-1.5 bg-white text-emerald-600 border border-emerald-200 rounded-lg font-semibold hover:bg-emerald-50 transition-colors text-xs"
-                    >
-                      Message
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); hideSingleFamily(family.id); }}
-                      className="px-2 py-1 text-gray-300 hover:text-red-400 transition-colors text-xs"
-                    >
-                      Hide
-                    </button>
+                  {/* Action icons — add contact under avatar, message centre, hide mirrored right */}
+                  <div className="grid items-center pt-0 pb-2 px-3 -mt-1" style={{ gridTemplateColumns: '87px 1fr 87px' }}>
+                    <div className="flex justify-center">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); sendConnectionRequest(family.id); }}
+                        disabled={getConnectionButtonState(family.id).disabled}
+                        className={`transition-colors ${getConnectionButtonState(family.id).disabled ? 'text-emerald-400' : 'text-gray-400 hover:text-emerald-500'}`}
+                        title={getConnectionButtonState(family.id).text}
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex justify-center">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedFamily(family); }}
+                        className="text-gray-400 hover:text-emerald-500 transition-colors"
+                        title="Message"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex justify-center">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); hideSingleFamily(family.id); }}
+                        className="text-gray-400 hover:text-red-400 transition-colors"
+                        title="Hide"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
+
                 </div>
               ))}
               </>
@@ -1869,7 +1911,45 @@ function EnhancedDiscoverPage() {
                     <span className="text-gray-400 text-sm">{selectedFamilyDetails.is_online ? 'Online' : formatLastActive(selectedFamilyDetails.last_active)}</span>
                   </span>
                 )}
-              </div>
+                {selectedFamilyDetails.show_birthday && selectedFamilyDetails.dob && (() => {
+                const [, mm, dd] = selectedFamilyDetails.dob!.split('-');
+                const today = new Date();
+                const isToday = parseInt(mm) === today.getMonth() + 1 && parseInt(dd) === today.getDate();
+                const formatted = new Date(`2000-${mm}-${dd}T12:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'long' });
+                return (
+                  <div className={`flex items-center gap-1.5 text-sm mt-1 ${isToday ? 'text-pink-500 font-semibold' : 'text-gray-400'}`}>
+                    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 -1 24 25" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 6 C5.5 5 5.5 1 8 -0.5 C10.5 1 10.5 5 8 6Z" fill="currentColor" stroke="none" />
+                      <rect x="7" y="6" width="2" height="4" rx="0.5" />
+                      <path d="M16 6 C13.5 5 13.5 1 16 -0.5 C18.5 1 18.5 5 16 6Z" fill="currentColor" stroke="none" />
+                      <rect x="15" y="6" width="2" height="4" rx="0.5" />
+                      <rect x="2" y="10" width="20" height="12" rx="2" />
+                      <path d="M2 13 Q5.5 11 9 13 Q12 15 15 13 Q18.5 11 22 13" strokeWidth={1.4} />
+                    </svg>
+                    <span>{formatted}{isToday ? ' — Today!' : ''}</span>
+                  </div>
+                );
+              })()}
+            </div>
+              {selectedFamilyDetails.show_birthday && selectedFamilyDetails.dob && (() => {
+                const [, mm, dd] = selectedFamilyDetails.dob!.split('-');
+                const today = new Date();
+                const isToday = parseInt(mm) === today.getMonth() + 1 && parseInt(dd) === today.getDate();
+                const formatted = new Date(`2000-${mm}-${dd}T12:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'long' });
+                return (
+                  <div className={`flex items-center gap-1.5 text-sm mt-1 ${isToday ? 'text-pink-500 font-semibold' : 'text-gray-400'}`}>
+                    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 -1 24 25" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 6 C5.5 5 5.5 1 8 -0.5 C10.5 1 10.5 5 8 6Z" fill="currentColor" stroke="none" />
+                      <rect x="7" y="6" width="2" height="4" rx="0.5" />
+                      <path d="M16 6 C13.5 5 13.5 1 16 -0.5 C18.5 1 18.5 5 16 6Z" fill="currentColor" stroke="none" />
+                      <rect x="15" y="6" width="2" height="4" rx="0.5" />
+                      <rect x="2" y="10" width="20" height="12" rx="2" />
+                      <path d="M2 13 Q5.5 11 9 13 Q12 15 15 13 Q18.5 11 22 13" strokeWidth={1.4} />
+                    </svg>
+                    <span>{formatted}{isToday ? ' — Today!' : ''}</span>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="px-6 pb-6 space-y-5">
@@ -1987,6 +2067,22 @@ function EnhancedDiscoverPage() {
               >
                 Profile
               </button>
+              {selectedFamilyDetails.show_birthday && selectedFamilyDetails.dob && (
+                <button
+                  onClick={() => addBirthdayToCalendar(selectedFamilyDetails)}
+                  className="py-2.5 px-3 bg-white text-pink-500 border border-pink-200 rounded-xl hover:bg-pink-50 active:scale-[0.98] transition-all"
+                  title="Add birthday to calendar"
+                >
+                  <svg className="w-6 h-6" viewBox="0 -1 24 25" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 6 C5.5 5 5.5 1 8 -0.5 C10.5 1 10.5 5 8 6Z" fill="currentColor" stroke="none" />
+                    <rect x="7" y="6" width="2" height="4" rx="0.5" />
+                    <path d="M16 6 C13.5 5 13.5 1 16 -0.5 C18.5 1 18.5 5 16 6Z" fill="currentColor" stroke="none" />
+                    <rect x="15" y="6" width="2" height="4" rx="0.5" />
+                    <rect x="2" y="10" width="20" height="12" rx="2" />
+                    <path d="M2 13 Q5.5 11 9 13 Q12 15 15 13 Q18.5 11 22 13" strokeWidth={1.4} />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -16,6 +16,8 @@ type PublicProfile = {
   location_name?: string;
   avatar_url?: string;
   kids_ages?: number[];
+  dob?: string;
+  show_birthday?: boolean;
   homeschool_approaches?: string[];
   interests?: string[];
   user_type?: string;
@@ -61,7 +63,7 @@ export default function PublicProfilePage() {
 
         // Fetch profile (public read, no auth needed)
         const profRes = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?id=eq.${id}&select=id,family_name,display_name,bio,location_name,avatar_url,kids_ages,homeschool_approaches,interests,user_type`,
+          `${supabaseUrl}/rest/v1/profiles?id=eq.${id}&select=id,family_name,display_name,bio,location_name,avatar_url,kids_ages,homeschool_approaches,interests,user_type,dob,show_birthday`,
           { headers: h }
         );
         if (!profRes.ok) { setNotFound(true); setLoading(false); return; }
@@ -167,6 +169,26 @@ export default function PublicProfilePage() {
             {profile?.location_name && (
               <p className="text-sm text-gray-500 mt-0.5">📍 {profile.location_name}</p>
             )}
+            {profile?.show_birthday && profile?.dob && (() => {
+              const [, mm, dd] = profile.dob!.split('-');
+              const today = new Date();
+              const isToday = parseInt(mm) === today.getMonth() + 1 && parseInt(dd) === today.getDate();
+              const formatted = new Date(`2000-${mm}-${dd}T12:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'long' });
+              return (
+                <div className={`flex items-center gap-1.5 text-sm mt-1 ${isToday ? 'text-pink-500 font-semibold' : 'text-gray-400'}`}>
+                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 -1 24 25" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 6 C5.5 5 5.5 1 8 -0.5 C10.5 1 10.5 5 8 6Z" fill="currentColor" stroke="none" />
+                    <rect x="7" y="6" width="2" height="4" rx="0.5" />
+                    <path d="M16 6 C13.5 5 13.5 1 16 -0.5 C18.5 1 18.5 5 16 6Z" fill="currentColor" stroke="none" />
+                    <rect x="15" y="6" width="2" height="4" rx="0.5" />
+                    <rect x="2" y="10" width="20" height="12" rx="2" />
+                    <path d="M2 13 Q5.5 11 9 13 Q12 15 15 13 Q18.5 11 22 13" strokeWidth={1.4} />
+                  </svg>
+                  <span>{formatted}{isToday ? ' — Today!' : ''}</span>
+                </div>
+              );
+            })()}
+
 
             {/* Bio */}
             {profile?.bio && (

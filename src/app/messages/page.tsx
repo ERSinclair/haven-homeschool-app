@@ -274,6 +274,29 @@ function MessagesContent() {
     };
   }, [selectedId, userId]);
 
+  // Poll for read_at updates on sent messages (so sender sees read receipts update live)
+  useEffect(() => {
+    if (!selectedId || selectedId === 'saved-messages' || !userId) return;
+    const interval = setInterval(async () => {
+      const session = getStoredSession();
+      if (!session) return;
+      try {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/messages?conversation_id=eq.${selectedId}&sender_id=eq.${userId}&read_at=not.is.null&select=id,read_at`,
+          { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+        );
+        if (!res.ok) return;
+        const readMsgs: { id: string; read_at: string }[] = await res.json();
+        if (!readMsgs.length) return;
+        const readMap = new Map(readMsgs.map(m => [m.id, m.read_at]));
+        setMessages(prev => prev.map(m =>
+          !m.read_at && readMap.has(m.id) ? { ...m, read_at: readMap.get(m.id)! } : m
+        ));
+      } catch { /* silent */ }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [selectedId, userId]);
+
   // Reset to conversation list when Message tab is tapped while already on /messages
   useEffect(() => {
     const handler = (e: Event) => {
@@ -1451,10 +1474,13 @@ function MessagesContent() {
           <div
             className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-[99999] p-4"
             onClick={() => { setLightboxUrl(null); setLightboxMsgId(null); }}
+            onTouchEnd={() => { setLightboxUrl(null); setLightboxMsgId(null); }}
           >
             <button
-              className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 text-white text-xl flex items-center justify-center hover:bg-white/30"
-              onClick={() => { setLightboxUrl(null); setLightboxMsgId(null); }}
+              className="absolute top-safe right-4 w-12 h-12 rounded-full bg-white/20 text-white text-2xl flex items-center justify-center hover:bg-white/30 active:bg-white/40"
+              style={{ top: 'max(16px, env(safe-area-inset-top, 16px))' }}
+              onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); setLightboxMsgId(null); }}
+              onTouchEnd={(e) => { e.stopPropagation(); setLightboxUrl(null); setLightboxMsgId(null); }}
             >
               ×
             </button>
@@ -1463,6 +1489,7 @@ function MessagesContent() {
               alt="Attachment"
               className="max-w-full max-h-[75vh] rounded-xl object-contain"
               onClick={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
             />
             <div className="flex gap-3 mt-4" onClick={(e) => e.stopPropagation()}>
               <button
@@ -1821,7 +1848,7 @@ function MessagesContent() {
                     touchStartPosRef.current = null;
                     if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
                   }}
-                  className={`w-full bg-white rounded-xl p-4 flex items-center gap-3 transition-all text-left shadow-sm border border-gray-100 ${
+                  className={`w-full bg-transparent rounded-xl p-4 flex items-center gap-3 transition-all text-left ${
                     conversationSelectionMode
                       ? selectedConversations.includes(convo.id)
                         ? 'ring-2 ring-emerald-300 scale-95 ml-8'

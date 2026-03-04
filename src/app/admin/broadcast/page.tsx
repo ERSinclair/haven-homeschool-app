@@ -24,6 +24,7 @@ export default function BroadcastPage() {
   const [targetType, setTargetType] = useState<'all' | 'location'>('all');
   const [targetLocation, setTargetLocation] = useState('');
   const [sending, setSending] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [history, setHistory] = useState<BroadcastHistory[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [broadcastType, setBroadcastType] = useState<'message' | 'poll'>('message');
@@ -151,32 +152,32 @@ export default function BroadcastPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Send Broadcast</h1>
-            <p className="text-gray-600">Send announcements to users</p>
+    <div className="min-h-screen bg-transparent relative">
+      <div className="admin-bg" />
+      <div className="relative z-10 max-w-4xl mx-auto px-4 pb-8">
+        {/* Fixed header */}
+        <div className="fixed top-0 left-0 right-0 z-30 bg-white/10 backdrop-blur-lg border-b border-white/10">
+          <div className="max-w-4xl mx-auto flex items-center justify-between px-4 pt-3 pb-3">
+            <div className="w-20 flex items-start pt-1">
+              <Link href="/admin" className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-emerald-50 transition-colors text-gray-500 hover:text-emerald-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
+              </Link>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="font-bold text-emerald-600 text-3xl leading-none" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</span>
+              <p className="text-xs text-gray-400 font-medium uppercase tracking-widest mt-0.5">Admin</p>
+              <h1 className="text-lg font-bold text-gray-900 mt-1">Broadcast</h1>
+            </div>
+            <div className="w-20" />
           </div>
-          <Link 
-            href="/admin"
-            className="text-emerald-600 hover:text-emerald-700 font-medium"
-          >
-            ← Back to Dashboard
-          </Link>
         </div>
+        <div className="h-28 flex-shrink-0" />
 
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Compose Form */}
           <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6">Compose Message</h2>
-            
             {/* Title */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Message Title
-              </label>
               <input
                 type="text"
                 value={title}
@@ -190,9 +191,6 @@ export default function BroadcastPage() {
 
             {/* Content */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Message Content
-              </label>
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
@@ -206,7 +204,6 @@ export default function BroadcastPage() {
 
             {/* Broadcast type toggle */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
               <div className="flex gap-2">
                 {(['message', 'poll'] as const).map(t => (
                   <button key={t} type="button" onClick={() => setBroadcastType(t)}
@@ -220,7 +217,6 @@ export default function BroadcastPage() {
             {/* Poll options */}
             {broadcastType === 'poll' && (
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Vote options</label>
                 <div className="space-y-2">
                   {pollOptions.map((opt, i) => (
                     <div key={i} className="flex gap-2">
@@ -245,41 +241,27 @@ export default function BroadcastPage() {
               </div>
             )}
 
-            {/* Target Audience */}
+            {/* Send to */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Target Audience
-              </label>
-              <div className="space-y-3">
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    name="targetType"
-                    value="all"
-                    checked={targetType === 'all'}
-                    onChange={(e) => setTargetType(e.target.value as 'all')}
-                    className="mr-3"
-                  />
-                  <div>
-                    <div className="font-medium text-gray-900">All Users</div>
-                    <div className="text-sm text-gray-500">Send to all active users</div>
-                  </div>
-                </label>
-                
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    name="targetType"
-                    value="location"
-                    checked={targetType === 'location'}
-                    onChange={(e) => setTargetType(e.target.value as 'location')}
-                    className="mr-3"
-                  />
-                  <div>
-                    <div className="font-medium text-gray-900">Specific Location</div>
-                    <div className="text-sm text-gray-500">Send to users in a specific area</div>
-                  </div>
-                </label>
+              <p className="text-sm font-medium text-gray-700 mb-2">Send to</p>
+              <div className="flex gap-2">
+                {([
+                  { value: 'all', label: 'Everyone' },
+                  { value: 'location', label: 'Location' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setTargetType(opt.value)}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                      targetType === opt.value
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
               
               {targetType === 'location' && (
@@ -305,7 +287,7 @@ export default function BroadcastPage() {
                 Preview Message
               </button>
               <button
-                onClick={handleSendBroadcast}
+                onClick={() => setShowConfirm(true)}
                 disabled={!title.trim() || !content.trim() || sending || (targetType === 'location' && !targetLocation.trim())}
                 className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
@@ -313,24 +295,11 @@ export default function BroadcastPage() {
               </button>
             </div>
 
-            {/* Warning */}
-            <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="flex items-start gap-3">
-                <span className="text-yellow-600 text-xl">⚠️</span>
-                <div>
-                  <div className="font-medium text-yellow-800 mb-1">Important</div>
-                  <div className="text-sm text-yellow-700">
-                    This message will be sent immediately to all targeted users. 
-                    Please review carefully before sending.
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Recent Broadcasts */}
           <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6">Recent Broadcasts</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">Recent Broadcasts</h2>
             
             {history.length === 0 ? (
               <div className="text-center py-8 text-gray-500">                <p>No broadcasts sent yet</p>
@@ -362,6 +331,22 @@ export default function BroadcastPage() {
         </div>
       </div>
 
+      {/* Confirm Modal */}
+      {showConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Send broadcast?</h3>
+            <p className="text-sm text-gray-600 mb-1"><strong>{title}</strong></p>
+            <p className="text-sm text-gray-500 mb-1">{content.slice(0, 100)}{content.length > 100 ? '...' : ''}</p>
+            <p className="text-xs text-gray-400 mt-2 mb-6">Target: {targetType === 'all' ? 'All users' : `Users in ${targetLocation}`}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowConfirm(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200">Cancel</button>
+              <button onClick={() => { setShowConfirm(false); handleSendBroadcast(); }} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700">Yes, send</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Preview Modal */}
       {showPreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -372,7 +357,7 @@ export default function BroadcastPage() {
               {/* Mock notification display */}
               <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                 <div className="flex items-start gap-3">
-                  <span className="text-emerald-600 text-xl">📢</span>
+                  
                   <div className="flex-1">
                     <div className="font-semibold text-emerald-900 mb-1">{title}</div>
                     <div className="text-sm text-emerald-800">{content}</div>

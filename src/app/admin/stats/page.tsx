@@ -55,26 +55,42 @@ export default function AdminStatsPage() {
   if (!authorized) return null;
 
   const StatCard = ({ label, value, color = 'text-emerald-600' }: { label: string; value: number | undefined; color?: string }) => (
-    <div className="bg-white rounded-xl p-4 shadow-sm">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-2xl font-bold ${color}`}>{value ?? 0}</p>
+    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex flex-col items-center text-center">
+      <p className={`text-3xl font-bold ${color}`}>{value ?? 0}</p>
+      <p className="text-xs text-gray-500 mt-1 font-medium">{label}</p>
     </div>
   );
 
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="mb-6">
-      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">{title}</h2>
-      {children}
+    <div className="mb-6 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
+        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">{title}</h2>
+      </div>
+      <div className="p-4">{children}</div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/admin" className="text-emerald-600 hover:text-emerald-700 font-medium text-sm">← Admin</Link>
-          <h1 className="text-2xl font-bold text-gray-900">Statistics</h1>
+    <div className="min-h-screen bg-transparent relative">
+      <div className="admin-bg" />
+      <div className="relative z-10 max-w-5xl mx-auto px-4 pb-8">
+        {/* Fixed header */}
+        <div className="fixed top-0 left-0 right-0 z-30 bg-white/10 backdrop-blur-lg border-b border-white/10">
+          <div className="max-w-7xl mx-auto flex items-center justify-between px-4 pt-3 pb-3">
+            <div className="w-20 flex items-start pt-1">
+              <Link href="/admin" className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-emerald-50 transition-colors text-gray-500 hover:text-emerald-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
+              </Link>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="font-bold text-emerald-600 text-3xl leading-none" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</span>
+              <p className="text-xs text-gray-400 font-medium uppercase tracking-widest mt-0.5">Admin</p>
+              <h1 className="text-lg font-bold text-gray-900 mt-1">Statistics</h1>
+            </div>
+            <div className="w-20" />
+          </div>
         </div>
+        <div className="h-28 flex-shrink-0" />
 
         {stats && (
           <>

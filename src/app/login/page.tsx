@@ -89,7 +89,9 @@ export default function LoginPage() {
           const profiles = await profileRes.json();
           const profile = profiles[0];
           const completionStep = checkProfileCompletion(profile);
-          
+          if (completionStep !== 'complete') {
+            sessionStorage.setItem('haven-profile-nudge', '1');
+          }
           window.location.href = '/feed';
         } else {
           window.location.href = '/signup/resume?step=2';

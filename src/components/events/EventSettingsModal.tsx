@@ -138,7 +138,35 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
           </div>
         </div>
         <div className="p-6 space-y-4">
-          {/* Title */}
+          {/* Cover Photo */}
+          <div className="bg-gray-50 rounded-xl p-4">
+            <p className="text-xs text-gray-500 mb-3">Cover Photo</p>
+            {event.cover_image_url ? (
+              <div className="space-y-2">
+                <div className="relative w-full h-24 rounded-xl overflow-hidden">
+                  <img src={event.cover_image_url} alt="Cover" className="w-full h-full object-cover" />
+                </div>
+                <div className="flex gap-2">
+                  <label className="flex-1 py-2 text-center text-sm font-semibold text-emerald-700 bg-white border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-50 transition-colors">
+                    {uploadingEventCover ? 'Uploading...' : 'Change'}
+                    <input type="file" accept="image/*" className="hidden" disabled={uploadingEventCover} onChange={e => { const f = e.target.files?.[0]; if (f) handleCoverFileSelected(f); e.target.value = ''; }} />
+                  </label>
+                  <button onClick={removeEventCover} className="flex-1 py-2 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 transition-colors">Remove</button>
+                </div>
+              </div>
+            ) : (
+              <label className="flex items-center justify-center w-full h-20 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-emerald-300 transition-colors">
+                {uploadingEventCover ? (
+                  <span className="text-sm text-gray-400">Uploading...</span>
+                ) : (
+                  <span className="text-sm text-gray-400">+ Add cover photo</span>
+                )}
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingEventCover} onChange={e => { const f = e.target.files?.[0]; if (f) handleCoverFileSelected(f); e.target.value = ''; }} />
+              </label>
+            )}
+          </div>
+
+                    {/* Title */}
           <div className="bg-gray-50 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -194,35 +222,7 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
             <p className="font-medium text-gray-900">{event.rsvp_count || 0} going</p>
           </div>
 
-          {/* Cover Photo */}
-          <div className="bg-gray-50 rounded-xl p-4">
-            <p className="text-xs text-gray-500 mb-3">Cover Photo</p>
-            {event.cover_image_url ? (
-              <div className="space-y-2">
-                <div className="relative w-full h-24 rounded-xl overflow-hidden">
-                  <img src={event.cover_image_url} alt="Cover" className="w-full h-full object-cover" />
-                </div>
-                <div className="flex gap-2">
-                  <label className="flex-1 py-2 text-center text-sm font-semibold text-emerald-700 bg-white border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-50 transition-colors">
-                    {uploadingEventCover ? 'Uploading...' : 'Change'}
-                    <input type="file" accept="image/*" className="hidden" disabled={uploadingEventCover} onChange={e => { const f = e.target.files?.[0]; if (f) handleCoverFileSelected(f); e.target.value = ''; }} />
-                  </label>
-                  <button onClick={removeEventCover} className="flex-1 py-2 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 transition-colors">Remove</button>
-                </div>
-              </div>
-            ) : (
-              <label className="flex items-center justify-center w-full h-20 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-emerald-300 transition-colors">
-                {uploadingEventCover ? (
-                  <span className="text-sm text-gray-400">Uploading...</span>
-                ) : (
-                  <span className="text-sm text-gray-400">+ Add cover photo</span>
-                )}
-                <input type="file" accept="image/*" className="hidden" disabled={uploadingEventCover} onChange={e => { const f = e.target.files?.[0]; if (f) handleCoverFileSelected(f); e.target.value = ''; }} />
-              </label>
-            )}
-          </div>
-
-          {/* Reminder */}
+{/* Reminder */}
           <div className="border border-gray-100 rounded-xl p-4 mb-2">
             <ReminderPicker value={reminder} onChange={setReminder} />
             {reminder.offset && (

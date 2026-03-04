@@ -151,20 +151,31 @@ export default function ContentModerationPage() {
   const openCount = reports.filter(r => !r.status || r.status !== 'dismissed').length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Content Moderation</h1>
-            <p className="text-gray-600">Review user reports and take action</p>
+    <div className="min-h-screen bg-transparent relative">
+      <div className="admin-bg" />
+      <div className="relative z-10 max-w-5xl mx-auto px-4 pb-8">
+        {/* Fixed header */}
+        <div className="fixed top-0 left-0 right-0 z-30 bg-white/10 backdrop-blur-lg border-b border-white/10">
+          <div className="max-w-7xl mx-auto flex items-center justify-between px-4 pt-3 pb-3">
+            <div className="w-20 flex items-start pt-1">
+              <Link href="/admin" className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-emerald-50 transition-colors text-gray-500 hover:text-emerald-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
+              </Link>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="font-bold text-emerald-600 text-3xl leading-none" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</span>
+              <p className="text-xs text-gray-400 font-medium uppercase tracking-widest mt-0.5">Admin</p>
+              <h1 className="text-lg font-bold text-gray-900 mt-1">Content Moderation</h1>
+            </div>
+            <div className="w-20" />
           </div>
-          <Link href="/admin" className="text-emerald-600 hover:text-emerald-700 font-medium">&larr; Back to Dashboard</Link>
         </div>
+        <div className="h-28 flex-shrink-0" />
 
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-6 justify-center">
           {(['open', 'all', 'dismissed'] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${filter === f ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'}`}>
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${filter === f ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
               {f === 'open' ? `Open${openCount > 0 ? ` (${openCount})` : ''}` : f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
           ))}
@@ -232,13 +243,13 @@ export default function ContentModerationPage() {
               </div>
               <p className="text-xs text-gray-400">Reported {timeAgo(selected.created_at)}</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200">
               <button onClick={() => dismiss(selected)} disabled={actionLoading || selected.status === 'dismissed'}
-                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 disabled:opacity-50">
+                className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 disabled:opacity-50">
                 Dismiss
               </button>
               <button onClick={() => ban(selected)} disabled={actionLoading || selected.reported?.is_banned}
-                className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-medium text-sm hover:bg-red-600 disabled:opacity-50">
+                className="px-6 py-2.5 bg-red-500 text-white rounded-xl font-medium text-sm hover:bg-red-600 disabled:opacity-50">
                 {actionLoading ? 'Working...' : 'Ban User'}
               </button>
             </div>

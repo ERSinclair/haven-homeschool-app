@@ -445,3 +445,37 @@ input[type="checkbox"], input[type="radio"] {
 [disabled], .disabled {
   cursor: not-allowed !important;
 }
+
+/* Admin page background — sky blue fade */
+@keyframes admin-bg-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%       { opacity: 0.75; transform: scale(1.08); }
+}
+.admin-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: #f0f9ff;
+}
+.admin-bg::before,
+.admin-bg::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  animation: admin-bg-pulse 8s ease-in-out infinite;
+}
+.admin-bg::before {
+  width: 60vw; height: 60vw;
+  top: -15vw; left: -10vw;
+  background: radial-gradient(circle, #d0eafc 0%, transparent 70%);
+  animation-delay: 0s;
+}
+.admin-bg::after {
+  width: 50vw; height: 50vw;
+  bottom: -10vw; right: -5vw;
+  background: radial-gradient(circle, #d0eafc 0%, transparent 70%);
+  animation-delay: 4s;
+}

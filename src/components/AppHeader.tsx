@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { getStoredSession } from '@/lib/session';
+import { getStoredSessionAsync } from '@/lib/session';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -43,10 +43,10 @@ export default function AppHeader({
   const isOnFeed = pathname === '/feed' || pathname === '/notifications';
 
   useEffect(() => {
-    const session = getStoredSession();
-    if (!session?.user) return;
     const check = async () => {
       try {
+        const session = await getStoredSessionAsync();
+        if (!session?.user) return;
         const res = await fetch(
           `${supabaseUrl}/rest/v1/notifications?user_id=eq.${session.user.id}&read=eq.false&select=id`,
           {
@@ -58,6 +58,7 @@ export default function AppHeader({
             },
           }
         );
+        if (res.status === 401) return; // Token still invalid after refresh — skip silently
         const cr = res.headers.get('Content-Range');
         const count = cr ? parseInt(cr.split('/')[1]) || 0 : 0;
         setActivityCount(count);
@@ -115,7 +116,7 @@ export default function AppHeader({
         {right}
         {isExactMainNav && !isOnFeed && !hideBell && (
           <button
-            onClick={() => router.push('/notifications')}
+            onClick={() => router.push('/feed')}
             className="relative p-1 rounded-xl hover:bg-emerald-50 transition-colors mt-1 mr-[-8px]"
             aria-label="Activity feed"
           >

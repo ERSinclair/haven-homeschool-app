@@ -145,21 +145,27 @@ export default function AdminManagement() {
   const nonAdmins = filteredUsers.filter(user => !user.is_admin && !user.is_banned);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="min-h-screen bg-transparent relative">
+      <div className="admin-bg" />
+      <div className="relative z-10 max-w-7xl mx-auto px-4 pb-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Admin Management</h1>
-            <p className="text-gray-600">Manage who has admin access to Haven</p>
+        {/* Fixed header */}
+        <div className="fixed top-0 left-0 right-0 z-30 bg-white/10 backdrop-blur-lg border-b border-white/10">
+          <div className="max-w-7xl mx-auto flex items-center justify-between px-4 pt-3 pb-3">
+            <div className="w-20 flex items-start pt-1">
+              <Link href="/admin" className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-emerald-50 transition-colors text-gray-500 hover:text-emerald-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
+              </Link>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="font-bold text-emerald-600 text-3xl leading-none" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</span>
+              <p className="text-xs text-gray-400 font-medium uppercase tracking-widest mt-0.5">Admin</p>
+              <h1 className="text-lg font-bold text-gray-900 mt-1">Admin Management</h1>
+            </div>
+            <div className="w-20" />
           </div>
-          <Link 
-            href="/admin"
-            className="text-emerald-600 hover:text-emerald-700 font-medium"
-          >
-            ← Back to Dashboard
-          </Link>
         </div>
+        <div className="h-28 flex-shrink-0" />
 
         {/* Search */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
@@ -175,11 +181,8 @@ export default function AdminManagement() {
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Current Admins */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-emerald-50">
-              <h2 className="text-lg font-bold text-emerald-900 flex items-center gap-2">
-                <span>👑</span> Current Admins ({admins.length})
-              </h2>
-              <p className="text-sm text-emerald-700">Users with admin access</p>
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">Admins</h2>
             </div>
             
             <div className="p-6">
@@ -197,7 +200,7 @@ export default function AdminManagement() {
                         <div>
                           <div className="flex items-center gap-2">
                             <div className="font-medium text-gray-900">{getUserDisplayName(user)}</div>
-                            <span className="text-emerald-600">👑</span>
+                            
                           </div>
                           <div className="text-sm text-gray-500">{user.email}</div>
                           <div className="text-xs text-gray-400">Admin since {formatDate(user.created_at)}</div>
@@ -223,11 +226,8 @@ export default function AdminManagement() {
 
           {/* Regular Users */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-emerald-50">
-              <h2 className="text-lg font-bold text-emerald-900 flex items-center gap-2">
-                <span>👥</span> Regular Users ({nonAdmins.length})
-              </h2>
-              <p className="text-sm text-emerald-700">Users who can be promoted to admin</p>
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">Users</h2>
             </div>
             
             <div className="p-6 max-h-96 overflow-y-auto">
@@ -270,7 +270,7 @@ export default function AdminManagement() {
         {/* Info Box */}
         <div className="mt-8 p-6 bg-yellow-50 border border-yellow-200 rounded-xl">
           <div className="flex items-start gap-3">
-            <span className="text-yellow-600 text-xl">💡</span>
+            
             <div>
               <div className="font-medium text-yellow-800 mb-2">Admin Permissions</div>
               <div className="text-sm text-yellow-700 space-y-1">
@@ -308,7 +308,7 @@ export default function AdminManagement() {
               </p>
             </div>
             
-            <div className="flex gap-3">
+            <div className="flex gap-3 justify-center">
               <button
                 onClick={() => {
                   setShowConfirmModal(false);

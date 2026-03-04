@@ -7,6 +7,7 @@ interface Props {
   onChange: (val: string) => void;
   onClose: () => void;
   minDate?: string;
+  maxDate?: string;
   label?: string;
   month: string;        // YYYY-MM controlled by parent
   onMonthChange: (m: string) => void;
@@ -14,7 +15,7 @@ interface Props {
 
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-export default function DatePickerDropdown({ value, onChange, onClose, minDate, month, onMonthChange }: Props) {
+export default function DatePickerDropdown({ value, onChange, onClose, minDate, maxDate, month, onMonthChange }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -78,7 +79,7 @@ export default function DatePickerDropdown({ value, onChange, onClose, minDate, 
           const dateStr = `${year}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
           const isSelected = dateStr === value;
           const isToday = dateStr === today;
-          const isPast = minDate ? dateStr < minDate : false;
+          const isPast = (minDate ? dateStr < minDate : false) || (maxDate ? dateStr > maxDate : false);
           return (
             <button
               key={day}

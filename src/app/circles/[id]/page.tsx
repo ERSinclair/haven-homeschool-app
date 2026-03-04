@@ -122,6 +122,7 @@ export default function CirclePage() {
   const [announcement, setAnnouncement] = useState('');
   const [announcementEdit, setAnnouncementEdit] = useState(false);
   const [announcementInput, setAnnouncementInput] = useState('');
+  const [showUnpinConfirm, setShowUnpinConfirm] = useState(false);
   const [infoSubTab, setInfoSubTab] = useState<'members' | 'resources' | 'meetup' | 'board'>('members');
   const [boardPosts, setBoardPosts] = useState<BoardPost[]>([]);
   const [boardLoading, setBoardLoading] = useState(false);
@@ -1265,16 +1266,7 @@ createNotification({
                     <button onClick={() => { setAnnouncementInput(announcement); setAnnouncementEdit(true); }} className="text-amber-500 hover:text-amber-700">
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                     </button>
-                    <button onClick={async () => {
-                      const session = getStoredSession();
-                      if (!session) return;
-                      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/circles?id=eq.${circleId}`, {
-                        method: 'PATCH',
-                        headers: { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-                        body: JSON.stringify({ pinned_announcement: null, pinned_at: null }),
-                      });
-                      setAnnouncement('');
-                    }} className="text-amber-400 hover:text-red-500">
+                    <button onClick={() => setShowUnpinConfirm(true)} className="text-amber-400 hover:text-red-500">
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                   </div>
@@ -2491,6 +2483,29 @@ createNotification({
         </div>
       )}
 
+      {/* Unpin announcement confirm */}
+      {showUnpinConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Remove announcement?</h3>
+            <p className="text-gray-600 mb-6 text-sm">The pinned announcement will be removed from this circle.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowUnpinConfirm(false)} className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200">Cancel</button>
+              <button onClick={async () => {
+                setShowUnpinConfirm(false);
+                const session = getStoredSession();
+                if (!session) return;
+                await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/circles?id=eq.${circleId}`, {
+                  method: 'PATCH',
+                  headers: { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                  body: JSON.stringify({ pinned_announcement: null, pinned_at: null }),
+                });
+                setAnnouncement('');
+              }} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium text-sm hover:bg-red-700">Remove</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Circle chat context menu — portal renders above everything */}
       {contextMenuMsg && (
         <MessageContextMenu

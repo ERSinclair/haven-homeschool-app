@@ -37,22 +37,21 @@ export default function InviteToHaven() {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-      <p className="text-sm font-semibold text-gray-800 mb-1">Invite a friend to Haven</p>
-      <p className="text-xs text-gray-500 mb-3">Know a family that would love this? Send them an invite.</p>
-      <div className="flex gap-2">
+    <div className="bg-white/40 backdrop-blur-sm rounded-2xl border border-white/60 p-4">
+      <p className="text-sm font-semibold text-gray-800 mb-3 text-center">Invite a friend to Haven</p>
+      <div className="flex flex-row gap-2 items-center">
         <input
           type="email"
           value={email}
           onChange={e => { setEmail(e.target.value); setResult(null); }}
           onKeyDown={e => e.key === 'Enter' && sendInvite()}
           placeholder="friend@example.com"
-          className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="flex-1 min-w-0 h-9 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
         />
         <button
           onClick={sendInvite}
           disabled={loading || !email.trim()}
-          className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+          className="shrink-0 h-9 px-4 bg-emerald-600 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
         >
           {loading ? '...' : 'Invite'}
         </button>

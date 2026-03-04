@@ -183,15 +183,6 @@ export default function NotificationsPage() {
     await markAllNotificationsRead(session.user.id, session.access_token);
   };
 
-  const handleClearAll = async () => {
-    const session = getStoredSession();
-    if (!session) return;
-    setNotifications([]);
-    fetch(`${supabaseUrl}/rest/v1/notifications?user_id=eq.${session.user.id}`, {
-      method: 'DELETE',
-      headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
-    });
-  };
 
   const handleConnectionRequest = async (notif: Notification, accept: boolean) => {
     if (!notif.actor_id) return;
@@ -214,6 +205,10 @@ export default function NotificationsPage() {
           method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
         });
       }
+      // Delete notification from DB so it doesn't reappear on reload
+      await fetch(`${supabaseUrl}/rest/v1/notifications?id=eq.${notif.id}`, {
+        method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+      });
       setNotifications(prev => prev.filter(n => n.id !== notif.id));
     } catch { /* silent */ }
     finally { setProcessing(prev => { const s = new Set(prev); s.delete(notif.id); return s; }); }
@@ -276,8 +271,9 @@ export default function NotificationsPage() {
           <div className="flex items-center justify-between mb-5">
             <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
             {unreadCount > 0 && (
-              <button onClick={handleMarkAllRead} className="text-sm text-emerald-600 font-medium hover:text-emerald-700">
-                Mark all read
+              <button onClick={handleMarkAllRead}
+                className="px-4 py-1.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors">
+                Read
               </button>
             )}
           </div>
@@ -421,13 +417,6 @@ export default function NotificationsPage() {
                 </div>
               ))}
 
-              {/* Clear all */}
-              <button
-                onClick={handleClearAll}
-                className="w-full py-3 text-center text-sm text-gray-400 hover:text-red-500 transition-colors"
-              >
-                Clear all notifications
-              </button>
             </div>
           )}
         </div>

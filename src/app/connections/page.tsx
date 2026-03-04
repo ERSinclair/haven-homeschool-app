@@ -20,6 +20,8 @@ type Connection = {
     location_name: string;
     avatar_url?: string;
     kids_ages?: number[];
+    dob?: string;
+    show_birthday?: boolean;
   };
   status: 'pending' | 'accepted' | 'blocked';
   created_at: string;
@@ -91,6 +93,32 @@ export default function ConnectionsPage() {
   const exitMultiSelect = () => {
     setIsMultiSelectMode(false);
     setSelectedConnections(new Set());
+  };
+
+  const addBirthdayToCalendar = async (user: { id: string; family_name: string; display_name?: string; dob?: string }) => {
+    if (!user.dob) return;
+    const session = getStoredSession();
+    if (!session) return;
+    const name = user.display_name || user.family_name.split(' ')[0] || user.family_name;
+    const [, month, day] = user.dob.split('-');
+    const noteDate = `${new Date().getFullYear()}-${month}-${day}`;
+    await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/calendar_notes`, {
+      method: 'POST',
+      headers: {
+        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({
+        profile_id: session.user.id,
+        note_date: noteDate,
+        title: `${name}'s birthday`,
+        content: '',
+        recurrence_rule: 'yearly',
+        note_type: 'birthday',
+      }),
+    });
   };
 
   const sendMessageToSelected = () => {
@@ -606,8 +634,8 @@ export default function ConnectionsPage() {
                 return (
                   <div 
                     key={connection.id} 
-                    className={`bg-white rounded-xl shadow-sm p-3 border transition-all ${
-                      isSelected ? 'ring-2 ring-emerald-500 bg-emerald-50 border-emerald-200' : 'border-gray-100 hover:shadow-md hover:border-gray-200 active:scale-[0.99]'
+                    className={`rounded-xl p-3 border transition-all ${
+                      isSelected ? 'ring-2 ring-emerald-500 bg-emerald-50/60 border-emerald-200' : 'bg-white/40 backdrop-blur-sm border-white/60 hover:bg-white/60 active:scale-[0.99]'
                     }`}
                     onTouchStart={handleTouchStart}
                     onTouchEnd={handleTouchEnd}
@@ -673,9 +701,12 @@ export default function ConnectionsPage() {
                               setSelectedConnectionForMessage(connection);
                               setShowMessageModal(true);
                             }}
-                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors text-sm"
+                            className="text-gray-400 hover:text-emerald-500 transition-colors"
+                            aria-label="Message"
                           >
-                            Message
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
                           </button>
                         </div>
                       )}
@@ -924,6 +955,22 @@ export default function ConnectionsPage() {
                 >
                   Delete
                 </button>
+                {selectedProfile.user.show_birthday && selectedProfile.user.dob && (
+                  <button
+                    onClick={() => addBirthdayToCalendar(selectedProfile.user)}
+                    className="px-2 py-1.5 bg-white text-pink-500 border border-pink-200 rounded-xl hover:bg-pink-50 transition-colors"
+                    title="Add birthday to calendar"
+                  >
+                    <svg className="w-6 h-6" viewBox="0 -1 24 25" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 6 C5.5 5 5.5 1 8 -0.5 C10.5 1 10.5 5 8 6Z" fill="currentColor" stroke="none" />
+                    <rect x="7" y="6" width="2" height="4" rx="0.5" />
+                    <path d="M16 6 C13.5 5 13.5 1 16 -0.5 C18.5 1 18.5 5 16 6Z" fill="currentColor" stroke="none" />
+                    <rect x="15" y="6" width="2" height="4" rx="0.5" />
+                    <rect x="2" y="10" width="20" height="12" rx="2" />
+                    <path d="M2 13 Q5.5 11 9 13 Q12 15 15 13 Q18.5 11 22 13" strokeWidth={1.4} />
+                    </svg>
+                  </button>
+                )}
               </div>
             </div>
           </div>

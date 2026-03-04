@@ -1,8 +1,9 @@
 'use client';
 import { toast } from '@/lib/toast';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense, useRef } from 'react';
+import DatePickerDropdown from '@/components/DatePickerModal';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { getStoredSession, getStoredSessionAsync, clearStoredSession } from '@/lib/session';
@@ -46,10 +47,12 @@ type Profile = {
   location_lng?: number;
 };
 
-export default function ProfilePage() {
+function ProfilePageInner() {
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editData, setEditData] = useState({
@@ -69,13 +72,22 @@ export default function ProfilePage() {
   // Business-specific fields
   const [services, setServices] = useState('');
   const [contactInfo, setContactInfo] = useState('');
+  // DOB
+  const [dob, setDob] = useState('');
+  const [showBirthday, setShowBirthday] = useState(false);
+  const [showDobPicker, setShowDobPicker] = useState(false);
+  const [dobMonth, setDobMonth] = useState(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 25);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [children, setChildren] = useState<{ id: number; age: string }[]>([{ id: 1, age: '' }]);
   const [selectedLocationCoords, setSelectedLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
-  const [showBugReportModal, setShowBugReportModal] = useState(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [bugReportMessage, setBugReportMessage] = useState('');
-  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportType, setReportType] = useState<'bug'|'suggestion'|'feature_request'|'compliment'|'other'>('bug');
+  const [reportSubject, setReportSubject] = useState('');
+  const [reportMessage, setReportMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [isViewingOtherUser, setIsViewingOtherUser] = useState(false);
@@ -119,6 +131,13 @@ export default function ProfilePage() {
             },
           }
         );
+        if (res.status === 401 || res.status === 403) {
+          // Token rejected even after refresh — force re-login
+          const { clearStoredSession } = await import('@/lib/session');
+          clearStoredSession();
+          router.push('/login');
+          return;
+        }
         const arr = await res.json();
         const profileData = arr[0] || null;
         
@@ -155,6 +174,8 @@ export default function ProfilePage() {
           setAgeGroupsTaught(profileData.age_groups_taught || []);
           setServices(profileData.services || '');
           setContactInfo(profileData.contact_info || '');
+          setDob(profileData.dob || '');
+          setShowBirthday(profileData.show_birthday || false);
           
           // If no predefined status, set up custom descriptions
           if (!hasValidPredefinedStatus && profileData.status) {
@@ -202,8 +223,9 @@ export default function ProfilePage() {
           }
         } catch { /* silent */ }
       }
-      } catch (err) {
+      } catch (err: unknown) {
         console.error('Error loading profile:', err);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
@@ -212,13 +234,20 @@ export default function ProfilePage() {
     loadProfile();
   }, [router]);
 
+  // Auto-open edit mode if ?edit=1 is in the URL (e.g. from profile prompt banner)
+  useEffect(() => {
+    if (!loading && profile && searchParams?.get('edit') === '1') {
+      setIsEditing(true);
+    }
+  }, [loading, profile, searchParams]);
+
   // Register push notifications once user is loaded (best-effort)
   useEffect(() => {
     if (!user) return;
     const session = getStoredSession();
     if (!session?.access_token) return;
     // Only attempt if user hasn't dismissed / denied before
-    if (typeof window !== 'undefined' && Notification.permission !== 'denied') {
+    if (typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission !== 'denied') {
       registerPush(user.id, session.access_token);
     }
   }, [user]);
@@ -270,6 +299,8 @@ export default function ProfilePage() {
             age_groups_taught: ageGroupsTaught.length > 0 ? ageGroupsTaught : null,
             services: services.trim() || null,
             contact_info: contactInfo.trim() || null,
+            dob: dob.trim() || null,
+            show_birthday: showBirthday,
             updated_at: new Date().toISOString(),
           }),
         }
@@ -376,36 +407,22 @@ export default function ProfilePage() {
     window.location.href = '/';
   };
 
-  const handleBugReport = async () => {
-    if (!bugReportMessage.trim()) return;
-    
+  const handleSubmitReport = async () => {
+    if (!reportMessage.trim()) return;
     setSubmitting(true);
-    const result = await submitBugReport({ message: bugReportMessage });
-    
-    if (result.success) {
-      setShowBugReportModal(false);
-      setBugReportMessage('');
-      setSubmitSuccess('Bug report submitted successfully! Thank you for helping us improve Haven.');
-      setTimeout(() => setSubmitSuccess(null), 5000);
+    let result;
+    if (reportType === 'bug') {
+      result = await submitBugReport({ subject: reportSubject, message: reportMessage });
     } else {
-      toast('Failed to submit bug report', 'error');
+      result = await submitFeedback({ subject: reportSubject, message: reportMessage, type: reportType });
     }
-    setSubmitting(false);
-  };
-
-  const handleFeedback = async () => {
-    if (!feedbackMessage.trim()) return;
-    
-    setSubmitting(true);
-    const result = await submitFeedback({ message: feedbackMessage });
-    
     if (result.success) {
-      setShowFeedbackModal(false);
-      setFeedbackMessage('');
-      setSubmitSuccess('Feedback submitted successfully! We appreciate your input.');
+      setShowReportModal(false);
+      setReportSubject(''); setReportMessage('');
+      setSubmitSuccess('Thanks for your feedback! We read every submission.');
       setTimeout(() => setSubmitSuccess(null), 5000);
     } else {
-      toast('Failed to submit feedback', 'error');
+      toast('Failed to submit', 'error');
     }
     setSubmitting(false);
   };
@@ -472,6 +489,23 @@ export default function ProfilePage() {
     return (
       <div className="min-h-screen bg-transparent flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-transparent">
+        <div className="max-w-md mx-auto px-4 py-16 text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">Something went wrong</h1>
+          <p className="text-gray-600 mb-8">We couldn't load your profile. Check your connection and try again.</p>
+          <button
+            onClick={() => { setLoadError(false); setLoading(true); window.location.reload(); }}
+            className="inline-block bg-emerald-600 text-white font-semibold py-3 px-8 rounded-xl hover:bg-emerald-700 transition-all"
+          >
+            Try again
+          </button>
+        </div>
       </div>
     );
   }
@@ -889,6 +923,44 @@ export default function ProfilePage() {
             )}
           </div>
 
+          {/* DOB — edit only, never shown publicly unless show_birthday is on */}
+          {isEditing && (!profile.user_type || profile.user_type === 'family' || profile.user_type === 'teacher') && (
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Date of birth</h3>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowDobPicker(v => !v)}
+                  className="w-full p-3 border border-gray-200 rounded-xl text-left text-gray-900 bg-white focus:ring-2 focus:ring-emerald-500"
+                >
+                  {dob ? new Date(dob + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : <span className="text-gray-400">Select date</span>}
+                </button>
+                {showDobPicker && (
+                  <DatePickerDropdown
+                    value={dob}
+                    onChange={v => { setDob(v); setShowDobPicker(false); }}
+                    onClose={() => setShowDobPicker(false)}
+                    maxDate={new Date().toISOString().slice(0, 10)}
+                    month={dobMonth}
+                    onMonthChange={setDobMonth}
+                  />
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-1 text-center">Not shown publicly unless you choose to.</p>
+              <label className="flex items-center gap-3 mt-3 cursor-pointer justify-center">
+                <div
+                  onClick={() => setShowBirthday(v => !v)}
+                  className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 ${showBirthday ? 'bg-emerald-500' : 'bg-gray-200'}`}
+                >
+                  <div className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-transform ${showBirthday ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+                <span className="text-sm text-gray-600">Show my birthday to connections</span>
+              </label>
+            </div>
+          )}
+
+          
+
           {/* Homeschool approach (families) — only show in view mode if they have set one */}
           {(!profile.user_type || profile.user_type === 'family') && (isEditing || homeschoolApproaches.length > 0) && (
             <div className="mb-6">
@@ -1152,21 +1224,13 @@ export default function ProfilePage() {
           />
         )}
 
-        {/* Feedback buttons */}
-        <div className="flex gap-3 mb-4">
-          <button
-            onClick={() => setShowBugReportModal(true)}
-            className="flex-1 py-3 text-gray-700 font-medium bg-white hover:bg-gray-50 rounded-xl transition-colors border border-gray-200"
-          >
-            Report a bug
-          </button>
-          <button
-            onClick={() => setShowFeedbackModal(true)}
-            className="flex-1 py-3 text-gray-700 font-medium bg-white hover:bg-gray-50 rounded-xl transition-colors border border-gray-200"
-          >
-            Feedback & suggestions
-          </button>
-        </div>
+        {/* Feedback button */}
+        <button
+          onClick={() => { setReportType('bug'); setReportSubject(''); setReportMessage(''); setShowReportModal(true); }}
+          className="w-full py-3 text-gray-700 font-medium bg-white hover:bg-gray-50 rounded-xl transition-colors border border-gray-200 mb-4 text-center"
+        >
+          Feedback & Support
+        </button>
 
         {/* Sign out button */}
         <button
@@ -1225,97 +1289,84 @@ export default function ProfilePage() {
       )}
 
       {/* Bug Report Modal */}
-      {showBugReportModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Report a Bug</h3>
-              <button
-                onClick={() => setShowBugReportModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                ×
-              </button>
+      {showReportModal && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white/85 backdrop-blur-md rounded-2xl w-full max-w-md border border-white/60 shadow-xl">
+
+            {/* Header */}
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900">Feedback & Support</h3>
+              <button onClick={() => setShowReportModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
             </div>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Describe the bug you encountered
-              </label>
-              <textarea
-                value={bugReportMessage}
-                onChange={(e) => setBugReportMessage(e.target.value)}
-                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none"
-                rows={4}
-                placeholder="Please describe what happened, what you expected to happen, and any steps to reproduce the issue..."
-              />
-            </div>
+            <div className="p-6 space-y-4">
+              {/* Type selector */}
+              <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200">
+                {([
+                  { value: 'suggestion', label: 'Suggestion' },
+                  { value: 'bug',        label: 'Bug' },
+                  { value: 'other',      label: 'Other' },
+                ] as const).map(t => (
+                  <button key={t.value} onClick={() => setReportType(t.value)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${reportType === t.value ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowBugReportModal(false)}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleBugReport}
-                disabled={!bugReportMessage.trim() || submitting}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 disabled:bg-gray-300"
-              >
-                {submitting ? 'Submitting...' : 'Submit Bug Report'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              {/* Fixed-height input area — never changes size */}
+              <div className="flex flex-col gap-3" style={{ height: '148px' }}>
+                {reportType === 'other' ? (
+                  <>
+                    <input
+                      type="text"
+                      value={reportMessage}
+                      onChange={e => setReportMessage(e.target.value)}
+                      maxLength={120}
+                      placeholder="Briefly describe your enquiry..."
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm flex-shrink-0"
+                    />
+                    <textarea
+                      value={reportSubject}
+                      onChange={e => setReportSubject(e.target.value)}
+                      placeholder="Description"
+                      className="w-full flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm resize-none"
+                    />
+                  </>
+                ) : (
+                  <textarea
+                    value={reportMessage}
+                    onChange={e => setReportMessage(e.target.value)}
+                    placeholder={reportType === 'bug' ? 'Describe what happened and steps to reproduce...' : 'What would you like to see?'}
+                    className="w-full h-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm resize-none"
+                  />
+                )}
+              </div>
 
-      {/* Feedback Modal */}
-      {showFeedbackModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Feedback & Suggestions</h3>
-              <button
-                onClick={() => setShowFeedbackModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Share your thoughts and suggestions
-              </label>
-              <textarea
-                value={feedbackMessage}
-                onChange={(e) => setFeedbackMessage(e.target.value)}
-                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none"
-                rows={4}
-                placeholder="Tell us about features you'd like to see, improvements we could make, or anything else on your mind..."
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowFeedbackModal(false)}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleFeedback}
-                disabled={!feedbackMessage.trim() || submitting}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:bg-gray-300"
-              >
-                {submitting ? 'Submitting...' : 'Submit Feedback'}
-              </button>
+              {/* Actions */}
+              <div className="flex gap-3 justify-center pt-1">
+                <button onClick={() => setShowReportModal(false)}
+                  className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200">
+                  Cancel
+                </button>
+                <button onClick={handleSubmitReport} disabled={!reportMessage.trim() || submitting}
+                  className="px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 disabled:opacity-50">
+                  {submitting ? 'Sending...' : 'Send'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
     </div>
     </ProtectedRoute>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={null}>
+      <ProfilePageInner />
+    </Suspense>
   );
 }

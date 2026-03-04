@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { isAdmin, getAdminStats } from '@/lib/admin';
@@ -8,6 +8,7 @@ import { getStoredSession } from '@/lib/session';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 function getSession() {
   try {
@@ -38,11 +39,16 @@ function buildWeeklyBuckets(items: { created_at: string }[], weeks = 8): WeeklyB
 export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
+  const [userLocations, setUserLocations] = useState<{ lng: number; lat: number; name: string }[]>([]);
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [signupBuckets, setSignupBuckets] = useState<WeeklyBucket[]>([]);
   const [userTypes, setUserTypes] = useState<Record<string, number>>({});
   const [topLocations, setTopLocations] = useState<{ name: string; count: number }[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [locationFilter, setLocationFilter] = useState<string>('all');
+  const [allProfiles, setAllProfiles] = useState<any[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -53,6 +59,18 @@ export default function AnalyticsPage() {
         const ok = await isAdmin();
         if (!ok) { router.push('/admin'); return; }
         setAuthorized(true);
+      // Fetch user locations for map
+      try {
+        const sess = getSession();
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?select=display_name,family_name,longitude,latitude&longitude=not.is.null&latitude=not.is.null&limit=500`,
+          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${sess?.access_token}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setUserLocations(data.map((p: any) => ({ lng: p.longitude, lat: p.latitude, name: p.display_name || p.family_name || 'Family' })));
+        }
+      } catch { /* silent */ }
       } catch { router.push('/discover'); }
       finally { setLoading(false); }
     };
@@ -74,6 +92,7 @@ export default function AnalyticsPage() {
         ]);
 
         setStats(statsData);
+        setAllProfiles(profiles);
         setSignupBuckets(buildWeeklyBuckets(profiles));
 
         // User type breakdown
@@ -101,6 +120,39 @@ export default function AnalyticsPage() {
     load();
   }, [authorized]);
 
+
+  useEffect(() => {
+    if (!mapContainer.current || !authorized || userLocations.length === 0) return;
+    if (mapRef.current) return;
+    import('mapbox-gl').then(({ default: mapboxgl }) => {
+      mapboxgl.accessToken = MAPBOX_TOKEN;
+      const map = new mapboxgl.Map({
+        container: mapContainer.current!,
+        style: 'mapbox://styles/mapbox/light-v11',
+        center: [144.9, -37.5],
+        zoom: 4,
+      });
+      mapRef.current = map;
+      map.on('load', () => {
+        userLocations.forEach(loc => {
+          new mapboxgl.Marker({ color: '#10b981' })
+            .setLngLat([loc.lng, loc.lat])
+            .setPopup(new mapboxgl.Popup({ offset: 12 }).setText(loc.name))
+            .addTo(map);
+        });
+      });
+    });
+    return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
+  }, [authorized, userLocations]);
+
+  useEffect(() => {
+    if (!allProfiles.length) return;
+    const filtered = locationFilter === 'all' ? allProfiles : allProfiles.filter((p: any) => p.location_name?.toLowerCase().includes(locationFilter.toLowerCase()));
+    setSignupBuckets(buildWeeklyBuckets(filtered));
+    const types: Record<string, number> = { family: 0, playgroup: 0, teacher: 0, business: 0 };
+    filtered.forEach((p: any) => { const t = p.user_type || 'family'; types[t] = (types[t] || 0) + 1; });
+    setUserTypes(types);
+  }, [locationFilter, allProfiles]);
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
@@ -118,15 +170,45 @@ export default function AnalyticsPage() {
   const totalUsers = stats?.total_users || 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
-            <p className="text-gray-600">Community growth and engagement</p>
+    <div className="min-h-screen bg-transparent relative">
+      <div className="admin-bg" />
+      <div className="relative z-10 max-w-6xl mx-auto px-4 pb-8">
+        {/* Fixed header */}
+        <div className="fixed top-0 left-0 right-0 z-30 bg-white/10 backdrop-blur-lg border-b border-white/10">
+          <div className="max-w-7xl mx-auto flex items-center justify-between px-4 pt-3 pb-3">
+            <div className="w-20 flex items-start pt-1">
+              <Link href="/admin" className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-emerald-50 transition-colors text-gray-500 hover:text-emerald-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
+              </Link>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="font-bold text-emerald-600 text-3xl leading-none" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</span>
+              <p className="text-xs text-gray-400 font-medium uppercase tracking-widest mt-0.5">Admin</p>
+              <h1 className="text-lg font-bold text-gray-900 mt-1">Analytics</h1>
+            </div>
+            <div className="w-20" />
           </div>
-          <Link href="/admin" className="text-emerald-600 hover:text-emerald-700 font-medium">&larr; Back to Dashboard</Link>
         </div>
+        <div className="h-28 flex-shrink-0" />
+
+        {/* Location Filter */}
+        {(() => {
+          const locs = ['all', ...Array.from(new Set(allProfiles.map((p: any) => p.location_name).filter(Boolean))).sort() as string[]];
+          if (locs.length <= 2) return null;
+          return (
+            <div className="bg-white rounded-xl p-4 mb-6 shadow-sm">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-widest mb-3 text-center">Filter by Location</p>
+              <div className="flex gap-1.5 flex-wrap justify-center">
+                {locs.map(loc => (
+                  <button key={loc} onClick={() => setLocationFilter(loc)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${locationFilter === loc ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    {loc === 'all' ? 'All Locations' : loc}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {statsLoading ? (
           <div className="flex justify-center py-20">
@@ -219,6 +301,21 @@ export default function AnalyticsPage() {
                 </div>
               </div>
             )}
+
+            {/* User map */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-gray-900">User Map</h2>
+                <span className="text-sm text-gray-400">{userLocations.length} users with location</span>
+              </div>
+              {userLocations.length === 0 ? (
+                <div className="h-64 flex items-center justify-center text-gray-400 text-sm bg-gray-50 rounded-xl">
+                  No location data available yet
+                </div>
+              ) : (
+                <div ref={mapContainer} className="h-96 rounded-xl overflow-hidden" />
+              )}
+            </div>
           </div>
         )}
       </div>

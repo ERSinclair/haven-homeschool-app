@@ -23,6 +23,8 @@ export default function AdminDashboard() {
   const [authorized, setAuthorized] = useState(false);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
+  const [feedFilter, setFeedFilter] = useState<string>('all');
+  const [feedLimit, setFeedLimit] = useState(6);
   const [error, setError] = useState<string | null>(null);
   const [showLoginForm, setShowLoginForm] = useState(true);
   const [email, setEmail] = useState('');
@@ -181,7 +183,7 @@ export default function AdminDashboard() {
   };
 
   const feedIcon: Record<string, string> = {
-    signup: '👤', connection: '🤝', post: '📝', event: '📅', circle: '⭕',
+    signup: 'signup', connection: 'connection', post: 'post', event: 'event', circle: 'circle',
   };
 
   if (loading) {
@@ -198,7 +200,7 @@ export default function AdminDashboard() {
         <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-emerald-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <span className="text-2xl">🔐</span>
+              
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Admin Access</h1>
             <p className="text-gray-600">Enter your credentials to access the admin panel</p>
@@ -232,7 +234,7 @@ export default function AdminDashboard() {
             {error && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                 <div className="flex items-start gap-3">
-                  <span className="text-red-600 text-xl">⚠️</span>
+                  
                   <div className="text-sm text-red-700">{error}</div>
                 </div>
               </div>
@@ -262,152 +264,49 @@ export default function AdminDashboard() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-            <p className="text-gray-600">Haven Community Management</p>
+    <div className="min-h-screen bg-transparent relative">
+      <div className="admin-bg" />
+      <div className="relative z-10 max-w-7xl mx-auto px-4 pb-8">
+        {/* Fixed header */}
+        <div className="fixed top-0 left-0 right-0 z-30 bg-white/10 backdrop-blur-lg border-b border-white/10">
+          <div className="max-w-7xl mx-auto flex items-center justify-between px-4 pt-3 pb-3">
+            <div className="w-20 flex items-start pt-1">
+              <Link href="/discover" className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-emerald-50 transition-colors text-gray-500 hover:text-emerald-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
+              </Link>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="font-bold text-emerald-600 text-3xl leading-none" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</span>
+              <p className="text-xs text-gray-400 font-medium uppercase tracking-widest mt-0.5">Admin</p>
+              <h1 className="text-lg font-bold text-gray-900 mt-1">Dashboard</h1>
+            </div>
+            <div className="w-20" />
           </div>
-          <Link 
-            href="/discover"
-            className="text-emerald-600 hover:text-emerald-700 font-medium"
-          >
-            ← Back to App
-          </Link>
         </div>
+        <div className="h-28 flex-shrink-0" />
 
         {/* Stats moved to /admin/stats */}
         {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          <Link 
-            href="/admin/users"
-            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
-                <div className="w-8 h-8 bg-gray-100 rounded"></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          {[
+            { href: '/admin/users',       label: 'Users',       desc: 'View, ban & manage' },
+            { href: '/admin/admins',      label: 'Admins',      desc: 'Promote or remove access' },
+            { href: '/admin/broadcast',   label: 'Broadcast',   desc: 'Message all users' },
+            { href: '/admin/content',     label: 'Moderation',  desc: 'Review user reports' },
+            { href: '/admin/stats',       label: 'Statistics',  desc: 'Users & content data' },
+            { href: '/admin/analytics',   label: 'Analytics',   desc: 'Growth & engagement' },
+            { href: '/admin/feedback', label: 'Reports', desc: 'Feedback & bug reports' },
+            
+          ].map(({ href, label, desc }) => (
+            <Link key={href} href={href}
+              className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-4 hover:border-emerald-400 hover:bg-emerald-50 transition-all group">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-800 text-sm group-hover:text-emerald-700 transition-colors">{label}</p>
+                <p className="text-xs text-gray-400 truncate">{desc}</p>
               </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">User Management</h3>
-                <p className="text-sm text-gray-600">View, ban, and manage users</p>
-              </div>
-            </div>
-            <div className="text-emerald-600 font-medium">Manage Users →</div>
-          </Link>
-
-          <Link 
-            href="/admin/admins"
-            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                <span className="text-2xl">👑</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Admin Management</h3>
-                <p className="text-sm text-gray-600">Promote or remove admin access</p>
-              </div>
-            </div>
-            <div className="text-purple-600 font-medium">Manage Admins →</div>
-          </Link>
-
-          <Link 
-            href="/admin/broadcast"
-            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
-                <span className="text-2xl">📢</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Send Broadcast</h3>
-                <p className="text-sm text-gray-600">Message all or specific users</p>
-              </div>
-            </div>
-            <div className="text-emerald-600 font-medium">Send Message →</div>
-          </Link>
-
-          <Link 
-            href="/admin/content"
-            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center group-hover:bg-yellow-200 transition-colors">
-                <span className="text-2xl">🛡️</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Content Moderation</h3>
-                <p className="text-sm text-gray-600">Review reports and content</p>
-              </div>
-            </div>
-            <div className="text-yellow-600 font-medium">Moderate Content →</div>
-          </Link>
-
-          <Link
-            href="/admin/stats"
-            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
-                <span className="text-2xl">📈</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Statistics</h3>
-                <p className="text-sm text-gray-600">Users, content, search insights</p>
-              </div>
-            </div>
-            <div className="text-emerald-600 font-medium">View Stats →</div>
-          </Link>
-
-          <Link 
-            href="/admin/analytics"
-            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                <span className="text-2xl">📊</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Analytics</h3>
-                <p className="text-sm text-gray-600">Usage stats and insights</p>
-              </div>
-            </div>
-            <div className="text-green-600 font-medium">View Analytics →</div>
-          </Link>
-
-          <Link 
-            href="/admin/bug-reports"
-            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center group-hover:bg-red-200 transition-colors">
-                <span className="text-2xl">🐛</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Bug Reports</h3>
-                <p className="text-sm text-gray-600">Review reported bugs</p>
-              </div>
-            </div>
-            <div className="text-red-600 font-medium">View Reports →</div>
-          </Link>
-
-          <Link 
-            href="/admin/feedback"
-            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                <span className="text-2xl">💡</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Feedback</h3>
-                <p className="text-sm text-gray-600">User suggestions & feedback</p>
-              </div>
-            </div>
-            <div className="text-blue-600 font-medium">View Feedback →</div>
-          </Link>
+              <svg className="w-4 h-4 text-gray-300 group-hover:text-emerald-500 flex-shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+            </Link>
+          ))}
         </div>
 
         {/* Activity Feed */}
@@ -416,26 +315,59 @@ export default function AdminDashboard() {
             <h2 className="text-xl font-bold text-gray-900">Recent Activity</h2>
             <button onClick={loadFeed} className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">Refresh</button>
           </div>
-          <div className="bg-white rounded-xl shadow-sm divide-y divide-gray-100">
-            {feedLoading ? (
-              <div className="flex justify-center py-10">
-                <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : feed.length === 0 ? (
-              <div className="text-center py-10 text-gray-400">
-                <p>No recent activity yet</p>
-              </div>
-            ) : feed.map(item => (
-              <div key={item.id} className="flex items-center gap-4 px-5 py-3">
-                <span className="text-xl flex-shrink-0">{feedIcon[item.type]}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{item.label}</p>
-                  <p className="text-xs text-gray-500 truncate">{item.sub}</p>
-                </div>
-                <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo(item.time)}</span>
-              </div>
+
+          {/* Feed filters */}
+          <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+            {[
+              { value: 'all',        label: 'All' },
+              { value: 'signup',     label: 'New Users' },
+              { value: 'event',      label: 'Events' },
+              { value: 'circle',     label: 'Circles' },
+              { value: 'connection', label: 'Connect' },
+              { value: 'post',       label: 'Posts' },
+            ].map(f => (
+              <button key={f.value} onClick={() => { setFeedFilter(f.value); setFeedLimit(6); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${feedFilter === f.value ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                {f.label}
+              </button>
             ))}
           </div>
+
+          {(() => {
+            const filtered = feedFilter === 'all' ? feed : feed.filter(i => i.type === feedFilter);
+            const visible = filtered.slice(0, feedLimit);
+            return (
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                {feedLoading ? (
+                  <div className="flex justify-center py-10">
+                    <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="text-center py-10 text-gray-400 text-sm">No activity of this type yet</div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2">
+                      {visible.map((item, idx) => (
+                        <div key={item.id} className={`flex items-center gap-3 px-5 py-3 border-b border-gray-100 ${idx % 2 === 0 ? 'border-r border-gray-100' : ''}`}>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{item.label}</p>
+                            <p className="text-xs text-gray-500 truncate">{item.sub}</p>
+                          </div>
+                          <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo(item.time)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {filtered.length > feedLimit && (
+                      <button onClick={() => setFeedLimit(l => l + 10)}
+                        className="w-full py-3 text-sm text-emerald-600 hover:text-emerald-700 font-medium hover:bg-emerald-50 transition-colors">
+                        Show more ({filtered.length - feedLimit} remaining)
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

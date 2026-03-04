@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import InviteToHaven from '@/components/InviteToHaven';
 import { getStoredSession } from '@/lib/session';
+import { toast } from '@/lib/toast';
+import { getPendingPrompts, dismissPrompt, type ProfilePrompt } from '@/lib/profilePrompts';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -39,10 +42,17 @@ export default function FeedPage() {
   const [emailVerified, setEmailVerified] = useState(true);
   const [verifyDismissed, setVerifyDismissed] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [pendingPrompts, setPendingPrompts] = useState<ProfilePrompt[]>([]);
 
   useEffect(() => {
     const session = getStoredSession();
     if (!session?.user) return;
+
+    // Profile completion nudge (set by login page)
+    if (sessionStorage.getItem('haven-profile-nudge') === '1') {
+      sessionStorage.removeItem('haven-profile-nudge');
+      setTimeout(() => toast('Your profile isn\'t complete yet — finish it so families can find you!', 'info'), 800);
+    }
 
     // Check email verification status and dismiss state
     const dismissed = sessionStorage.getItem('haven-verify-dismissed');
@@ -54,15 +64,73 @@ export default function FeedPage() {
     const today = new Date().toISOString().split('T')[0];
     const twoWeeks = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
 
+    // Daily birthday digest check (own notes + connections with show_birthday=true)
+    const checkBirthdays = async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const lastCheck = localStorage.getItem('haven-birthday-check-date');
+      if (lastCheck === today) return;
+      const h = { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` };
+      const mm = String(new Date().getMonth() + 1).padStart(2, '0');
+      const dd = String(new Date().getDate()).padStart(2, '0');
+      const birthdayNames: string[] = [];
+      try {
+        // Own calendar birthday notes
+        const notesRes = await fetch(
+          `${supabaseUrl}/rest/v1/calendar_notes?profile_id=eq.${session.user.id}&note_type=eq.birthday&select=title,note_date`,
+          { headers: h }
+        );
+        if (notesRes.ok) {
+          const notes = await notesRes.json();
+          notes.filter((n: any) => n.note_date?.slice(5) === `${mm}-${dd}`)
+            .forEach((n: any) => birthdayNames.push(n.title || 'Birthday'));
+        }
+        // Connections' profile DOBs (where show_birthday=true)
+        const connsRes = await fetch(
+          `${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&status=eq.accepted&select=requester_id,receiver_id`,
+          { headers: h }
+        );
+        if (connsRes.ok) {
+          const conns = await connsRes.json();
+          const otherIds = conns.map((c: any) =>
+            c.requester_id === session.user.id ? c.receiver_id : c.requester_id
+          );
+          if (otherIds.length > 0) {
+            const profilesRes = await fetch(
+              `${supabaseUrl}/rest/v1/profiles?id=in.(${otherIds.join(',')})&show_birthday=eq.true&dob=not.is.null&select=family_name,display_name,dob`,
+              { headers: h }
+            );
+            if (profilesRes.ok) {
+              const profiles = await profilesRes.json();
+              profiles.filter((p: any) => p.dob?.slice(5) === `${mm}-${dd}`)
+                .forEach((p: any) => birthdayNames.push(p.display_name || p.family_name || 'Someone'));
+            }
+          }
+        }
+        if (birthdayNames.length > 0 && 'serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          await reg.showNotification('Birthdays today', {
+            body: birthdayNames.join(', '),
+            icon: '/icons/icon-192.png',
+            tag: 'birthday-digest',
+          }).catch(() => {});
+        }
+      } catch { /* silent */ }
+      localStorage.setItem('haven-birthday-check-date', today);
+    };
+    checkBirthdays();
+
     const load = async () => {
       try {
         // Profile
         const profileRes = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=display_name,family_name`,
+          `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=display_name,family_name,user_type,dob`,
           { headers }
         );
         const profileData = await profileRes.json();
-        if (profileData[0]) setProfile(profileData[0]);
+        if (profileData[0]) {
+          setProfile(profileData[0]);
+          setPendingPrompts(getPendingPrompts(profileData[0]));
+        }
 
         // New families this week
         const familiesRes = await fetch(
@@ -245,10 +313,13 @@ export default function FeedPage() {
         <AppHeader
           right={
             <button
-              onClick={() => router.push('/discover')}
-              className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
+              onClick={() => router.back()}
+              className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+              aria-label="Close"
             >
-              Done
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
           }
         />
@@ -291,24 +362,132 @@ export default function FeedPage() {
           )}
 
           {/* Greeting */}
-          <div className="mb-6">
+          <div className="mb-5 text-center">
             <h1 className="text-2xl font-bold text-gray-900">{greeting()}</h1>
           </div>
+
+          {/* Invite a Friend — first thing below greeting */}
+          <section className="mb-5">
+            <InviteToHaven />
+          </section>
+
+          {/* Profile update prompts — new fields added since signup */}
+          {pendingPrompts.slice(0, 1).map(prompt => (
+            <div key={prompt.id} className="mb-4 bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 flex items-start gap-3">
+              <svg className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-indigo-900">{prompt.label}</p>
+                <p className="text-xs text-indigo-700 mt-0.5">{prompt.description}</p>
+                <button
+                  onClick={() => router.push(prompt.href)}
+                  className="text-xs text-indigo-600 font-semibold mt-1.5 hover:underline"
+                >
+                  Update profile
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  dismissPrompt(prompt.id);
+                  setPendingPrompts(prev => prev.filter(p => p.id !== prompt.id));
+                }}
+                className="text-indigo-300 hover:text-indigo-500 flex-shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+
+          {/* Quick Nav */}
+          <section className="mb-6">
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              {[
+                {
+                  href: '/discover',
+                  label: 'Discover',
+                  sub: 'Find local families',
+                  color: 'text-emerald-600',
+                  bg: 'bg-emerald-50',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+                },
+                {
+                  href: '/circles',
+                  label: 'Circles',
+                  sub: 'Your groups',
+                  color: 'text-blue-600',
+                  bg: 'bg-blue-50',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="8.5" cy="12" r="6" strokeWidth={2} /><circle cx="15.5" cy="12" r="6" strokeWidth={2} /></svg>,
+                },
+                {
+                  href: '/events',
+                  label: 'Events',
+                  sub: 'Upcoming meetups',
+                  color: 'text-amber-600',
+                  bg: 'bg-amber-50',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+                },
+                {
+                  href: '/messages',
+                  label: 'Messages',
+                  sub: 'Direct messages',
+                  color: 'text-purple-600',
+                  bg: 'bg-purple-50',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
+                },
+              ].map(({ href, label, sub, color, bg, icon }) => (
+                <button
+                  key={href}
+                  onClick={() => router.push(href)}
+                  className="flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm hover:border-gray-200 active:scale-[0.98] transition-all text-left"
+                >
+                  <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-shrink-0 ${color}`}>
+                    {icon}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 leading-tight">{label}</p>
+                    <p className="text-xs text-gray-400 leading-tight mt-0.5">{sub}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Community Board */}
+            <button
+              onClick={() => router.push('/board')}
+              className="w-full flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm hover:border-violet-200 hover:bg-violet-50 active:scale-[0.98] transition-all text-left group"
+            >
+              <div className="w-9 h-9 rounded-xl bg-violet-50 group-hover:bg-violet-100 flex items-center justify-center flex-shrink-0 transition-colors">
+                <svg className="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900">Community Board</p>
+                <p className="text-xs text-gray-400 mt-0.5">Questions, curriculum, local tips</p>
+              </div>
+              <svg className="w-4 h-4 text-gray-300 group-hover:text-violet-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </section>
 
           {/* Stat Cards */}
           <section className="mb-8">
             <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">This week</h2>
 
             {loading ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {[...Array(3)].map((_, i) => (
                   <div key={i} className="h-16 bg-white rounded-2xl border border-gray-100 animate-pulse" />
                 ))}
               </div>
             ) : statCards.length === 0 ? (
-              <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm text-center">
-                <p className="font-semibold text-gray-700 mb-1">All quiet this week</p>
-                <p className="text-sm text-gray-400">New families, events, and circle activity will show up here.</p>
+              <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-center">
+                <p className="text-sm font-semibold text-gray-700 mb-0.5">All quiet this week</p>
+                <p className="text-xs text-gray-400">New families, events, and circle activity will show up here.</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -316,58 +495,25 @@ export default function FeedPage() {
                   <button
                     key={i}
                     onClick={() => card.href && router.push(card.href)}
-                    className={`w-full rounded-2xl p-4 border text-left flex items-center gap-3 ${card.color}`}
+                    className="w-full rounded-2xl p-3.5 border border-gray-100 bg-white shadow-sm text-left flex items-center gap-3 hover:border-gray-200 active:scale-[0.98] transition-all"
                   >
-                    {card.icon}
-                    <div className="flex-1">
-                      <p className={`font-semibold text-sm ${card.textColor}`}>{card.label}</p>
-                      <p className={`text-xs mt-0.5 ${card.subColor}`}>{card.sub}</p>
+                    <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center flex-shrink-0">
+                      {card.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 leading-tight">{card.label}</p>
+                      <p className="text-xs text-gray-400 mt-0.5 leading-tight">{card.sub}</p>
                     </div>
                     {card.badge > 0 && (
                       <span className="min-w-[20px] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1.5 leading-none flex-shrink-0">
                         {card.badge > 9 ? '9+' : card.badge}
                       </span>
                     )}
-                    <svg className={`w-4 h-4 ${card.subColor}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                    <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                   </button>
                 ))}
               </div>
             )}
-          </section>
-
-          {/* Feedback + Support */}
-          <section className="mb-8">
-            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">From the team</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <a
-                href="mailto:cane@familyhaven.app?subject=Haven Feedback"
-                className="flex flex-col items-center justify-center gap-2 bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:border-emerald-200 hover:bg-emerald-50 active:scale-[0.98] transition-all group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 group-hover:bg-emerald-100 flex items-center justify-center transition-colors">
-                  <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 16V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2z" />
-                  </svg>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-gray-900">Leave feedback</p>
-                  <p className="text-xs text-gray-400 mt-0.5">We read everything</p>
-                </div>
-              </a>
-              <button
-                onClick={() => router.push('/supporters')}
-                className="flex flex-col items-center justify-center gap-2 bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:border-amber-200 hover:bg-amber-50 active:scale-[0.98] transition-all group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center transition-colors">
-                  <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-gray-900">Support Haven</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Keep it free for families</p>
-                </div>
-              </button>
-            </div>
           </section>
 
           {/* Notifications */}
@@ -437,7 +583,39 @@ export default function FeedPage() {
             )}
           </section>
 
-
+          {/* Feedback + Support */}
+          <section className="mt-8 mb-2">
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href="mailto:cane@familyhaven.app?subject=Haven Feedback"
+                className="flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm hover:border-emerald-200 active:scale-[0.98] transition-all group"
+              >
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 group-hover:bg-emerald-100 flex items-center justify-center flex-shrink-0 transition-colors">
+                  <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 16V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 leading-tight">Feedback</p>
+                  <p className="text-xs text-gray-400 leading-tight mt-0.5">We read everything</p>
+                </div>
+              </a>
+              <button
+                onClick={() => router.push('/supporters')}
+                className="flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm hover:border-amber-200 active:scale-[0.98] transition-all group"
+              >
+                <div className="w-9 h-9 rounded-xl bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center flex-shrink-0 transition-colors">
+                  <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 leading-tight">Support Haven</p>
+                  <p className="text-xs text-gray-400 leading-tight mt-0.5">Keep it free</p>
+                </div>
+              </button>
+            </div>
+          </section>
 
         </div>
       </div>

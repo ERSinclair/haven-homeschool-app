@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import EmojiPicker from '@/components/EmojiPicker';
+import ImageCropModal from '@/components/ImageCropModal';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
@@ -91,6 +92,7 @@ export default function ChatView({
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [selectedMsg, setSelectedMsg] = useState<ChatMessage | null>(null);
   const [showReactionSheet, setShowReactionSheet] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -259,7 +261,7 @@ export default function ChatView({
                     </div>
                   ) : (
                     <div className={`px-4 py-3 rounded-2xl text-sm ${isMe ? 'bg-emerald-600 text-white rounded-br-sm' : 'bg-white text-gray-900 shadow-sm rounded-bl-sm'}`}>
-                      <p className="break-words">{msg.content}</p>
+                      <p className="break-words whitespace-pre-wrap">{msg.content}</p>
                       <div className="flex items-center gap-1 mt-1 justify-end">
                         <p className={`text-xs ${isMe ? 'text-emerald-200' : 'text-gray-400'}`}>{formatTime(msg.created_at)}</p>
                         {isMe && (msg.read_at ? <svg className="w-3.5 h-3.5 text-emerald-200" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L8 8.586l3.293-3.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg> : <svg className="w-3 h-3 text-emerald-300 opacity-60" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>)}
@@ -318,7 +320,21 @@ export default function ChatView({
         )}
 
         {/* Emoji picker (floats above input) */}
-        {showEmojiPicker && (
+        {cropSrc && (
+        <ImageCropModal
+          imageSrc={cropSrc}
+          aspect={4/3}
+          title="Crop photo"
+          onConfirm={(blob) => {
+            const file = new File([blob], `chat-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+            setPendingFile(file);
+            URL.revokeObjectURL(cropSrc);
+            setCropSrc(null);
+          }}
+          onCancel={() => { URL.revokeObjectURL(cropSrc); setCropSrc(null); }}
+        />
+      )}
+      {showEmojiPicker && (
           <EmojiPicker
             onSelect={emoji => { handleEmojiInsert(emoji); }}
             onClose={() => setShowEmojiPicker(false)}
@@ -326,7 +342,20 @@ export default function ChatView({
         )}
 
         <div className="flex gap-2 items-end">
-          {/* Hidden file input */}
+          {/* Hidden image input — opens gallery */}
+          <input
+            id="chat-image-input"
+                    type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              setCropSrc(URL.createObjectURL(f));
+              e.target.value = '';
+            }}
+          />
+          {/* Hidden file input — docs/pdfs */}
           <input
             ref={fileRef}
             type="file"
@@ -334,7 +363,13 @@ export default function ChatView({
             className="hidden"
             onChange={e => {
               const f = e.target.files?.[0];
-              if (f) setPendingFile(f);
+              if (!f) return;
+              if (f.type.startsWith('image/')) {
+                setCropSrc(URL.createObjectURL(f));
+              } else {
+                setPendingFile(f);
+              }
+              e.target.value = '';
             }}
           />
 

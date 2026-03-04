@@ -20,7 +20,7 @@ type CalItem = {
   title: string;
   date: string;          // YYYY-MM-DD
   time?: string;         // HH:MM
-  type: 'hosting' | 'attending' | 'circle' | 'note';
+  type: 'hosting' | 'attending' | 'circle' | 'note' | 'birthday';
   location?: string;
   description?: string;
   eventId?: string;      // links back to /events
@@ -36,6 +36,7 @@ type CalNote = {
   content: string;
   recurrence_rule?: 'weekly' | 'fortnightly' | 'monthly' | 'yearly' | null;
   recurrence_end_date?: string | null;
+  note_type?: 'note' | 'birthday';
 };
 
 // ─── Recurring Note Expansion ─────────────────────────────────────────────────
@@ -137,6 +138,7 @@ const DOT_COLORS: Record<CalItem['type'], string> = {
   attending: 'bg-sky-400',
   circle:    'bg-violet-400',
   note:      'bg-amber-400',
+  birthday:  'bg-pink-400',
 };
 
 const LABEL_COLORS: Record<CalItem['type'], string> = {
@@ -144,6 +146,7 @@ const LABEL_COLORS: Record<CalItem['type'], string> = {
   attending: 'bg-sky-100 text-sky-800 border-sky-200',
   circle:    'bg-violet-100 text-violet-800 border-violet-200',
   note:      'bg-amber-100 text-amber-800 border-amber-200',
+  birthday:  'bg-pink-100 text-pink-800 border-pink-200',
 };
 
 const TYPE_LABELS: Record<CalItem['type'], string> = {
@@ -151,6 +154,7 @@ const TYPE_LABELS: Record<CalItem['type'], string> = {
   attending: 'Event',
   circle:    'Circle meetup',
   note:      'Note',
+  birthday:  'Birthday',
 };
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -182,6 +186,7 @@ function CalendarContent() {
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [endDateMonth, setEndDateMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [savingNote, setSavingNote] = useState(false);
+  const [isBirthday, setIsBirthday] = useState(false);
 
   const loadCalendarData = useCallback(async () => {
     const session = getStoredSession();
@@ -285,14 +290,14 @@ function CalendarContent() {
         loadedNotes = await notesRes.json();
         setNotes(loadedNotes);
         loadedNotes.forEach((n: CalNote) => {
+          const nType = (n.note_type === 'birthday' ? 'birthday' : 'note') as CalItem['type'];
           if (n.recurrence_rule) {
-            // Expand recurring note into multiple instances
             expandRecurringNote(n).forEach(({ date, instanceId }) => {
               allItems.push({
                 id: instanceId,
-                title: n.title || 'Note',
+                title: n.title || (nType === 'birthday' ? 'Birthday' : 'Note'),
                 date,
-                type: 'note',
+                type: nType,
                 description: n.content,
                 noteId: n.id,
                 recurrenceRule: n.recurrence_rule,
@@ -301,9 +306,9 @@ function CalendarContent() {
           } else {
             allItems.push({
               id: `note-${n.id}`,
-              title: n.title || 'Note',
+              title: n.title || (nType === 'birthday' ? 'Birthday' : 'Note'),
               date: n.note_date,
-              type: 'note',
+              type: nType,
               description: n.content,
               noteId: n.id,
             });
@@ -312,6 +317,26 @@ function CalendarContent() {
       }
 
       setItems(allItems.sort((a, b) => a.date.localeCompare(b.date)));
+
+      // Daily birthday notification digest
+      const today = new Date().toISOString().split('T')[0];
+      const lastBirthdayCheck = localStorage.getItem('haven-birthday-check-date');
+      if (lastBirthdayCheck !== today) {
+        const todayBirthdays = allItems.filter(i => i.type === 'birthday' && i.date === today);
+        if (todayBirthdays.length > 0) {
+          // Show in-app notification via push service worker
+          if ('serviceWorker' in navigator && 'PushManager' in window) {
+            navigator.serviceWorker.ready.then(reg => {
+              reg.showNotification('Birthdays today', {
+                body: todayBirthdays.map(b => b.title).join(', '),
+                icon: '/icons/icon-192.png',
+                tag: 'birthday-digest',
+              }).catch(() => {});
+            }).catch(() => {});
+          }
+        }
+        localStorage.setItem('haven-birthday-check-date', today);
+      }
     } catch (err) {
       console.error('Calendar load error:', err);
     } finally {
@@ -349,11 +374,24 @@ function CalendarContent() {
   };
 
   const startAddNote = () => {
+    if (addingNote && !isBirthday) { cancelNote(); return; }
     setEditingNote(null);
     setNoteTitle('');
     setNoteContent('');
     setNoteRecurrence('none');
     setNoteRecurrenceEnd('');
+    setIsBirthday(false);
+    setAddingNote(true);
+  };
+
+  const startAddBirthday = () => {
+    if (addingNote && isBirthday) { cancelNote(); return; }
+    setEditingNote(null);
+    setNoteTitle('');
+    setNoteContent('');
+    setNoteRecurrence('yearly');
+    setNoteRecurrenceEnd('');
+    setIsBirthday(true);
     setAddingNote(true);
   };
 
@@ -363,6 +401,7 @@ function CalendarContent() {
     setNoteContent(note.content);
     setNoteRecurrence(note.recurrence_rule || 'none');
     setNoteRecurrenceEnd(note.recurrence_end_date || '');
+    setIsBirthday(note.note_type === 'birthday');
     setAddingNote(true);
   };
 
@@ -373,6 +412,7 @@ function CalendarContent() {
     setNoteContent('');
     setNoteRecurrence('none');
     setNoteRecurrenceEnd('');
+    setIsBirthday(false);
   };
 
   const saveNote = async () => {
@@ -431,8 +471,9 @@ function CalendarContent() {
           note_date: selectedDate,
           title: noteTitle.trim() || null,
           content: noteContent.trim(),
-          recurrence_rule: noteRecurrence === 'none' ? null : noteRecurrence,
+          recurrence_rule: isBirthday ? 'yearly' : (noteRecurrence === 'none' ? null : noteRecurrence),
           recurrence_end_date: noteRecurrence !== 'none' && noteRecurrenceEnd ? noteRecurrenceEnd : null,
+          note_type: isBirthday ? 'birthday' : 'note',
         };
         const res = await fetch(`${supabaseUrl}/rest/v1/calendar_notes`, {
           method: 'POST',
@@ -442,12 +483,13 @@ function CalendarContent() {
         if (res.ok) {
           const [created] = await res.json();
           setNotes(prev => [...prev, created]);
+          const createdType = (created.note_type === 'birthday' ? 'birthday' : 'note') as CalItem['type'];
           if (created.recurrence_rule) {
             const newInstances = expandRecurringNote(created).map(({ date, instanceId }) => ({
               id: instanceId,
-              title: created.title || 'Note',
+              title: created.title || (createdType === 'birthday' ? 'Birthday' : 'Note'),
               date,
-              type: 'note' as const,
+              type: createdType,
               description: created.content,
               noteId: created.id,
               recurrenceRule: created.recurrence_rule,
@@ -456,9 +498,9 @@ function CalendarContent() {
           } else {
             setItems(prev => [...prev, {
               id: `note-${created.id}`,
-              title: created.title || 'Note',
+              title: created.title || (createdType === 'birthday' ? 'Birthday' : 'Note'),
               date: created.note_date,
-              type: 'note' as const,
+              type: createdType,
               description: created.content,
               noteId: created.id,
             }].sort((a, b) => a.date.localeCompare(b.date)));
@@ -661,18 +703,34 @@ function CalendarContent() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold text-gray-700">{formatDateLong(selectedDate)}</p>
-                <button
-                  onClick={startAddNote}
-                  className="text-sm font-medium text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={startAddBirthday}
+                    className="flex items-center justify-center text-gray-400 hover:text-pink-400 transition-colors"
+                    title="Add birthday"
+                  >
+                    <svg className="w-7 h-7" viewBox="0 -1 24 25" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 6 C5.5 5 5.5 1 8 -0.5 C10.5 1 10.5 5 8 6Z" fill="currentColor" stroke="none" />
+                    <rect x="7" y="6" width="2" height="4" rx="0.5" />
+                    <path d="M16 6 C13.5 5 13.5 1 16 -0.5 C18.5 1 18.5 5 16 6Z" fill="currentColor" stroke="none" />
+                    <rect x="15" y="6" width="2" height="4" rx="0.5" />
+                    <rect x="2" y="10" width="20" height="12" rx="2" />
+                    <path d="M2 13 Q5.5 11 9 13 Q12 15 15 13 Q18.5 11 22 13" strokeWidth={1.4} />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={startAddNote}
+                    className="flex items-center justify-center text-gray-400 hover:text-emerald-500 transition-colors"
+                    title="Add note"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
-              {/* Note creation / edit form */}
+              {/* Note form moved to sticky bottom — see below */}
               {addingNote && (
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-3 space-y-4 shadow-sm">
                   <h3 className="text-lg font-bold text-gray-900">{editingNote ? 'Edit note' : ''}</h3>
@@ -761,21 +819,22 @@ function CalendarContent() {
               ) : (
                 <div className="space-y-2">
                   {dayItems.map(item => (
-                    item.type === 'note' ? (
-                      // Note card — editable inline
-                      <div key={item.id} className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                    (item.type === 'note' || item.type === 'birthday') ? (
+                      // Note / Birthday card — editable inline
+                      <div key={item.id} className={item.type === 'birthday' ? 'bg-pink-50 border border-pink-200 rounded-xl px-4 py-3' : 'bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3'}>
                         <div className="flex items-start gap-3">
-                          <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5 bg-emerald-500" />
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${item.type === 'birthday' ? 'bg-pink-400' : 'bg-emerald-500'}`} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              {item.title !== 'Note' && <p className="font-semibold text-emerald-900 text-sm">{item.title}</p>}
+                              {item.title !== 'Note' && item.title !== 'Birthday' && <p className={`font-semibold text-sm ${item.type === 'birthday' ? 'text-pink-900' : 'text-emerald-900'}`}>{item.title}</p>}
+                              {item.type === 'birthday' && <p className="font-semibold text-pink-900 text-sm">{item.title || 'Birthday'}</p>}
                               {item.recurrenceRule && (
-                                <span className="text-xs text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                <span className={`text-xs px-2 py-0.5 rounded-full border ${item.type === 'birthday' ? 'text-pink-600 bg-pink-100 border-pink-200' : 'text-emerald-600 bg-emerald-100 border-emerald-200'}`}>
                                   {item.recurrenceRule === 'weekly' ? 'Weekly' : item.recurrenceRule === 'monthly' ? 'Monthly' : 'Yearly'}
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-emerald-800 mt-0.5 whitespace-pre-wrap">{item.description}</p>
+                            <p className={`text-sm mt-0.5 whitespace-pre-wrap ${item.type === "birthday" ? "text-pink-800" : "text-emerald-800"}`}>{item.description}</p>
                           </div>
                           <div className="flex gap-2 flex-shrink-0">
                             <button
@@ -783,7 +842,7 @@ function CalendarContent() {
                                 const note = notes.find(n => n.id === item.noteId);
                                 if (note) startEditNote(note);
                               }}
-                              className="text-emerald-600 hover:text-emerald-700 text-xs font-medium"
+                              className={`text-xs font-medium ${item.type === 'birthday' ? 'text-pink-600 hover:text-pink-700' : 'text-emerald-600 hover:text-emerald-700'}`}
                             >
                               Edit
                             </button>

@@ -10,6 +10,7 @@ import { distanceKm } from '@/lib/geocode';
 import BrowseLocation, { loadBrowseLocation, type BrowseLocationState } from '@/components/BrowseLocation';
 import { loadSearchRadius } from '@/lib/preferences';
 import AppHeader from '@/components/AppHeader';
+import ImageCropModal from '@/components/ImageCropModal';
 import EmojiPicker from '@/components/EmojiPicker';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -71,6 +72,7 @@ export default function BoardPage() {
   const [boardImageFile, setBoardImageFile] = useState<File | null>(null);
   const [boardImagePreview, setBoardImagePreview] = useState<string | null>(null);
   const boardImgRef = useRef<HTMLInputElement>(null);
+  const [boardCropSrc, setBoardCropSrc] = useState<string | null>(null);
   const boardContentRef = useRef<HTMLTextAreaElement>(null);
   const [showBoardEmojiPicker, setShowBoardEmojiPicker] = useState(false);
   const [currentUserId, setCurrentUserId] = useState('');
@@ -254,15 +256,15 @@ export default function BoardPage() {
           {/* Create post form */}
           {showCreate && (
             <div className="bg-white rounded-2xl shadow-sm p-4 mb-4 space-y-3">
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200">
                 {TAGS.filter(t => t.value !== 'all').map(t => (
                   <button
                     key={t.value}
                     onClick={() => setTag(t.value)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border-2 transition-colors ${
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       tag === t.value
-                        ? 'bg-emerald-100 border-emerald-400 text-emerald-700'
-                        : 'bg-white border-gray-200 text-gray-500 hover:border-emerald-300'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
                     {t.label}
@@ -331,12 +333,9 @@ export default function BoardPage() {
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) {
-                      setBoardImageFile(f);
-                      const reader = new FileReader();
-                      reader.onload = (ev) => setBoardImagePreview(ev.target?.result as string);
-                      reader.readAsDataURL(f);
-                    }
+                    if (!f) return;
+                    setBoardCropSrc(URL.createObjectURL(f));
+                    e.target.value = '';
                   }}
                 />
                 {boardImagePreview && (
@@ -443,6 +442,21 @@ export default function BoardPage() {
           })()}
         </div>
       </div>
+      {boardCropSrc && (
+        <ImageCropModal
+          imageSrc={boardCropSrc}
+          aspect={16/9}
+          title="Crop photo"
+          onConfirm={(blob) => {
+            const file = new File([blob], `board-${Date.now()}.jpg`, { type: 'image/jpeg' });
+            setBoardImageFile(file);
+            setBoardImagePreview(URL.createObjectURL(blob));
+            URL.revokeObjectURL(boardCropSrc);
+            setBoardCropSrc(null);
+          }}
+          onCancel={() => { URL.revokeObjectURL(boardCropSrc); setBoardCropSrc(null); }}
+        />
+      )}
     </ProtectedRoute>
   );
 }

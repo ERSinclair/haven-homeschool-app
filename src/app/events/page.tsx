@@ -145,6 +145,9 @@ export default function EventsPage() {
   const [showReminderFor, setShowReminderFor] = useState<string | null>(null);
   const [reminderSaved, setReminderSaved] = useState(false);
   const [loadingAttendees, setLoadingAttendees] = useState(false);
+  const [inviteablePeople, setInviteablePeople] = useState<any[]>([]);
+  const [showInviteSheet, setShowInviteSheet] = useState(false);
+  const [showAllMembers, setShowAllMembers] = useState(false);
   // Event detail tabs
   const [eventDetailTab, setEventDetailTab] = useState<'info' | 'chat'>('info');
   const [eventChatMessages, setEventChatMessages] = useState<any[]>([]);
@@ -308,11 +311,9 @@ export default function EventsPage() {
     }
   };
 
-  // Load attendees when an event is selected (only if user is host or has RSVPed)
+  // Load attendees when an event is selected
   useEffect(() => {
     if (!selectedEvent) { setAttendees([]); return; }
-    const canSeeAttendees = selectedEvent.user_rsvp || selectedEvent.host_id === userId;
-    if (!canSeeAttendees) { setAttendees([]); return; }
     const load = async () => {
       setLoadingAttendees(true);
       try {
@@ -1508,9 +1509,8 @@ export default function EventsPage() {
                 </span>
               </div>
 
-              {/* Attendee list — visible to host and RSVPed users */}
-              {((selectedEvent as Event).user_rsvp || (selectedEvent as Event).host_id === userId) && (
-                <div className="mb-6">
+              {/* Attendee list — visible to everyone */}
+              <div className="mb-6">
                   <h3 className="font-semibold text-gray-900 mb-3 text-sm">Who's going</h3>
                   {loadingAttendees ? (
                     <div className="flex gap-2">
@@ -1538,7 +1538,6 @@ export default function EventsPage() {
                     </div>
                   )}
                 </div>
-              )}
 
               {(selectedEvent as Event).host_id !== userId ? (
                 <div className="space-y-2">
@@ -1637,14 +1636,89 @@ export default function EventsPage() {
                   )}
                 </div>
               ) : (
-                <div className="text-center space-y-1">
-                  <p className="text-sm text-gray-500">You are hosting this event</p>
-                  {((selectedEvent as Event).waitlist_count || 0) > 0 && (
-                    <p className="text-xs text-gray-400">
-                      {(selectedEvent as Event).waitlist_count} on waitlist
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-400">Use Settings to edit event details</p>
+                <div className="space-y-4">
+                  {/* Manage Members — top of host view */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-gray-900 text-sm">Members ({(selectedEvent as Event).rsvp_count || 0})</h3>
+                      <button
+                        onClick={async () => {
+                          const session = getStoredSession();
+                          if (!session) return;
+                          const res = await fetch(
+                            `${supabaseUrl}/rest/v1/connections?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&status=eq.accepted&select=requester_id,receiver_id`,
+                            { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+                          );
+                          if (!res.ok) return;
+                          const conns = await res.json();
+                          const otherIds = conns.map((c: any) => c.requester_id === session.user.id ? c.receiver_id : c.requester_id);
+                          const alreadyIn = new Set(attendees.map(a => a.id));
+                          const toInvite = otherIds.filter((id: string) => !alreadyIn.has(id));
+                          if (toInvite.length === 0) { toast('All your connections are already attending', 'info'); return; }
+                          const profRes = await fetch(
+                            `${supabaseUrl}/rest/v1/profiles?id=in.(${toInvite.join(',')})&select=id,family_name,display_name,avatar_url`,
+                            { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+                          );
+                          if (!profRes.ok) return;
+                          const profs = await profRes.json();
+                          setInviteablePeople(profs);
+                          setShowInviteSheet(true);
+                        }}
+                        className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-xl hover:bg-emerald-50 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+                        </svg>
+                        Add people
+                      </button>
+                    </div>
+                    {loadingAttendees ? (
+                      <div className="flex gap-2">{[1,2,3].map(i => <div key={i} className="w-8 h-8 rounded-full bg-gray-100 animate-pulse" />)}</div>
+                    ) : attendees.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-3">No one has RSVP'd yet</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {(showAllMembers ? attendees : attendees.slice(0, 4)).map(p => (
+                          <div key={p.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-emerald-700 overflow-hidden">
+                                {p.avatar_url
+                                  ? <img src={p.avatar_url} className="w-8 h-8 rounded-full object-cover" alt="" />
+                                  : (p.display_name || p.family_name || '?')[0].toUpperCase()}
+                              </div>
+                              <span className="text-sm font-medium text-gray-800">
+                                {p.display_name || (p.family_name || '').split(' ')[0] || 'Family'}
+                              </span>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                const session = getStoredSession();
+                                if (!session) return;
+                                await fetch(`${supabaseUrl}/rest/v1/event_rsvps?event_id=eq.${(selectedEvent as Event).id}&profile_id=eq.${p.id}`, {
+                                  method: 'DELETE',
+                                  headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+                                });
+                                setAttendees(prev => prev.filter(a => a.id !== p.id));
+                                setSelectedEvent(prev => prev ? { ...prev, rsvp_count: Math.max(0, (prev.rsvp_count || 1) - 1) } : null);
+                              }}
+                              className="text-xs text-gray-400 hover:text-red-500 transition-colors px-2 py-1"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        {attendees.length > 4 && (
+                          <button onClick={() => setShowAllMembers(v => !v)} className="w-full text-center text-sm text-emerald-600 font-medium py-1.5 hover:text-emerald-700">
+                            {showAllMembers ? 'Show less' : `Show all ${attendees.length} members`}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {((selectedEvent as Event).waitlist_count || 0) > 0 && (
+                      <p className="text-xs text-gray-400 mt-2">{(selectedEvent as Event).waitlist_count} on waitlist</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 text-center">Use Settings to edit event details</p>
                 </div>
               )}
             </div>
@@ -1667,6 +1741,59 @@ export default function EventsPage() {
         />
       )}
       </div>
+
+      {/* Invite connection sheet */}
+      {showInviteSheet && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center" onClick={() => setShowInviteSheet(false)}>
+          <div className="bg-white rounded-t-2xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-900">Invite a connection</h3>
+              <button onClick={() => setShowInviteSheet(false)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {inviteablePeople.map(p => (
+                <div key={p.id} className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-sm font-bold text-emerald-700 overflow-hidden flex-shrink-0">
+                      {p.avatar_url ? <img src={p.avatar_url} className="w-9 h-9 rounded-full object-cover" alt="" /> : (p.display_name || p.family_name || '?')[0].toUpperCase()}
+                    </div>
+                    <span className="text-sm font-medium text-gray-800">{p.display_name || (p.family_name || '').split(' ')[0]}</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const session = getStoredSession();
+                      if (!session || !selectedEvent) return;
+                      // Send notification invite to the connection
+                      await fetch(`${supabaseUrl}/rest/v1/notifications`, {
+                        method: 'POST',
+                        headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                        body: JSON.stringify({
+                          user_id: p.id,
+                          actor_id: session.user.id,
+                          type: 'event_invite',
+                          title: 'Event invitation',
+                          body: `You've been invited to ${(selectedEvent as Event).title}`,
+                          link: `/events`,
+                          reference_id: (selectedEvent as Event).id,
+                          read: false,
+                        }),
+                      });
+                      setInviteablePeople(prev => prev.filter(x => x.id !== p.id));
+                      toast(`Invite sent to ${p.display_name || p.family_name}`, 'success');
+                    }}
+                    className="text-sm font-semibold text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-xl hover:bg-emerald-50 transition-colors"
+                  >
+                    Invite
+                  </button>
+                </div>
+              ))}
+              {inviteablePeople.length === 0 && <p className="text-center text-sm text-gray-400 py-4">No connections to invite</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Event Settings Modal */}
       {showEventSettingsModal && selectedEvent && (selectedEvent as Event).host_id === userId && (
@@ -2163,6 +2290,59 @@ export default function EventsPage() {
           }}
           userId={userId!}
         />
+      )}
+
+      {/* Invite connection sheet */}
+      {showInviteSheet && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center" onClick={() => setShowInviteSheet(false)}>
+          <div className="bg-white rounded-t-2xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-900">Invite a connection</h3>
+              <button onClick={() => setShowInviteSheet(false)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {inviteablePeople.map(p => (
+                <div key={p.id} className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-sm font-bold text-emerald-700 overflow-hidden flex-shrink-0">
+                      {p.avatar_url ? <img src={p.avatar_url} className="w-9 h-9 rounded-full object-cover" alt="" /> : (p.display_name || p.family_name || '?')[0].toUpperCase()}
+                    </div>
+                    <span className="text-sm font-medium text-gray-800">{p.display_name || (p.family_name || '').split(' ')[0]}</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const session = getStoredSession();
+                      if (!session || !selectedEvent) return;
+                      // Send notification invite to the connection
+                      await fetch(`${supabaseUrl}/rest/v1/notifications`, {
+                        method: 'POST',
+                        headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                        body: JSON.stringify({
+                          user_id: p.id,
+                          actor_id: session.user.id,
+                          type: 'event_invite',
+                          title: 'Event invitation',
+                          body: `You've been invited to ${(selectedEvent as Event).title}`,
+                          link: `/events`,
+                          reference_id: (selectedEvent as Event).id,
+                          read: false,
+                        }),
+                      });
+                      setInviteablePeople(prev => prev.filter(x => x.id !== p.id));
+                      toast(`Invite sent to ${p.display_name || p.family_name}`, 'success');
+                    }}
+                    className="text-sm font-semibold text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-xl hover:bg-emerald-50 transition-colors"
+                  >
+                    Invite
+                  </button>
+                </div>
+              ))}
+              {inviteablePeople.length === 0 && <p className="text-center text-sm text-gray-400 py-4">No connections to invite</p>}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Event Settings Modal */}
