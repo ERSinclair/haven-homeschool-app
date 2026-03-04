@@ -35,9 +35,10 @@ type Suggestion = { name: string; lat: number; lng: number };
 type Props = {
   current: BrowseLocationState;
   onChange: (loc: BrowseLocationState) => void;
+  alwaysOpen?: boolean;
 };
 
-export default function BrowseLocation({ current, onChange }: Props) {
+export default function BrowseLocation({ current, onChange, alwaysOpen }: Props) {
   const [input, setInput] = useState('');
   const [open, setOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -114,27 +115,18 @@ export default function BrowseLocation({ current, onChange }: Props) {
     setOpen(false);
   };
 
+  const showInput = alwaysOpen || open;
+
   return (
     <div className="mb-4" ref={wrapperRef}>
-      {current ? (
-        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-sm">
-          <span className="text-amber-700 font-medium flex-1">
-            Browsing: {current.suburb}
-          </span>
-          <button
-            onClick={() => setOpen(o => !o)}
-            className="text-amber-600 hover:text-amber-800 font-medium text-xs"
-          >
-            Change
-          </button>
-          <button
-            onClick={handleClear}
-            className="text-amber-400 hover:text-red-500 font-bold text-base leading-none"
-          >
-            ×
-          </button>
+      {current && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-sm mb-2">
+          <span className="text-amber-700 font-medium flex-1">Browsing: {current.suburb}</span>
+          <button onClick={handleClear} className="text-amber-400 hover:text-red-500 font-bold text-base leading-none">×</button>
         </div>
-      ) : (
+      )}
+
+      {!alwaysOpen && !current && (
         <button
           onClick={() => setOpen(o => !o)}
           className="w-full text-sm text-gray-400 hover:text-emerald-600 text-left px-1 transition-colors"
@@ -143,8 +135,8 @@ export default function BrowseLocation({ current, onChange }: Props) {
         </button>
       )}
 
-      {open && (
-        <div className="mt-2 relative">
+      {showInput && (
+        <div className="relative">
           <div className="flex gap-2">
             <input
               type="text"

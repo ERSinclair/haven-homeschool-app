@@ -474,6 +474,25 @@ export default function FeedPage() {
             </button>
           </section>
 
+          {/* Search */}
+          <section className="mb-6">
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search families, events, circles..."
+                className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-2xl text-sm shadow-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                    window.location.href = `/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`;
+                  }
+                }}
+              />
+            </div>
+          </section>
+
           {/* Stat Cards */}
           <section className="mb-8">
             <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">This week</h2>
