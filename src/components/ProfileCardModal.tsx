@@ -134,7 +134,7 @@ export default function ProfileCardModal({ userId, onClose, onMessage, currentUs
                 {profile.is_verified && <span className="text-emerald-500 font-bold">✓</span>}
               </div>
               {badge && (
-                <span className={`inline-block text-xs mb-1 ${badge.style}`}>
+                <span className={`inline-block px-3 py-0.5 text-xs font-semibold rounded-full mb-1 ${badge.style}`}>
                   {badge.label}
                 </span>
               )}

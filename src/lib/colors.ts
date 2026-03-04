@@ -74,14 +74,14 @@ export const statusIcons: Record<string, string> = {
 export function getUserTypeBadge(userType?: string): { style: string; label: string } | null {
   switch (userType) {
     case 'teacher':
-      return { style: 'text-blue-600 font-semibold', label: 'Teacher' };
+      return { style: 'bg-blue-100 text-blue-700', label: 'Teacher' };
     case 'business':
     case 'facility':
-      return { style: 'text-amber-600 font-semibold', label: 'Business' };
+      return { style: 'bg-amber-100 text-amber-700', label: 'Business' };
     case 'playgroup':
-      return { style: 'text-purple-600 font-semibold', label: 'Playgroup' };
+      return { style: 'bg-purple-100 text-purple-700', label: 'Playgroup' };
     case 'family':
-      return { style: 'text-emerald-600 font-semibold', label: 'Family' };
+      return { style: 'bg-emerald-100 text-emerald-700', label: 'Family' };
     default:
       return null;
   }
