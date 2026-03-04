@@ -1034,30 +1034,7 @@ function SignupPageInner() {
                   </div>
                 </div>
                 
-                {/* Debug section removed for production */}
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Date of birth <span className="text-red-500">*</span>
-                  </label>
-                  <DatePickerInline
-                    value={dob}
-                    onChange={setDob}
-                    maxDate={new Date().toISOString().slice(0, 10)}
-                    month={dobMonth}
-                    onMonthChange={setDobMonth}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Not shown publicly unless you choose to.</p>
-                  <label className="flex items-center gap-3 mt-2 cursor-pointer">
-                    <div
-                      onClick={() => setShowBirthday(v => !v)}
-                      className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 ${showBirthday ? 'bg-emerald-500' : 'bg-gray-200'}`}
-                    >
-                      <div className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-transform ${showBirthday ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                    </div>
-                    <span className="text-sm text-gray-600">Show my birthday to connections</span>
-                  </label>
-                </div>
+
                 <div>
                   <button
                     onClick={() => setStep(3)}
