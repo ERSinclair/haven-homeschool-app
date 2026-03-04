@@ -1893,7 +1893,7 @@ function EnhancedDiscoverPage() {
 
               </div>
               {getUserTypeBadge(selectedFamilyDetails.user_type) && (
-                <span className={`inline-block px-3 py-0.5 text-xs font-semibold rounded-full mb-1 ${getUserTypeBadge(selectedFamilyDetails.user_type)!.style}`}>
+                <span className={`inline-block text-xs mb-1 ${getUserTypeBadge(selectedFamilyDetails.user_type)!.style}`}>
                   {getUserTypeBadge(selectedFamilyDetails.user_type)!.label}
                 </span>
               )}
