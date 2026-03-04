@@ -1559,7 +1559,7 @@ function EnhancedDiscoverPage() {
                       {/* Kids ages (families) */}
                       {(!family.user_type || family.user_type === 'family') && family.kids_ages && family.kids_ages.length > 0 && (
                         <div className="flex items-center gap-1 mb-1">
-                          {family.kids_ages.map((age, index) => (
+                          {[...family.kids_ages].sort((a, b) => a - b).map((age, index) => (
                             <div key={index} className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-200">
                               <span className="font-semibold text-emerald-700" style={{ fontSize: '10px' }}>{age}</span>
                             </div>
@@ -1959,7 +1959,7 @@ function EnhancedDiscoverPage() {
                 <div>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Children</p>
                   <div className="flex flex-wrap gap-2">
-                    {selectedFamilyDetails.kids_ages.map((age, index) => (
+                    {[...selectedFamilyDetails.kids_ages].sort((a, b) => a - b).map((age, index) => (
                       <div key={index} className="bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
                         <span className="text-emerald-700 font-semibold text-sm">{age} yrs</span>
                       </div>

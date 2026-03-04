@@ -170,7 +170,7 @@ export default function ProfileCardModal({ userId, onClose, onMessage, currentUs
                 <div>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Children</p>
                   <div className="flex flex-wrap gap-2">
-                    {profile.kids_ages.map((age, i) => (
+                    {[...profile.kids_ages].sort((a, b) => a - b).map((age, i) => (
                       <div key={i} className="bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
                         <span className="text-emerald-700 font-semibold text-sm">{age} yrs</span>
                       </div>

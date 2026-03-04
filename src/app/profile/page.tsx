@@ -888,7 +888,7 @@ function ProfilePageInner() {
               <>
                 {profile.kids_ages && profile.kids_ages.length > 0 && (
                   <div className="flex items-center justify-center gap-1">
-                    {profile.kids_ages.map((age, index) => (
+                    {[...profile.kids_ages].sort((a, b) => a - b).map((age, index) => (
                       <div key={index} className="flex items-center">
                         <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
                           <span className="text-xs font-medium text-emerald-700">{age}</span>
