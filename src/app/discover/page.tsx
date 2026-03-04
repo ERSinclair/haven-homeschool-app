@@ -1182,7 +1182,7 @@ function EnhancedDiscoverPage() {
         {/* Family status chips — shown when Families tab active */}
         {activeTab === 'family' && (
           <>
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
               {([
                 { value: 'all',         label: 'All' },
                 { value: 'new',         label: 'Home Ed' },
@@ -1223,7 +1223,7 @@ function EnhancedDiscoverPage() {
 
         {/* Education approach chips — only shown when Home Ed filter is active */}
         {activeTab === 'family' && familyStatusFilter === 'new' && (
-          <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
             {(['all', 'Eclectic', 'Relaxed', 'Charlotte Mason', 'Classical', 'Unschooling', 'Montessori', 'Waldorf/Steiner', 'Faith-based', 'Unit Study', 'Online/Virtual'] as const).map(approach => (
               <button
                 key={approach}
@@ -1243,7 +1243,7 @@ function EnhancedDiscoverPage() {
         {/* Teacher type chips — shown when Teachers tab is active */}
         {activeTab === 'teacher' && (
           <>
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
               {([
                 { value: 'all',             label: 'All' },
                 { value: 'extracurricular', label: 'Extracurricular' },
@@ -1275,7 +1275,7 @@ function EnhancedDiscoverPage() {
             {/* Extracurricular sub-filter */}
             {teacherTypeFilter === 'extracurricular' && (
               <>
-                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
                   {(['all', 'Music', 'Sport', 'Arts', 'Other'] as const).map(sub => (
                     <button
                       key={sub}
@@ -1303,7 +1303,7 @@ function EnhancedDiscoverPage() {
             {/* High School sub-filter */}
             {teacherTypeFilter === 'high' && (
               <>
-                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
                   {(['all', 'Math', 'English', 'Other'] as const).map(sub => (
                     <button
                       key={sub}
@@ -1333,7 +1333,7 @@ function EnhancedDiscoverPage() {
         {/* Business type chips — shown when Business tab is active */}
         {activeTab === 'business' && (
           <>
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
               {([
                 { value: 'all',       label: 'All' },
                 { value: 'playspace', label: 'Play' },
@@ -1381,51 +1381,48 @@ function EnhancedDiscoverPage() {
 
         </>
 
-        {/* Filters */}
+        {/* Search */}
+        <div className="mb-3 relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search families, events, circles..."
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            onKeyDown={e => {
+              if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                window.location.href = `/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`;
+              }
+            }}
+          />
+        </div>
+
+        {/* Browse another location */}
         <div className="mb-2">
-          <div className="space-y-3">
-              {/* Search all of Haven — first */}
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search families, events, circles..."
-                  className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                      window.location.href = `/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`;
-                    }
-                  }}
-                />
-              </div>
+          <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
+        </div>
 
-              {/* Kids age range + Map view on same row */}
-              <div className="flex items-center justify-center gap-2">
-                <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Kids ages</span>
-                <input
-                  type="number" min="0" max="17" value={ageRange.min}
-                  onChange={(e) => { const v = parseInt(e.target.value) || 0; setAgeRange(prev => ({ ...prev, min: Math.max(0, Math.min(v, prev.max - 1)) })); }}
-                  className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-                />
-                <span className="text-gray-400 text-xs">–</span>
-                <input
-                  type="number" min="1" max="18" value={ageRange.max}
-                  onChange={(e) => { const v = parseInt(e.target.value) || 18; setAgeRange(prev => ({ ...prev, max: Math.max(prev.min + 1, Math.min(v, 18)) })); }}
-                  className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-                />
-                <button
-                  onClick={() => setViewMode(v => v === 'list' ? 'map' : 'list')}
-                  className="text-xs text-gray-500 hover:text-emerald-600 transition-colors font-medium whitespace-nowrap flex-shrink-0"
-                >
-                  {viewMode === 'list' ? 'Map view' : 'List view'}
-                </button>
-              </div>
-
-              {/* Browse another location */}
-              <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
-          </div>
+        {/* Kids age range + Map view */}
+        <div className="flex items-center justify-center gap-2 mb-3">
+          <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Kids ages</span>
+          <input
+            type="number" min="0" max="17" value={ageRange.min}
+            onChange={(e) => { const v = parseInt(e.target.value) || 0; setAgeRange(prev => ({ ...prev, min: Math.max(0, Math.min(v, prev.max - 1)) })); }}
+            className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+          />
+          <span className="text-gray-400 text-xs">–</span>
+          <input
+            type="number" min="1" max="18" value={ageRange.max}
+            onChange={(e) => { const v = parseInt(e.target.value) || 18; setAgeRange(prev => ({ ...prev, max: Math.max(prev.min + 1, Math.min(v, 18)) })); }}
+            className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+          />
+          <button
+            onClick={() => setViewMode(v => v === 'list' ? 'map' : 'list')}
+            className="text-xs text-gray-500 hover:text-emerald-600 transition-colors font-medium whitespace-nowrap flex-shrink-0"
+          >
+            {viewMode === 'list' ? 'Map view' : 'List view'}
+          </button>
         </div>
 
         {/* Content */}
