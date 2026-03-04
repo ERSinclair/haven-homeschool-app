@@ -1381,20 +1381,9 @@ function EnhancedDiscoverPage() {
 
         </>
 
-        {/* More options collapsible */}
+        {/* Filters */}
         <div className="mb-2">
-          <button
-            onClick={() => setShowMoreOptions(v => !v)}
-            className="text-sm text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1 mb-1"
-          >
-            More options
-            <svg className={`w-3 h-3 transition-transform ${showMoreOptions ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {showMoreOptions && (
-            <div className="mt-2 space-y-3 pl-1">
+          <div className="space-y-3">
               {/* Search all of Haven — first */}
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1436,8 +1425,7 @@ function EnhancedDiscoverPage() {
 
               {/* Browse another location */}
               <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
-            </div>
-          )}
+          </div>
         </div>
 
         {/* Content */}

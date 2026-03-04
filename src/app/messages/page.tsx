@@ -161,11 +161,17 @@ function MessagesContent() {
       }
       setUserId(session.user.id);
 
-      // Check if new user (signed up within last 7 days)
+      // Check if new user via profile created_at (works across devices)
       try {
-        const signupTs = localStorage.getItem('haven-signup-complete');
-        if (signupTs && Date.now() - parseInt(signupTs) < 7 * 24 * 60 * 60 * 1000) {
-          setIsNewUser(true);
+        const profileRes = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=created_at&limit=1`,
+          { headers: { apikey: supabaseKey!, Authorization: `Bearer ${session.access_token}` } }
+        );
+        if (profileRes.ok) {
+          const [prof] = await profileRes.json();
+          if (prof?.created_at && Date.now() - new Date(prof.created_at).getTime() < 7 * 24 * 60 * 60 * 1000) {
+            setIsNewUser(true);
+          }
         }
       } catch { /* ignore */ }
 
