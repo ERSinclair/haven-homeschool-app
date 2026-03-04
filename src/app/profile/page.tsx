@@ -560,7 +560,7 @@ function ProfilePageInner() {
 
         {/* Nav chips — Calendar, Connections, Education, Board */}
         {!isEditing && !isViewingOtherUser && (
-          <div className="flex gap-1 mb-3 bg-stone-100 rounded-xl p-1 border border-stone-200">
+          <div className="flex gap-1 mb-3 rounded-xl p-1 border border-stone-300" style={{ background: 'linear-gradient(to bottom, #d6cfc7, #c2b8ae)', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.15), 0 1px 0 rgba(255,255,255,0.6)' }}>
             <Link href="/connections?tab=pending" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 text-gray-500 hover:text-gray-700 relative">
               Connections
               {pendingConnections > 0 && (
