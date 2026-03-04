@@ -558,28 +558,9 @@ function ProfilePageInner() {
           )}
         </div>
 
-        {/* Search bar */}
-        {!isEditing && !isViewingOtherUser && (
-          <div className="mb-3 relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search families, events, circles..."
-              className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-2xl text-sm shadow-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-              onKeyDown={e => {
-                if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                  window.location.href = `/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`;
-                }
-              }}
-            />
-          </div>
-        )}
-
         {/* Nav chips — Calendar, Connections, Education, Board */}
         {!isEditing && !isViewingOtherUser && (
-          <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
+          <div className="flex gap-1 mb-3 bg-amber-50 rounded-xl p-1 border border-amber-200">
             <Link href="/connections?tab=pending" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 text-gray-500 hover:text-gray-700 relative">
               Connections
               {pendingConnections > 0 && (
@@ -597,6 +578,25 @@ function ProfilePageInner() {
             <Link href="/board" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Board
             </Link>
+          </div>
+        )}
+
+        {/* Search bar */}
+        {!isEditing && !isViewingOtherUser && (
+          <div className="mb-3 relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search families, events, circles..."
+              className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-2xl text-sm shadow-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              onKeyDown={e => {
+                if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                  window.location.href = `/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`;
+                }
+              }}
+            />
           </div>
         )}
 
