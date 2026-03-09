@@ -17,6 +17,7 @@ export default function ImageCropModal({ imageSrc, aspect, circular = false, tit
   const [imgLoaded, setImgLoaded] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [nat, setNat] = useState({ w: 1, h: 1 });
+  const [circleSize, setCircleSize] = useState(100); // percentage of max size
 
   // Use refs for box + drag so event listeners always see latest values
   const boxRef = useRef({ x: 0, y: 0, w: 200, h: 200 });
@@ -47,13 +48,14 @@ export default function ImageCropModal({ imageSrc, aspect, circular = false, tit
     setBox(clamped);
   };
 
-  const initBox = useCallback((cW: number, cH: number) => {
+  const initBox = useCallback((cW: number, cH: number, sizePct = 100) => {
     const pad = 28;
-    let bw = cW - pad * 2;
-    let bh = cH - pad * 2;
+    let bw = (cW - pad * 2) * (sizePct / 100);
+    let bh = (cH - pad * 2) * (sizePct / 100);
     if (aspect) { if (bw / bh > aspect) bw = bh * aspect; else bh = bw / aspect; }
+    if (circular) { const s = Math.min(bw, bh); bw = s; bh = s; }
     updateBox({ x: (cW - bw) / 2, y: (cH - bh) / 2, w: bw, h: bh });
-  }, [aspect]);
+  }, [aspect, circular]);
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -245,8 +247,27 @@ export default function ImageCropModal({ imageSrc, aspect, circular = false, tit
         )}
       </div>
 
-      <div className="flex-shrink-0 py-3 text-center">
-        <p className="text-white/35 text-xs">Drag box to move · Drag handles to resize</p>
+      <div className="flex-shrink-0 py-4 px-8">
+        {circular ? (
+          <div className="flex flex-col items-center gap-2">
+            <input
+              type="range"
+              min={30}
+              max={100}
+              value={circleSize}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setCircleSize(val);
+                const { w: cW, h: cH } = containerSize.current;
+                initBox(cW, cH, val);
+              }}
+              className="w-full accent-emerald-400"
+            />
+            <p className="text-white/40 text-xs">Drag to reposition · Slider to resize</p>
+          </div>
+        ) : (
+          <p className="text-white/35 text-xs text-center">Drag box to move · Drag handles to resize</p>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Nunito, Fredoka } from "next/font/google";
+import { Nunito, Fredoka, DM_Serif_Display } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import ToastContainer from "@/components/ToastContainer";
@@ -21,6 +21,13 @@ const fredoka = Fredoka({
   variable: "--font-fredoka",
   subsets: ["latin"],
   weight: ["700"],
+  display: "swap",
+});
+
+const dmSerif = DM_Serif_Display({
+  variable: "--font-playfair",
+  subsets: ["latin"],
+  weight: ["400"],
   display: "swap",
 });
 
@@ -68,7 +75,7 @@ export default function RootLayout({
         }} />
       </head>
       <body
-        className={`${nunito.variable} ${fredoka.variable} font-sans antialiased`}
+        className={`${nunito.variable} ${fredoka.variable} ${dmSerif.variable} font-sans antialiased`}
         style={{ fontFamily: 'var(--font-nunito), system-ui, sans-serif' }}
       >
         <ThemeProvider>

@@ -31,23 +31,6 @@ export default function Home() {
         <div className="relative max-w-3xl mx-auto px-6 pt-4 pb-20 text-center">
           <div className="font-bold text-emerald-600 text-5xl sm:text-6xl mb-6" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</div>
 
-          {/* Family silhouette — default avatar, scaled up */}
-          <div className="flex justify-center mb-6">
-            <svg width="96" height="96" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-              {/* Adult head */}
-              <circle cx="32" cy="29" r="11" fill="rgba(75, 85, 99, 0.8)" stroke="rgba(75, 85, 99, 0.9)" strokeWidth="1" />
-              {/* Adult shoulders */}
-              <path d="M18 52 C18 44, 24 40, 32 40 C40 40, 46 44, 46 52" fill="rgba(75, 85, 99, 0.8)" stroke="rgba(75, 85, 99, 0.9)" strokeWidth="1" />
-              {/* Left child head */}
-              <circle cx="13" cy="40" r="7" fill="rgba(75, 85, 99, 0.75)" stroke="rgba(75, 85, 99, 0.85)" strokeWidth="0.8" />
-              {/* Left child shoulders */}
-              <path d="M4 54 C4 50, 7 47, 13 47 C19 47, 22 50, 22 54" fill="rgba(75, 85, 99, 0.75)" stroke="rgba(75, 85, 99, 0.85)" strokeWidth="0.8" />
-              {/* Right child head */}
-              <circle cx="51" cy="40" r="7" fill="rgba(75, 85, 99, 0.75)" stroke="rgba(75, 85, 99, 0.85)" strokeWidth="0.8" />
-              {/* Right child shoulders */}
-              <path d="M42 54 C42 50, 45 47, 51 47 C57 47, 60 50, 60 54" fill="rgba(75, 85, 99, 0.75)" stroke="rgba(75, 85, 99, 0.85)" strokeWidth="0.8" />
-            </svg>
-          </div>
 
           <h1 className="text-3xl sm:text-4xl font-bold text-gray-800 leading-tight mb-5">
             Find Your Community
@@ -143,15 +126,15 @@ export default function Home() {
           <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">Perfect for</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {[
-              { label: 'Home Education', color: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
-              { label: 'Playgroups', color: 'bg-purple-50 border-purple-200 text-purple-800' },
-              { label: 'Private teachers', color: 'bg-blue-50 border-blue-200 text-blue-800' },
-              { label: 'Family businesses', color: 'bg-amber-50 border-amber-200 text-amber-800' },
-              { label: 'Community Building', color: 'bg-rose-50 border-rose-200 text-rose-800' },
-              { label: 'Relocating Families', color: 'bg-sky-50 border-sky-200 text-sky-800' },
-            ].map((t, i) => (
-              <div key={i} className={`${t.color} border rounded-xl p-4 text-center`}>
-                <p className="text-sm font-semibold">{t.label}</p>
+              'Home Education',
+              'Playgroups',
+              'Private teachers',
+              'Family businesses',
+              'Community Building',
+              'Relocating Families',
+            ].map((label, i) => (
+              <div key={i} className="bg-white border border-emerald-100 rounded-xl p-4 text-center shadow-sm">
+                <p className="text-sm font-semibold text-emerald-700">{label}</p>
               </div>
             ))}
           </div>
@@ -177,21 +160,19 @@ export default function Home() {
       <section className="py-16 px-6 bg-white border-t border-gray-100">
         <div className="max-w-2xl mx-auto">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Why we built this</h2>
-          <div className="flex flex-col sm:flex-row gap-6 items-start">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-              <svg className="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </div>
+          <div>
             <div>
               <p className="text-gray-600 leading-relaxed mb-4">
-                Haven started because we couldn&apos;t find our people. We&apos;re a young family on Victoria&apos;s Surf Coast — three kids under five, a passion for education that happens outside of classrooms, and a habit of moving around that makes building community harder than it should be.
+                Haven started in a pretty ordinary way — we&apos;re a family that moves around a lot, and every time we do, we find ourselves starting from scratch.
               </p>
               <p className="text-gray-600 leading-relaxed mb-4">
-                When we decided to homeschool, we quickly realised there was no good way to find other local families doing the same. Facebook groups were overwhelming, co-ops had waitlists, and word of mouth only travels so far.
+                Finding other families nearby shouldn&apos;t be hard. But it is. And if your kids aren&apos;t in school yet, or you&apos;re new to an area, there&apos;s no obvious way in.
+              </p>
+              <p className="text-gray-600 leading-relaxed mb-4">
+                We were also planning to homeschool, which made it worse — that community is out there, but it&apos;s scattered and hard to find.
               </p>
               <p className="text-gray-600 leading-relaxed">
-                So we built the thing we needed. Haven is for families like ours — wherever you are, wherever you end up.
+                Haven is our answer to all of it. Whether you&apos;re a family looking to connect, a playgroup searching for members, a teacher offering classes in sport, arts or music, or a business that works with kids — this is the place. Built by parents, for everyone who believes kids thrive when they grow up with real community around them.
               </p>
               <p className="mt-4 text-sm font-semibold text-emerald-700">— The Haven family, Surf Coast VIC</p>
             </div>
