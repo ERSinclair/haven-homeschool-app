@@ -547,6 +547,7 @@ function EnhancedDiscoverPage() {
     if ((activeTab === 'all' || activeTab === 'family') && approachFilter !== 'all') {
       filtered = filtered.filter(family => {
         const approaches = family.homeschool_approaches || [];
+        if (approachFilter === 'Other') return approaches.some((a: string) => a === 'Other' || a.startsWith('Other: '));
         return approaches.includes(approachFilter);
       });
     }
@@ -1297,7 +1298,7 @@ function EnhancedDiscoverPage() {
         {/* Education approach chips — only shown when Home Ed filter is active */}
         {activeTab === 'family' && familyStatusFilter === 'new' && (
           <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
-            {(['all', 'Eclectic', 'Relaxed', 'Charlotte Mason', 'Classical', 'Unschooling', 'Montessori', 'Waldorf/Steiner', 'Faith-based', 'Unit Study', 'Online/Virtual'] as const).map(approach => (
+            {(['all', 'Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Other'] as const).map(approach => (
               <button
                 key={approach}
                 onClick={() => setApproachFilter(approach)}
@@ -1622,8 +1623,8 @@ function EnhancedDiscoverPage() {
                       {/* Approach chips */}
                       {(!family.user_type || family.user_type === 'family') && family.homeschool_approaches && family.homeschool_approaches.length > 0 && (
                         <div className="flex flex-wrap gap-1">
-                          {family.homeschool_approaches.slice(0, 2).map((a, i) => (
-                            <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full border border-gray-200">{a}</span>
+                          {family.homeschool_approaches.slice(0, 2).map((a: string, i: number) => (
+                            <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full border border-gray-200">{a.startsWith('Other: ') ? a.replace('Other: ', '') : a}</span>
                           ))}
                           {family.homeschool_approaches.length > 2 && (
                             <span className="text-xs text-gray-400">+{family.homeschool_approaches.length - 2}</span>
@@ -1870,6 +1871,7 @@ function EnhancedDiscoverPage() {
                 name={selectedFamily.family_name || selectedFamily.display_name || 'Family'}
                 size="md"
                 editable={false}
+                viewable={true}
               />
               <div>
                 <h4 className="font-semibold text-emerald-600">{selectedFamily.display_name || selectedFamily.family_name.split(' ')[0] || selectedFamily.family_name}</h4>
@@ -2050,8 +2052,8 @@ function EnhancedDiscoverPage() {
                 <div>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Approach</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {selectedFamilyDetails.homeschool_approaches.map((a, i) => (
-                      <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100">{a}</span>
+                    {selectedFamilyDetails.homeschool_approaches.map((a: string, i: number) => (
+                      <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100">{a.startsWith('Other: ') ? a.replace('Other: ', '') : a}</span>
                     ))}
                   </div>
                 </div>
@@ -2211,6 +2213,7 @@ function EnhancedDiscoverPage() {
                             name={family.family_name || family.display_name || '?'}
                             size="sm"
                             editable={false}
+                            viewable={true}
                           />
                           <div>
                             <div className="flex items-center gap-2">

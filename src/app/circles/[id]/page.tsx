@@ -2029,6 +2029,7 @@ createNotification({
                             name={connection.user.family_name || connection.user.display_name || '?'}
                             size="sm"
                             editable={false}
+                            viewable={true}
                           />
                           <div>
                             <h4 className="font-medium text-gray-900">
@@ -2427,6 +2428,7 @@ createNotification({
                   name={selectedMember.profile?.family_name || selectedMember.profile?.display_name || '?'}
                   size="lg"
                   editable={false}
+                  viewable={true}
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">

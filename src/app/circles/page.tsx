@@ -373,9 +373,9 @@ export default function CirclesPage() {
       const [created] = await res.json();
 
       // Add creator as admin member (ignore duplicate if DB trigger already added them)
-      await fetch(`${supabaseUrl}/rest/v1/circle_members`, {
+      const memberRes = await fetch(`${supabaseUrl}/rest/v1/circle_members`, {
         method: 'POST',
-        headers: { ...headers, 'Prefer': 'return=minimal,resolution=ignore-duplicates' },
+        headers: { ...headers, 'Prefer': 'return=minimal' },
         body: JSON.stringify({
           circle_id: created.id,
           member_id: session.user.id,
@@ -383,6 +383,10 @@ export default function CirclesPage() {
           joined_at: new Date().toISOString(),
         }),
       });
+      // 409 = already a member (DB trigger beat us to it) — not an error
+      if (!memberRes.ok && memberRes.status !== 409) {
+        console.warn('circle_members insert failed:', memberRes.status);
+      }
 
       // Upload cover image if selected
       if (newCircleCoverFile && created?.id) {

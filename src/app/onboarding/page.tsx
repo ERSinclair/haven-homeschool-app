@@ -12,7 +12,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const APPROACHES = ['Classical', 'Charlotte Mason', 'Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Faith-based', 'Online/Virtual', 'Unit Study'];
+const APPROACHES = ['Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Other'];
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 const TOTAL_STEPS = 5;
 
@@ -37,6 +37,7 @@ export default function OnboardingPage() {
 
   // Step 4 — Approach
   const [approaches, setApproaches] = useState<string[]>([]);
+  const [otherApproachText, setOtherApproachText] = useState('');
 
   // Step 5 — Circle suggestions
   const [suggestedCircles, setSuggestedCircles] = useState<any[]>([]);
@@ -106,7 +107,12 @@ export default function OnboardingPage() {
       }
 
       if (stepNum === 3) body = { kids_ages: kidsAges };
-      if (stepNum === 4) body = { homeschool_approaches: approaches };
+      if (stepNum === 4) {
+        const finalApproaches = approaches.map(a =>
+          a === 'Other' && otherApproachText.trim() ? `Other: ${otherApproachText.trim()}` : a
+        );
+        body = { homeschool_approaches: finalApproaches };
+      }
 
       if (Object.keys(body).length > 0) {
         await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`, { method: 'PATCH', headers: h, body: JSON.stringify(body) });
@@ -335,6 +341,15 @@ export default function OnboardingPage() {
                   </button>
                 ))}
               </div>
+              {approaches.includes('Other') && (
+                <input
+                  type="text"
+                  value={otherApproachText}
+                  onChange={e => setOtherApproachText(e.target.value)}
+                  placeholder="Describe your approach..."
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+              )}
               {approaches.length === 0 && (
                 <p className="text-xs text-gray-400 text-center">Nothing selected — you can update this later from your profile</p>
               )}

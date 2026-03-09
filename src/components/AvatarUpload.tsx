@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Compressor from 'compressorjs';
 import { getStoredSession } from '@/lib/session';
 import ImageCropModal from './ImageCropModal';
@@ -216,8 +217,8 @@ export default function AvatarUpload({
   
   return (
     <div className="relative">
-      {/* Image crop modal */}
-      {cropSrc && (
+      {/* Image crop modal — portalled to body to escape container constraints */}
+      {cropSrc && typeof document !== 'undefined' && createPortal(
         <ImageCropModal
           imageSrc={cropSrc}
           aspect={1}
@@ -225,11 +226,12 @@ export default function AvatarUpload({
           title="Crop profile photo"
           onConfirm={handleCropConfirm}
           onCancel={() => { setCropSrc(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-        />
+        />,
+        document.body
       )}
 
-      {/* Fullscreen photo overlay */}
-      {viewingFullscreen && avatarUrl && (
+      {/* Fullscreen photo overlay — rendered via portal to escape any container constraints */}
+      {viewingFullscreen && avatarUrl && typeof document !== 'undefined' && createPortal(
         <div
           onClick={() => setViewingFullscreen(false)}
           style={{
@@ -239,7 +241,7 @@ export default function AvatarUpload({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
+            zIndex: 99999,
             cursor: 'pointer',
           }}
         >
@@ -247,10 +249,10 @@ export default function AvatarUpload({
             src={avatarUrl}
             alt={name}
             style={{
-              maxWidth: '90vw',
-              maxHeight: '90vh',
-              objectFit: 'contain',
-              borderRadius: '12px',
+              width: '280px',
+              height: '280px',
+              objectFit: 'cover',
+              borderRadius: '50%',
             }}
           />
           <button
@@ -274,7 +276,8 @@ export default function AvatarUpload({
           >
             ×
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Avatar Display - Pure CSS, no Tailwind conflicts */}

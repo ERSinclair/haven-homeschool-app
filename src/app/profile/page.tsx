@@ -67,6 +67,7 @@ function ProfilePageInner() {
   const [customDescriptions, setCustomDescriptions] = useState<string[]>([]);
   // Homeschool approach (families)
   const [homeschoolApproaches, setHomeschoolApproaches] = useState<string[]>([]);
+  const [otherApproachText, setOtherApproachText] = useState('');
   // Teacher-specific fields
   const [subjects, setSubjects] = useState<string[]>([]);
   const [ageGroupsTaught, setAgeGroupsTaught] = useState<string[]>([]);
@@ -169,7 +170,10 @@ function ProfilePageInner() {
           });
 
           // Load type-specific fields
-          setHomeschoolApproaches(profileData.homeschool_approaches || []);
+          const rawApproaches = profileData.homeschool_approaches || [];
+          const otherEntry = rawApproaches.find((a: string) => a.startsWith('Other: '));
+          if (otherEntry) setOtherApproachText(otherEntry.replace('Other: ', ''));
+          setHomeschoolApproaches(rawApproaches.map((a: string) => a.startsWith('Other: ') ? 'Other' : a));
           setSubjects(profileData.subjects || []);
           setAgeGroupsTaught(profileData.age_groups_taught || []);
           setServices(profileData.services || '');
@@ -294,7 +298,9 @@ function ProfilePageInner() {
               return combined.length > 0 ? combined : ['considering'];
             })(),
             // Type-specific fields
-            homeschool_approaches: homeschoolApproaches.length > 0 ? homeschoolApproaches : null,
+            homeschool_approaches: homeschoolApproaches.length > 0
+              ? homeschoolApproaches.map(a => a === 'Other' && otherApproachText.trim() ? `Other: ${otherApproachText.trim()}` : a)
+              : null,
             subjects: subjects.length > 0 ? subjects : null,
             age_groups_taught: ageGroupsTaught.length > 0 ? ageGroupsTaught : null,
             services: services.trim() || null,
@@ -693,6 +699,7 @@ function ProfilePageInner() {
                 name={profile?.family_name || profile?.display_name || 'Family'}
                 size="xl"
                 editable={!isViewingOtherUser}
+                viewable={!!profile?.avatar_url}
                 showFamilySilhouette={true}
                 onAvatarChange={(newUrl) => {
                   
@@ -1002,28 +1009,41 @@ function ProfilePageInner() {
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Education approach</h3>
               {isEditing ? (
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {['Classical', 'Charlotte Mason', 'Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Faith-based', 'Online/Virtual', 'Unit Study'].map(approach => (
-                    <button
-                      key={approach}
-                      onClick={() => setHomeschoolApproaches(prev =>
-                        prev.includes(approach) ? prev.filter(a => a !== approach) : [...prev, approach]
-                      )}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-colors ${
-                        homeschoolApproaches.includes(approach)
-                          ? 'bg-emerald-100 border-emerald-400 text-emerald-700'
-                          : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300'
-                      }`}
-                    >
-                      {approach}
-                    </button>
-                  ))}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {['Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Other'].map(approach => (
+                      <button
+                        key={approach}
+                        onClick={() => setHomeschoolApproaches(prev =>
+                          prev.includes(approach) ? prev.filter(a => a !== approach) : [...prev, approach]
+                        )}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-colors ${
+                          homeschoolApproaches.includes(approach)
+                            ? 'bg-emerald-100 border-emerald-400 text-emerald-700'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300'
+                        }`}
+                      >
+                        {approach}
+                      </button>
+                    ))}
+                  </div>
+                  {homeschoolApproaches.includes('Other') && (
+                    <input
+                      type="text"
+                      value={otherApproachText}
+                      onChange={e => setOtherApproachText(e.target.value)}
+                      placeholder="Describe your approach..."
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-1.5 justify-center">
                   {homeschoolApproaches.length > 0
                     ? homeschoolApproaches.map((a, i) => (
-                        <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs rounded-full border border-emerald-200">{a}</span>
+                        <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs rounded-full border border-emerald-200">
+                          {a === 'Other' && otherApproachText ? otherApproachText : a}
+                        </span>
                       ))
                     : null
                   }

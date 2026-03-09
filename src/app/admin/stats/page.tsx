@@ -21,6 +21,7 @@ export default function AdminStatsPage() {
   const [authorized, setAuthorized] = useState(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [insights, setInsights] = useState<{ context: string; term: string; count: number }[]>([]);
+  const [otherApproaches, setOtherApproaches] = useState<{ name: string; description: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,6 +41,28 @@ export default function AdminStatsPage() {
         );
         if (res.ok) setInsights(await res.json());
       } catch { /* table may not exist yet */ }
+
+      // Load "Other" approach descriptions
+      try {
+        const session2 = JSON.parse(sessionStorage.getItem('supabase-session') || localStorage.getItem('sb-auth-token') || '{}');
+        const res2 = await fetch(
+          `${supabaseUrl}/rest/v1/profiles?select=family_name,display_name,homeschool_approaches&homeschool_approaches=not.is.null`,
+          { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session2.access_token}` } }
+        );
+        if (res2.ok) {
+          const profiles = await res2.json();
+          const others: { name: string; description: string }[] = [];
+          for (const p of profiles) {
+            const approaches: string[] = p.homeschool_approaches || [];
+            for (const a of approaches) {
+              if (a.startsWith('Other: ')) {
+                others.push({ name: p.display_name || p.family_name || 'Unknown', description: a.replace('Other: ', '') });
+              }
+            }
+          }
+          setOtherApproaches(others);
+        }
+      } catch { /* ignore */ }
 
       setLoading(false);
     };
@@ -126,6 +149,32 @@ export default function AdminStatsPage() {
             </Section>
           </>
         )}
+
+        {/* Other Approach Descriptions */}
+        <Section title="Education Approach — 'Other' Descriptions">
+          {otherApproaches.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">No custom approach descriptions yet.</p>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                  <tr>
+                    <th className="text-left px-4 py-3">Family</th>
+                    <th className="text-left px-4 py-3">Their approach</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {otherApproaches.map((row, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-gray-500">{row.name}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900">{row.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
 
         {/* Search Insights */}
         <Section title="Search Insights — 'Other' box entries">
