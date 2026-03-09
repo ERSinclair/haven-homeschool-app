@@ -117,22 +117,29 @@ export default function ChatView({
     }
   }, [messages.length, scrollTrigger]);
 
+  const isSendingRef = useRef(false);
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed && !pendingFile) return;
+    if (isSendingRef.current) return; // prevent double-send
+    isSendingRef.current = true;
 
-    if (pendingFile && onSendFile) {
-      await onSendFile(pendingFile);
-      setPendingFile(null);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-    if (trimmed) {
-      await onSend(trimmed);
-    }
-    setText('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '40px';
-      textareaRef.current.focus();
+    try {
+      if (pendingFile && onSendFile) {
+        await onSendFile(pendingFile);
+        setPendingFile(null);
+        if (fileRef.current) fileRef.current.value = '';
+      }
+      if (trimmed) {
+        await onSend(trimmed);
+      }
+      setText('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = '40px';
+        textareaRef.current.focus();
+      }
+    } finally {
+      isSendingRef.current = false;
     }
   }, [text, pendingFile, onSend, onSendFile]);
 
@@ -271,20 +278,20 @@ export default function ChatView({
 
                   {/* Reaction pills — emoji only, no outline, glued to bubble */}
                   {msgReactions.length > 0 && (
-                    <div className={`flex flex-wrap gap-0.5 -mt-1 ${isMe ? 'justify-end mr-2' : 'justify-start ml-2'}`}>
+                    <div className={`flex flex-wrap gap-0 -mt-1 ${isMe ? 'justify-end mr-1' : 'justify-start ml-1'}`}>
                       {msgReactions.map(r => (
                         <button
                           key={r.emoji}
                           type="button"
                           onClick={() => onReact?.(msg.id, r.emoji)}
-                          className={`flex items-center gap-0.5 text-sm leading-none px-1 py-0.5 rounded-full transition-opacity ${
-                            r.users.includes(currentUserId) ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+                          className={`flex items-center text-sm leading-none px-0.5 py-0 rounded-full transition-opacity ${
+                            r.users.includes(currentUserId) ? 'opacity-100' : 'opacity-60 hover:opacity-100'
                           }`}
                           style={{ background: 'transparent' }}
                         >
                           {r.emoji}
                           {r.users.length > 1 && (
-                            <span className="text-xs text-gray-500 font-medium">{r.users.length}</span>
+                            <span className="text-xs text-gray-500 font-medium ml-0.5">{r.users.length}</span>
                           )}
                         </button>
                       ))}
@@ -386,6 +393,7 @@ export default function ChatView({
             onKeyDown={undefined}
             placeholder={pendingFile ? 'Add a caption (optional)...' : placeholder}
             rows={1}
+            maxLength={2000}
             className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none overflow-hidden"
             style={{ minHeight: '40px', maxHeight: '120px' }}
           />

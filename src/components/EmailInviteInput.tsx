@@ -28,7 +28,7 @@ export default function EmailInviteInput({ type, targetId, targetName, onSent }:
 
     const res = await fetch('/api/invite', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({
         invitedBy: session.user.id,
         inviteeEmail: trimmed,

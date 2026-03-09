@@ -290,8 +290,8 @@ export default function EventSettingsModal({ event, userId: _userId, onClose, on
       {cropSrc && (
         <ImageCropModal
           imageSrc={cropSrc}
-          aspect={16 / 9}
-          title="Crop cover photo"
+          aspect={3 / 1}
+          title="Position banner photo"
           onConfirm={(blob) => uploadEventCover(blob)}
           onCancel={() => setCropSrc(null)}
         />

@@ -118,7 +118,7 @@ export default function BrowseLocation({ current, onChange, alwaysOpen }: Props)
   const showInput = alwaysOpen || open;
 
   return (
-    <div className="mb-4" ref={wrapperRef}>
+    <div className="mb-2" ref={wrapperRef}>
       {current && (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-sm mb-2">
           <span className="text-amber-700 font-medium flex-1">Browsing: {current.suburb}</span>

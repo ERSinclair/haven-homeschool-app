@@ -36,7 +36,12 @@ type Family = {
   is_verified: boolean;
   created_at: string;
   admin_level?: 'gold' | 'silver' | 'bronze' | null;
+  location_lat?: number;
+  location_lng?: number;
+  avatar_url?: string;
 };
+
+type AgeFilter = 'all' | '0-2' | '3-5' | '6-10' | '11+';
 
 interface FamilyMapProps {
   families: Family[];
@@ -139,12 +144,14 @@ async function geocodeLocation(locationName: string): Promise<[number, number]> 
   return DEFAULT_COORDS;
 }
 
-// Randomise coords within ~3km using family ID as a stable seed
+// Randomise coords using family ID as a stable seed — spreads stacked pins, biased slightly
+// north to avoid pushing coastal users into the ocean
 function randomiseCoords(lng: number, lat: number, familyId: string): [number, number] {
   const seed = familyId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
   const rng = (s: number) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
-  const angle = rng(seed) * 2 * Math.PI;
-  const distance = rng(seed + 1) * 1; // up to 1km — keeps pins on land for coastal suburbs
+  // Bias angle: 0–270 degrees (avoid due-south 270–360 range to reduce ocean placement)
+  const angle = rng(seed) * 1.5 * Math.PI; // 0 to 270 degrees
+  const distance = 0.3 + rng(seed + 1) * 1.5; // 300m–1.8km spread
   const kmPerLat = 110.574;
   const kmPerLng = 111.320 * Math.cos(lat * Math.PI / 180);
   return [lng + (distance * Math.sin(angle)) / kmPerLng, lat + (distance * Math.cos(angle)) / kmPerLat];
@@ -190,11 +197,32 @@ export default function FamilyMap({
   const map = useRef<mapboxgl.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [ageFilter, setAgeFilter] = useState<AgeFilter>('all');
+  const hasAutoFlown = useRef(false);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const familiesRef = useRef<Family[]>(families);
 
   // Keep ref in sync so click handlers always have latest families list
   useEffect(() => { familiesRef.current = families; }, [families]);
+
+  // Auto-fly to user's location once map is loaded
+  useEffect(() => {
+    if (!isLoaded || !userProfileLocation || hasAutoFlown.current) return;
+    hasAutoFlown.current = true;
+    geocodeLocation(userProfileLocation).then(coords => {
+      map.current?.flyTo({ center: coords, zoom: 12, duration: 1500 });
+    });
+  }, [isLoaded, userProfileLocation]);
+
+  const matchesAgeFilter = (kidsAges: number[]) => {
+    if (ageFilter === 'all') return true;
+    if (!kidsAges?.length) return false;
+    if (ageFilter === '0-2') return kidsAges.some(a => a <= 2);
+    if (ageFilter === '3-5') return kidsAges.some(a => a >= 3 && a <= 5);
+    if (ageFilter === '6-10') return kidsAges.some(a => a >= 6 && a <= 10);
+    if (ageFilter === '11+') return kidsAges.some(a => a >= 11);
+    return true;
+  };
 
   const locateUser = async () => {
     setIsLocating(true);
@@ -220,7 +248,7 @@ export default function FamilyMap({
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/light-v11',
+      style: 'mapbox://styles/mapbox/streets-v12',
       center: [144.3256, -38.3305],
       zoom: 10,
       collectResourceTiming: false,
@@ -338,17 +366,60 @@ export default function FamilyMap({
         const family = familiesRef.current.find(f => f.id === props.id);
         const displayName = props.display_name || (props.family_name as string)?.split(' ')[0] || 'Family';
 
+        const kidsAges: number[] = (() => { try { return JSON.parse(props.kids_ages || '[]'); } catch { return []; } })();
+
         const popupEl = document.createElement('div');
-        popupEl.className = 'p-3 text-center min-w-[150px]';
-        popupEl.innerHTML = `
-          <div class="font-semibold text-gray-900 text-sm">${displayName}</div>
-          <div class="text-xs text-gray-500 mt-0.5">${props.location_name} area</div>
-          ${props.is_verified ? '<div class="text-emerald-600 text-xs mt-1">Verified</div>' : ''}
-        `;
+        popupEl.className = 'p-3 min-w-[170px]';
+
+        // Avatar + name row
+        const headerEl = document.createElement('div');
+        headerEl.className = 'flex items-center gap-2 mb-2';
+        const avatarEl = document.createElement('div');
+        avatarEl.className = 'w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 overflow-hidden';
+        if (props.avatar_url) {
+          const img = document.createElement('img');
+          img.src = props.avatar_url;
+          img.className = 'w-full h-full object-cover';
+          img.alt = displayName;
+          avatarEl.appendChild(img);
+        } else {
+          const initEl = document.createElement('span');
+          initEl.className = 'text-emerald-700 font-bold text-sm';
+          initEl.textContent = displayName.charAt(0).toUpperCase();
+          avatarEl.appendChild(initEl);
+        }
+        const nameBlockEl = document.createElement('div');
+        const nameEl = document.createElement('div');
+        nameEl.className = 'font-semibold text-gray-900 text-sm leading-tight';
+        nameEl.textContent = displayName;
+        const locEl = document.createElement('div');
+        locEl.className = 'text-xs text-gray-400 leading-tight';
+        locEl.textContent = props.location_name;
+        nameBlockEl.appendChild(nameEl);
+        nameBlockEl.appendChild(locEl);
+        headerEl.appendChild(avatarEl);
+        headerEl.appendChild(nameBlockEl);
+        popupEl.appendChild(headerEl);
+
+        // Kids ages
+        if (kidsAges.length > 0) {
+          const agesRow = document.createElement('div');
+          agesRow.className = 'flex gap-1 flex-wrap mb-2';
+          kidsAges.forEach(age => {
+            const chip = document.createElement('div');
+            chip.className = 'w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center';
+            const ageSpan = document.createElement('span');
+            ageSpan.className = 'text-xs font-semibold text-emerald-700';
+            ageSpan.textContent = String(age);
+            chip.appendChild(ageSpan);
+            agesRow.appendChild(chip);
+          });
+          popupEl.appendChild(agesRow);
+        }
 
         if (family && onFamilyClick) {
           const btn = document.createElement('button');
-          btn.className = 'mt-2 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors w-full';
+          btn.className = 'mt-1 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors w-full';
           btn.textContent = 'View Profile';
           btn.onclick = () => onFamilyClick(family);
           popupEl.appendChild(btn);
@@ -372,21 +443,33 @@ export default function FamilyMap({
     return () => { map.current?.remove(); };
   }, []);
 
-  // Update family pins whenever families list changes
+  // Update family pins whenever families list or age filter changes
   useEffect(() => {
     if (!map.current || !isLoaded) return;
 
     const update = async () => {
+      const filtered = families.filter(f => matchesAgeFilter(f.kids_ages));
       const geocoded = await Promise.all(
-        families.map(async (family) => {
-          const base = await geocodeLocation(family.location_name);
-          const coords = randomiseCoords(base[0], base[1], family.id);
+        filtered.map(async (family) => {
+          let coords: [number, number];
+          if (family.location_lat && family.location_lng) {
+            // Apply jitter so users in the same suburb don't all stack on the same pin
+            coords = randomiseCoords(family.location_lng, family.location_lat, family.id);
+          } else if (family.location_name) {
+            const base = await geocodeLocation(family.location_name);
+            coords = randomiseCoords(base[0], base[1], family.id);
+          } else {
+            // No location data — exclude from map
+            return null;
+          }
           return { family, coords };
         })
       );
+      // Remove entries with no location
+      const allGeocoded = geocoded.filter((g): g is { family: Family; coords: [number, number] } => g !== null);
 
       // Apply radius filter if active
-      const filtered = geocoded.filter(({ coords }) => {
+      const validGeocoded = allGeocoded.filter(({ coords }) => {
         if (showRadius && userLocation && searchRadius) {
           return calculateDistance(userLocation.lat, userLocation.lng, coords[1], coords[0]) <= searchRadius;
         }
@@ -395,7 +478,7 @@ export default function FamilyMap({
 
       const geojson: GeoJSON.FeatureCollection = {
         type: 'FeatureCollection',
-        features: filtered.map(({ family, coords }) => ({
+        features: validGeocoded.map(({ family, coords }) => ({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: coords },
           properties: {
@@ -405,22 +488,24 @@ export default function FamilyMap({
             location_name: family.location_name,
             is_verified: family.is_verified,
             admin_level: family.admin_level ?? null,
+            avatar_url: family.avatar_url ?? null,
+            kids_ages: JSON.stringify(family.kids_ages ?? []),
           },
         })),
       };
 
       (map.current?.getSource('families') as mapboxgl.GeoJSONSource)?.setData(geojson);
 
-      // Fit map to visible families
-      if (filtered.length > 0) {
+      // Fit map to visible families (only on first load, not on filter change)
+      if (validGeocoded.length > 0 && !hasAutoFlown.current) {
         const bounds = new mapboxgl.LngLatBounds();
-        filtered.forEach(({ coords }) => bounds.extend(coords));
+        validGeocoded.forEach(({ coords }) => bounds.extend(coords));
         map.current?.fitBounds(bounds, { padding: 60, maxZoom: 13, duration: 800 });
       }
     };
 
     update();
-  }, [families, isLoaded, showRadius, userLocation, searchRadius]);
+  }, [families, isLoaded, showRadius, userLocation, searchRadius, ageFilter]);
 
   // Update radius circle
   useEffect(() => {
@@ -458,34 +543,60 @@ export default function FamilyMap({
     );
   }
 
+  const AGE_FILTERS: { label: string; value: AgeFilter }[] = [
+    { label: 'All ages', value: 'all' },
+    { label: '0–2', value: '0-2' },
+    { label: '3–5', value: '3-5' },
+    { label: '6–10', value: '6-10' },
+    { label: '11+', value: '11+' },
+  ];
+
   return (
     <div className={`relative ${className}`}>
-      <div ref={mapContainer} className="w-full h-[600px] rounded-xl overflow-hidden shadow-lg" />
+      {/* Age filter chips */}
+      <div className="flex gap-2 mb-3 flex-wrap">
+        {AGE_FILTERS.map(f => (
+          <button
+            key={f.value}
+            onClick={() => setAgeFilter(f.value)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              ageFilter === f.value
+                ? 'bg-emerald-600 text-white'
+                : 'bg-white border border-gray-200 text-gray-600 hover:border-emerald-400'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div className="relative">
+        <div ref={mapContainer} className="w-full h-[560px] rounded-xl overflow-hidden shadow-lg" />
 
-      {/* Locate Me button */}
-      <button
-        onClick={locateUser}
-        disabled={isLocating}
-        className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-3 hover:bg-gray-50 transition-colors disabled:opacity-50 z-10"
-        title={`Centre on my location${userProfileLocation ? ` (${userProfileLocation})` : ''}`}
-      >
-        {isLocating ? (
-          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-        ) : (
-          <svg className="w-5 h-5 text-emerald-600" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
-          </svg>
-        )}
-      </button>
+        {/* Locate Me button */}
+        <button
+          onClick={locateUser}
+          disabled={isLocating}
+          className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-3 hover:bg-gray-50 transition-colors disabled:opacity-50 z-10"
+          title={`Centre on my location${userProfileLocation ? ` (${userProfileLocation})` : ''}`}
+        >
+          {isLocating ? (
+            <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <svg className="w-5 h-5 text-emerald-600" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+            </svg>
+          )}
+        </button>
 
-      {!isLoaded && (
-        <div className="absolute inset-0 bg-gray-100 rounded-xl flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-            <p className="text-gray-600 text-sm">Loading map...</p>
+        {!isLoaded && (
+          <div className="absolute inset-0 bg-gray-100 rounded-xl flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-gray-600 text-sm">Loading map...</p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -67,10 +67,12 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export default function CirclesPage() {
-  const [circles, setCircles] = useState<Circle[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [circles, setCircles] = useState<Circle[]>(() => getCached<Circle[]>('circles:list') || []);
+  const [loading, setLoading] = useState(() => !getCached<Circle[]>('circles:list'));
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+
 
   useEffect(() => {
     if (showCreateModal) {
@@ -138,9 +140,19 @@ export default function CirclesPage() {
         if (p?.location_lat && p?.location_lng) setDiscoverUserLocation({ lat: p.location_lat, lng: p.location_lng });
       }
 
-      const circlesRes = await fetch(`${supabaseUrl}/rest/v1/circles?is_public=eq.true&select=*&order=member_count.desc,created_at.desc`, { headers });
+      // Join creator profile to get location fallback when circle has no coords
+      const circlesRes = await fetch(
+        `${supabaseUrl}/rest/v1/circles?is_public=eq.true&select=*,creator:profiles!circles_created_by_fkey(location_lat,location_lng)&order=member_count.desc,created_at.desc`,
+        { headers }
+      );
       if (!circlesRes.ok) throw new Error();
-      const allCircles: DiscoverCircle[] = await circlesRes.json();
+      const rawCircles = await circlesRes.json();
+      // Use circle coords if set, otherwise fall back to creator's profile coords
+      const allCircles: DiscoverCircle[] = rawCircles.map((c: any) => ({
+        ...c,
+        location_lat: c.location_lat ?? c.creator?.location_lat ?? null,
+        location_lng: c.location_lng ?? c.creator?.location_lng ?? null,
+      }));
 
       const memberRes = await fetch(`${supabaseUrl}/rest/v1/circle_members?member_id=eq.${session.user.id}&select=circle_id`, { headers });
       const memberData = memberRes.ok ? await memberRes.json() : [];
@@ -179,10 +191,10 @@ export default function CirclesPage() {
 
   const privateCircles = circles.filter(c => !c.is_public);
   const publicCircles = circles.filter(c => c.is_public);
-  const [showAllPrivate, setShowAllPrivate] = useState(false);
-  const [showAllPublic, setShowAllPublic] = useState(false);
-  const visiblePrivate = showAllPrivate ? privateCircles : privateCircles.slice(0, 3);
-  const visiblePublic = showAllPublic ? publicCircles : publicCircles.slice(0, 3);
+  const [shownPrivate, setShownPrivate] = useState(4);
+  const [shownPublic, setShownPublic] = useState(4);
+  const visiblePrivate = privateCircles.slice(0, shownPrivate);
+  const visiblePublic = publicCircles.slice(0, shownPublic);
 
   useEffect(() => {
     loadCircles();
@@ -638,9 +650,9 @@ export default function CirclesPage() {
                   <div className="space-y-3">
                     {visiblePrivate.map(c => <CircleCard key={c.id} circle={c} />)}
                   </div>
-                  {privateCircles.length > 3 && (
-                    <button onClick={() => setShowAllPrivate(p => !p)} className="w-full mt-3 py-2 text-sm text-emerald-600 font-medium hover:text-emerald-700">
-                      {showAllPrivate ? 'Show less' : `Show ${privateCircles.length - 3} more`}
+                  {privateCircles.length > shownPrivate && (
+                    <button onClick={() => setShownPrivate(n => n + 10)} className="w-full mt-3 py-2 text-sm text-emerald-600 font-medium hover:text-emerald-700">
+                      Show 10 more
                     </button>
                   )}
                 </div>
@@ -652,9 +664,9 @@ export default function CirclesPage() {
                   <div className="space-y-3">
                     {visiblePublic.map(c => <CircleCard key={c.id} circle={c} />)}
                   </div>
-                  {publicCircles.length > 3 && (
-                    <button onClick={() => setShowAllPublic(p => !p)} className="w-full mt-3 py-2 text-sm text-emerald-600 font-medium hover:text-emerald-700">
-                      {showAllPublic ? 'Show less' : `Show ${publicCircles.length - 3} more`}
+                  {publicCircles.length > shownPublic && (
+                    <button onClick={() => setShownPublic(n => n + 10)} className="w-full mt-3 py-2 text-sm text-emerald-600 font-medium hover:text-emerald-700">
+                      Show 10 more
                     </button>
                   )}
                 </div>
@@ -665,7 +677,7 @@ export default function CirclesPage() {
           {/* Discover tab */}
           {mainTab === 'discover' && (
             <>
-              <BrowseLocation current={discoverBrowseLocation} onChange={loc => setDiscoverBrowseLocation(loc)} />
+              <BrowseLocation current={discoverBrowseLocation} onChange={loc => setDiscoverBrowseLocation(loc)} alwaysOpen />
               <div className="mb-4">
                 <input
                   type="text"
@@ -689,7 +701,8 @@ export default function CirclesPage() {
               {!discoverLoading && (() => {
                 const activeLocation = discoverBrowseLocation ?? discoverUserLocation;
                 const filtered = discoverCircles.filter(c => !hiddenCircles.has(c.id)).filter(c => {
-                  if (activeLocation && c.location_lat && c.location_lng) {
+                  if (activeLocation) {
+                    if (!c.location_lat || !c.location_lng) return false; // no coords = exclude when filtering
                     const d = distanceKm(activeLocation.lat, activeLocation.lng, c.location_lat, c.location_lng);
                     if (d > searchRadius) return false;
                   }

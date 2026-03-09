@@ -120,7 +120,7 @@ export default function AdminDashboard() {
     try {
       const session = JSON.parse(
         sessionStorage.getItem('supabase-session') ||
-        localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token') || '{}'
+        localStorage.getItem('sb-auth-token') || '{}'
       );
       const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
       const safe = async (url: string) => {

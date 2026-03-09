@@ -6,9 +6,10 @@ import Link from 'next/link';
 import DatePickerDropdown from '@/components/DatePickerModal';
 import DatePickerInline from '@/components/DatePickerInline';
 import { trackOnboarding } from '@/lib/analytics';
+import { geocodeSuburb } from '@/lib/geocode';
 // SimpleLocationPicker removed - using simple town/state inputs
 
-const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
+const STORAGE_KEY = 'sb-auth-token';
 
 function SignupPageInner() {
   const [step, setStep] = useState(1);
@@ -71,14 +72,17 @@ function SignupPageInner() {
 
   // Business-specific
   const [businessContact, setBusinessContact] = useState('');
+  const [businessContacts, setBusinessContacts] = useState<{ type: string; value: string }[]>([{ type: 'website', value: '' }]);
   // Playgroup-specific
   const [playgroupAges, setPlaygroupAges] = useState<string[]>([]);
+  const [playgroupPhone, setPlaygroupPhone] = useState('');
+  const [playgroupEmail, setPlaygroupEmail] = useState('');
 
   const [userId, setUserId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ryvecaicjhzfsikfedkp.supabase.co';
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_HqXqQ5cjrg1CJIFIyL2QnA_WlwZ4AjB';
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   // Reset status when userType changes to provide appropriate defaults
   useEffect(() => {
@@ -89,7 +93,7 @@ function SignupPageInner() {
     } else if (userType === 'teacher') {
       setStatus(['math']);
     } else if (userType === 'business') {
-      setStatus(['supplies']);
+      setStatus([]);
     }
     setCustomDescriptions([]);
   }, [userType]);
@@ -320,6 +324,9 @@ function SignupPageInner() {
       }
 
       // Step 2: Create the profile (INSERT since no auto-trigger)
+      // Geocode location so user is visible in Discover immediately
+      const signupCoords = location.trim() ? await geocodeSuburb(location.trim()) : null;
+
       const profileData = {
         id: authData.user.id,  // Add user ID for INSERT
         user_type: userType, // family, playgroup, teacher, or business
@@ -336,13 +343,13 @@ function SignupPageInner() {
         email,
         username,
         location_name: location.trim(),
-        location_lat: null,
-        location_lng: null,
+        location_lat: signupCoords?.lat ?? null,
+        location_lng: signupCoords?.lng ?? null,
         kids_ages: userType === 'family'
           ? children.map(c => parseInt(c.age)).filter(age => !isNaN(age) && age >= 0 && age <= 18)
           : userType === 'playgroup'
-            // Store min age of each selected bracket e.g. '0-1' → 0, '1-2' → 1
-            ? playgroupAges.map(a => a === '5+' ? 5 : parseInt(a)).filter(n => !isNaN(n))
+            // Store [minAge, maxAge] as ints
+            ? playgroupAges.map(a => parseInt(a)).filter(n => !isNaN(n))
             : userType === 'teacher' && relationship.includes('no-kids')
               ? []
               : userType === 'teacher'
@@ -375,7 +382,11 @@ function SignupPageInner() {
         subjects: teacherSubjects.length > 0 ? teacherSubjects : null,
         age_groups_taught: teacherAgeGroups.length > 0 ? teacherAgeGroups : null,
         services: null, // businesses use bio for services during signup
-        contact_info: businessContact.trim() || null,
+        contact_info: userType === 'playgroup'
+          ? [playgroupPhone.trim(), playgroupEmail.trim()].filter(Boolean).join(' | ') || null
+          : userType === 'business'
+            ? businessContacts.filter(c => c.value.trim()).map(c => `${c.type}: ${c.value.trim()}`).join(' | ') || null
+            : businessContact.trim() || null,
         dob: (userType === 'family' || userType === 'teacher') && dob ? dob : null,
         show_birthday: (userType === 'family' || userType === 'teacher') ? showBirthday : false,
         created_at: new Date().toISOString(),
@@ -432,10 +443,10 @@ function SignupPageInner() {
       // If Supabase returned an access_token, email confirmation is disabled — go straight to welcome
       // If no access_token, email confirmation is enabled — show verify-email screen
       if (authData.access_token) {
-        // Send welcome email (best-effort)
+        // Send welcome email (best-effort) — uses access token for auth
         await fetch('/api/email', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authData.access_token}` },
           body: JSON.stringify({ type: 'welcome', to: email, name: firstName || 'there' }),
         }).catch(() => {});
         // Apply pending invite if came from invite link
@@ -622,7 +633,7 @@ function SignupPageInner() {
             </button>
           )}
           <div className="flex items-center gap-2 pointer-events-none justify-center my-4">
-            <span className="font-bold text-emerald-600 text-4xl" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</span>
+            <Link href="/" className="font-bold text-emerald-600 text-4xl" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</Link>
           </div>
           <div className="w-12"></div>
         </div>
@@ -688,35 +699,42 @@ function SignupPageInner() {
 
           {showEmailConflict && (
             <div className="mb-4 p-4 bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-xl">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-2xl">📧</span>
-                <h3 className="font-bold text-orange-900">This Email is Already Registered!</h3>
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="font-bold text-orange-900">Email already registered</h3>
               </div>
-              <p className="text-orange-800 text-sm mb-4 leading-relaxed">
-                An account with <strong>{email}</strong> already exists in Haven. 
-                You can either sign in with this email or use a different one for a new account.
+              <p className="text-orange-800 text-sm mb-3 leading-relaxed">
+                <strong>{email}</strong> already has an account. Try a different email or sign in.
               </p>
-              <div className="space-y-2">
-                <button 
+              <div className="space-y-2 mb-2">
+                <input
+                  type="email"
+                  placeholder="Try a different email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-orange-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+                  autoFocus
+                />
+                <button
                   onClick={() => {
+                    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    if (!email || !re.test(email)) {
+                      setError('Please enter a valid email address.');
+                      return;
+                    }
+                    setError('');
                     setShowEmailConflict(false);
-                    setStep(1);
                   }}
-                  className="w-full py-3 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 font-semibold transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors"
                 >
-                  <span>←</span>
-                  Go back and use a different email
+                  Use this email
                 </button>
-                <Link 
-                  href="/login"
-                  className="block w-full py-3 text-emerald-600 rounded-lg text-sm text-center hover:text-emerald-700 font-semibold transition-colors"
-                >
-                  Sign in with {email}
-                </Link>
               </div>
-              <p className="text-xs text-orange-600 mt-3 text-center">
-                Choose the option that works best for you
-              </p>
+              <Link
+                href="/login"
+                className="block w-full py-2 text-emerald-600 rounded-lg text-sm text-center hover:text-emerald-700 font-semibold transition-colors"
+              >
+                Sign in instead
+              </Link>
             </div>
           )}
 
@@ -902,7 +920,7 @@ function SignupPageInner() {
                           lng: 144.3256,
                         });
                       }}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                      className="w-full p-3.5 border border-white/40 rounded-2xl focus:ring-2 focus:ring-emerald-500 bg-white/60 backdrop-blur-md appearance-none"
                     >
                       <option value="VIC">VIC</option>
                       <option value="NSW">NSW</option>
@@ -921,9 +939,6 @@ function SignupPageInner() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Date of birth <span className="text-red-500">*</span>
-                  </label>
                   <DatePickerInline
                     value={dob}
                     onChange={setDob}
@@ -947,9 +962,10 @@ function SignupPageInner() {
                   <div className="space-y-2">
                     {[
                       { value: 'considering', label: 'Community', icon: '' },
-                      { value: 'new', label: 'Home Ed', icon: '' },
+                      { value: 'new', label: 'Home Education', icon: '' },
+                      { value: 'social', label: 'Social Activities', icon: '' },
                       { value: 'experienced', label: 'Extracurricular', icon: '' },
-
+                      { value: 'new_to_area', label: 'New to Area', icon: '' },
                       { value: 'other', label: 'Other', icon: '' }
                     ].map((opt) => (
                       <label 
@@ -1048,100 +1064,105 @@ function SignupPageInner() {
 
           {/* Step 2: About you - Playgroup */}
           {step === 2 && userType === 'playgroup' && (
-            <div>
-              <div className="space-y-4">
-                <div>
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Group name</p>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                  placeholder="e.g. Little Explorers Playgroup"
+                />
+              </div>
+
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-3.5 pt-3 pb-1">Username</p>
+                <div className="relative">
                   <input
                     type="text"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
+                    value={username}
+                    onChange={(e) => {
+                      const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                      setUsername(value);
+                      setUsernameAvailable(null);
+                      checkUsernameAvailability(value);
+                    }}
+                    className={`w-full px-3.5 pb-3 pt-1 border-0 focus:ring-0 outline-none text-gray-900 placeholder-gray-400 bg-transparent pr-10`}
+                    placeholder="e.g. littleexplorers"
+                    minLength={3}
+                    maxLength={20}
+                  />
+                  {checkingUsername && <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="w-5 h-5 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin" /></div>}
+                  {!checkingUsername && usernameAvailable === true && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600">✓</div>}
+                  {!checkingUsername && usernameAvailable === false && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-red-600">✗</div>}
+                </div>
+              </div>
+              {usernameAvailable === false && <p className="text-red-600 text-sm -mt-2">Username already taken</p>}
+
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Location</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    value={location.split(',')[0]?.trim() || ''}
+                    onChange={(e) => {
+                      const town = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase();
+                      const state = location.split(',')[1]?.trim() || 'VIC';
+                      setLocation(`${town}, ${state}`);
+                      setLocationData({ name: town, address: `${town}, ${state}`, lat: -38.3305, lng: 144.3256 });
+                    }}
+                    placeholder="Town/Suburb"
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                    placeholder="Group name (e.g. Little Explorers Playgroup)"
+                  />
+                  <select
+                    value={location.split(',')[1]?.trim() || 'VIC'}
+                    onChange={(e) => {
+                      const town = location.split(',')[0]?.trim() || '';
+                      setLocation(`${town}, ${e.target.value}`);
+                      setLocationData({ name: town, address: `${town}, ${e.target.value}`, lat: -38.3305, lng: 144.3256 });
+                    }}
+                    className="w-full p-3.5 border border-white/40 rounded-2xl focus:ring-2 focus:ring-emerald-500 bg-white/60 backdrop-blur-md appearance-none"
+                  >
+                    <option value="VIC">VIC</option>
+                    <option value="NSW">NSW</option>
+                    <option value="QLD">QLD</option>
+                    <option value="WA">WA</option>
+                    <option value="SA">SA</option>
+                    <option value="TAS">TAS</option>
+                    <option value="ACT">ACT</option>
+                    <option value="NT">NT</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contact (optional)</p>
+                <div className="space-y-2">
+                  <input
+                    type="tel"
+                    value={playgroupPhone}
+                    onChange={e => setPlaygroupPhone(e.target.value)}
+                    placeholder="Phone number"
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <input
+                    type="email"
+                    value={playgroupEmail}
+                    onChange={e => setPlaygroupEmail(e.target.value)}
+                    placeholder="Email address"
+                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
-                <div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={(e) => {
-                        const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
-                        setUsername(value);
-                      }}
-                      className={`w-full p-3.5 border rounded-xl focus:ring-2 pr-10 ${
-                        usernameAvailable === false
-                          ? 'border-red-300 focus:ring-red-500'
-                          : username && username.length >= 3 && usernameAvailable === true
-                          ? 'border-green-300 focus:ring-green-500'
-                          : 'border-gray-200 focus:ring-emerald-500'
-                      }`}
-                      placeholder="Handle (e.g. littleexplorers)"
-                      minLength={3}
-                      maxLength={20}
-                    />
-                    {checkingUsername && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        <div className="w-5 h-5 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                    {!checkingUsername && usernameAvailable === true && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-600">✓</div>
-                    )}
-                    {!checkingUsername && usernameAvailable === false && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-600">✗</div>
-                    )}
-                  </div>
-                  {username && username.length < 3 && (
-                    <p className="text-sm text-gray-500 mt-1">Handle must be at least 3 characters</p>
-                  )}
-                </div>
-                <div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      value={location.split(',')[0]?.trim() || ''}
-                      onChange={(e) => {
-                        const town = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase();
-                        const state = location.split(',')[1]?.trim() || 'VIC';
-                        setLocation(`${town}, ${state}`);
-                        setLocationData({ name: town, address: `${town}, ${state}`, lat: -38.3305, lng: 144.3256 });
-                      }}
-                      placeholder="Town/Suburb"
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                    />
-                    <select
-                      value={location.split(',')[1]?.trim() || 'VIC'}
-                      onChange={(e) => {
-                        const town = location.split(',')[0]?.trim() || '';
-                        setLocation(`${town}, ${e.target.value}`);
-                        setLocationData({ name: town, address: `${town}, ${e.target.value}`, lat: -38.3305, lng: 144.3256 });
-                      }}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                    >
-                      <option value="VIC">VIC</option>
-                      <option value="NSW">NSW</option>
-                      <option value="QLD">QLD</option>
-                      <option value="WA">WA</option>
-                      <option value="SA">SA</option>
-                      <option value="TAS">TAS</option>
-                      <option value="ACT">ACT</option>
-                      <option value="NT">NT</option>
-                    </select>
-                  </div>
-                  {location && location.includes(',') && location.split(',')[0].trim() && (
-                    <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                      <div className="text-sm font-medium text-emerald-900">{location}</div>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => setStep(3)}
-                  disabled={!firstName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || checkingUsername}
-                  className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
-                >
-                  Continue
-                </button>
               </div>
+
+              <button
+                onClick={() => setStep(3)}
+                disabled={!firstName.trim() || !username.trim() || username.length < 3 || usernameAvailable === false || !location.split(',')[0]?.trim() || checkingUsername}
+                className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
+              >
+                Continue
+              </button>
             </div>
           )}
 
@@ -1245,7 +1266,7 @@ function SignupPageInner() {
                           lng: 144.3256,
                         });
                       }}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                      className="w-full p-3.5 border border-white/40 rounded-2xl focus:ring-2 focus:ring-emerald-500 bg-white/60 backdrop-blur-md appearance-none"
                     >
                       <option value="VIC">VIC</option>
                       <option value="NSW">NSW</option>
@@ -1355,14 +1376,32 @@ function SignupPageInner() {
                 </div>
                 
                 <div>
-                  <button
-                    onClick={() => setStep(3)}
-                    disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim())) || !dob.trim()}
-                    className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
-                  >
-                    Continue
-                  </button>
+                  <DatePickerInline
+                    value={dob}
+                    onChange={setDob}
+                    maxDate={new Date().toISOString().slice(0, 10)}
+                    month={dobMonth}
+                    onMonthChange={setDobMonth}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Not shown publicly unless you choose to.</p>
+                  <label className="flex items-center gap-3 mt-2 cursor-pointer">
+                    <div
+                      onClick={() => setShowBirthday(v => !v)}
+                      className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 ${showBirthday ? 'bg-emerald-500' : 'bg-gray-200'}`}
+                    >
+                      <div className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-transform ${showBirthday ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </div>
+                    <span className="text-sm text-gray-600">Show my birthday to connections</span>
+                  </label>
                 </div>
+
+                <button
+                  onClick={() => setStep(3)}
+                  disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim())) || !dob.trim()}
+                  className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
+                >
+                  Continue
+                </button>
               </div>
             </div>
           )}
@@ -1479,7 +1518,7 @@ function SignupPageInner() {
                           lng: 144.3256,
                         });
                       }}
-                      className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                      className="w-full p-3.5 border border-white/40 rounded-2xl focus:ring-2 focus:ring-emerald-500 bg-white/60 backdrop-blur-md appearance-none"
                     >
                       <option value="VIC">VIC</option>
                       <option value="NSW">NSW</option>
@@ -1741,34 +1780,57 @@ function SignupPageInner() {
 
           {/* Step 3: Ages served - Playgroup */}
           {step === 3 && userType === 'playgroup' && (
-            <div>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">What ages does your group cater to? (optional)</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {['0', '1', '2', '3', '4', '5+'].map(age => (
-                      <button
-                        key={age}
-                        type="button"
-                        onClick={() => setPlaygroupAges(prev => prev.includes(age) ? prev.filter(a => a !== age) : [...prev, age])}
-                        className={`py-3 rounded-xl text-sm font-semibold border-2 transition-all ${
-                          playgroupAges.includes(age)
-                            ? 'border-purple-600 bg-purple-50 text-purple-700'
-                            : 'border-gray-200 text-gray-600 hover:border-purple-300'
-                        }`}
-                      >
-                        {age === '5+' ? '5+ yrs' : `${age}–${parseInt(age)+1} yrs`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  onClick={() => setStep(4)}
-                  className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700"
-                >
-                  Continue
-                </button>
-              </div>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500">What age range does your group cater to?</p>
+              {(() => {
+                const minVal = parseInt(playgroupAges[0] ?? '') ;
+                const maxVal = parseInt(playgroupAges[1] ?? '');
+                const ageError = !isNaN(minVal) && !isNaN(maxVal) && minVal > maxVal;
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Min age</p>
+                        <input
+                          type="number"
+                          min={0}
+                          max={18}
+                          value={playgroupAges[0] ?? ''}
+                          onChange={e => {
+                            const v = Math.min(18, Math.max(0, parseInt(e.target.value) || 0));
+                            setPlaygroupAges([String(v), playgroupAges[1] ?? '']);
+                          }}
+                          placeholder="0"
+                          className={`w-full p-3.5 border rounded-xl focus:ring-2 focus:ring-emerald-500 text-center text-lg font-semibold ${ageError ? 'border-red-300' : 'border-gray-200'}`}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Max age</p>
+                        <input
+                          type="number"
+                          min={0}
+                          max={18}
+                          value={playgroupAges[1] ?? ''}
+                          onChange={e => {
+                            const v = Math.min(18, Math.max(0, parseInt(e.target.value) || 0));
+                            setPlaygroupAges([playgroupAges[0] ?? '', String(v)]);
+                          }}
+                          placeholder="18"
+                          className={`w-full p-3.5 border rounded-xl focus:ring-2 focus:ring-emerald-500 text-center text-lg font-semibold ${ageError ? 'border-red-300' : 'border-gray-200'}`}
+                        />
+                      </div>
+                    </div>
+                    {ageError && <p className="text-red-500 text-sm">Min age must be lower than max age</p>}
+                  </>
+                );
+              })()}
+              <button
+                onClick={() => setStep(4)}
+                disabled={(() => { const mn = parseInt(playgroupAges[0] ?? ''); const mx = parseInt(playgroupAges[1] ?? ''); return !isNaN(mn) && !isNaN(mx) && mn > mx; })()}
+                className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
+              >
+                Continue
+              </button>
             </div>
           )}
 
@@ -2122,13 +2184,48 @@ function SignupPageInner() {
                 {/* Contact info */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Contact info</label>
-                  <input
-                    value={businessContact}
-                    onChange={e => setBusinessContact(e.target.value)}
-                    placeholder="Website, phone, email…"
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Optional — you can add this later in your profile</p>
+                  <div className="space-y-2">
+                    {businessContacts.map((contact, idx) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                        <select
+                          value={contact.type}
+                          onChange={e => setBusinessContacts(prev => prev.map((c, i) => i === idx ? { ...c, type: e.target.value } : c))}
+                          className="w-32 p-3 border border-white/40 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white/60 backdrop-blur-md appearance-none text-sm flex-shrink-0"
+                        >
+                          <option value="website">Website</option>
+                          <option value="phone">Phone</option>
+                          <option value="email">Email</option>
+                          <option value="instagram">Instagram</option>
+                          <option value="facebook">Facebook</option>
+                          <option value="other">Other</option>
+                        </select>
+                        <input
+                          value={contact.value}
+                          onChange={e => setBusinessContacts(prev => prev.map((c, i) => i === idx ? { ...c, value: e.target.value } : c))}
+                          placeholder={contact.type === 'website' ? 'https://…' : contact.type === 'phone' ? '04xx xxx xxx' : contact.type === 'email' ? 'you@example.com' : contact.type === 'instagram' ? '@handle' : ''}
+                          className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-sm"
+                        />
+                        {businessContacts.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setBusinessContacts(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-gray-400 hover:text-red-500 p-1 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setBusinessContacts(prev => [...prev, { type: 'website', value: '' }])}
+                      className="text-emerald-600 hover:text-emerald-700 text-sm font-medium flex items-center gap-1 mt-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                      Add another
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">Optional — you can update this any time in your profile</p>
                 </div>
               </div>
 

@@ -54,9 +54,9 @@ export default function LocationPicker({
   useEffect(() => {
     if (!showMap || !mapContainer.current) return;
 
-    console.log('Map initialization starting...');
-    console.log('Token available:', !!MAPBOX_TOKEN);
-    console.log('Token preview:', MAPBOX_TOKEN ? MAPBOX_TOKEN.substring(0, 20) + '...' : 'NONE');
+    
+    
+    
 
     if (!MAPBOX_TOKEN) {
       setMapError('Mapbox token not found');
@@ -69,7 +69,7 @@ export default function LocationPicker({
 
     // Set a more aggressive timeout first
     const timeout = setTimeout(() => {
-      console.log('Map loading timeout reached');
+      
       setMapError('Map took too long to load');
       setMapLoading(false);
     }, 5000); // Reduced to 5 seconds
@@ -77,7 +77,7 @@ export default function LocationPicker({
     mapboxgl.accessToken = MAPBOX_TOKEN;
 
     try {
-      console.log('Creating map instance...');
+      
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/streets-v12',
@@ -89,7 +89,7 @@ export default function LocationPicker({
       map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
       map.current.on('load', () => {
-        console.log('Map loaded successfully');
+        
         clearTimeout(timeout);
         setMapLoading(false);
       });
@@ -102,11 +102,11 @@ export default function LocationPicker({
       });
 
       map.current.on('styledata', () => {
-        console.log('Map style loaded');
+        
       });
 
       map.current.on('sourcedata', () => {
-        console.log('Map source data loaded');
+        
       });
 
     } catch (error) {

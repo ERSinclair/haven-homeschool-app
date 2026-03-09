@@ -16,7 +16,7 @@ export const getAdminLevel = async (): Promise<'gold' | 'silver' | 'bronze' | nu
   
   // If no admin session, check if user is logged in via main app
   if (!session) {
-    const mainAppSession = localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token');
+    const mainAppSession = localStorage.getItem('sb-auth-token');
     if (mainAppSession) {
       try {
         const mainSession = JSON.parse(mainAppSession);
@@ -103,7 +103,7 @@ export const getAdminStats = async () => {
   
   // Fallback to main app session
   if (!sessionData) {
-    const mainAppSession = localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token');
+    const mainAppSession = localStorage.getItem('sb-auth-token');
     if (mainAppSession) {
       try {
         sessionData = JSON.parse(mainAppSession);
@@ -184,7 +184,7 @@ export const getAllUsers = async (filters: { search?: string; banned?: boolean }
   
   // Fallback to main app session
   if (!sessionData) {
-    const mainAppSession = localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token');
+    const mainAppSession = localStorage.getItem('sb-auth-token');
     if (mainAppSession) {
       try {
         sessionData = JSON.parse(mainAppSession);

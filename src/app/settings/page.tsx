@@ -606,7 +606,7 @@ export default function SettingsPage() {
             <h3 className="text-xl font-bold text-red-600 mb-2">Delete account?</h3>
             <p className="text-gray-600 mb-4">This will permanently delete your profile, messages, and connections.</p>
             <div className="bg-red-50 p-3 rounded-xl mb-6">
-              <p className="text-sm text-red-700">⚠️ This cannot be undone</p>
+              <p className="text-sm text-red-700 font-medium">This cannot be undone.</p>
             </div>
             <div className="flex gap-3">
               <button

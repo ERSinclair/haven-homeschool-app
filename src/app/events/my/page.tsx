@@ -10,7 +10,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const SHOW_LIMIT = 3;
+const SHOW_LIMIT = 4;
 
 type Event = {
   id: string;
@@ -34,10 +34,9 @@ export default function MyEventsPage() {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
 
-  // Show all toggles per section
-  const [showAllHosting, setShowAllHosting] = useState(false);
-  const [showAllPublic, setShowAllPublic] = useState(false);
-  const [showAllPrivate, setShowAllPrivate] = useState(false);
+  const [shownHosting, setShownHosting] = useState(SHOW_LIMIT);
+  const [shownPublic, setShownPublic] = useState(SHOW_LIMIT);
+  const [shownPrivate, setShownPrivate] = useState(SHOW_LIMIT);
 
   const router = useRouter();
 
@@ -196,18 +195,18 @@ export default function MyEventsPage() {
     title,
     events,
     isHosting,
-    showAll,
-    onToggle,
+    shown,
+    onShowMore,
   }: {
     title: string;
     events: Event[];
     isHosting: boolean;
-    showAll: boolean;
-    onToggle: () => void;
+    shown: number;
+    onShowMore: () => void;
   }) => {
     if (events.length === 0) return null;
-    const visible = showAll ? events : events.slice(0, SHOW_LIMIT);
-    const hasMore = events.length > SHOW_LIMIT;
+    const visible = events.slice(0, shown);
+    const hasMore = events.length > shown;
     return (
       <div className="mb-6">
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{title}</h2>
@@ -216,10 +215,10 @@ export default function MyEventsPage() {
         </div>
         {hasMore && (
           <button
-            onClick={onToggle}
+            onClick={onShowMore}
             className="mt-3 w-full py-2 text-sm font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 rounded-xl hover:bg-emerald-50 transition-colors"
           >
-            {showAll ? 'Show less' : `Show all ${events.length}`}
+            Show 10 more
           </button>
         )}
       </div>
@@ -267,22 +266,22 @@ export default function MyEventsPage() {
                 title="Hosting"
                 events={hosting}
                 isHosting={true}
-                showAll={showAllHosting}
-                onToggle={() => setShowAllHosting(v => !v)}
+                shown={shownHosting}
+                onShowMore={() => setShownHosting(n => n + 10)}
               />
               <Section
                 title="Attending · Public"
                 events={publicAttending}
                 isHosting={false}
-                showAll={showAllPublic}
-                onToggle={() => setShowAllPublic(v => !v)}
+                shown={shownPublic}
+                onShowMore={() => setShownPublic(n => n + 10)}
               />
               <Section
                 title="Attending · Private"
                 events={privateAttending}
                 isHosting={false}
-                showAll={showAllPrivate}
-                onToggle={() => setShowAllPrivate(v => !v)}
+                shown={shownPrivate}
+                onShowMore={() => setShownPrivate(n => n + 10)}
               />
             </>
           )}

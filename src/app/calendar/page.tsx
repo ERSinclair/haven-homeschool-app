@@ -320,6 +320,46 @@ function CalendarContent() {
 
       setItems(allItems.sort((a, b) => a.date.localeCompare(b.date)));
 
+      // Auto-add own birthday to calendar if DOB set and not already added
+      const profileRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=dob`, { headers: h });
+      if (profileRes.ok) {
+        const [profile] = await profileRes.json();
+        if (profile?.dob) {
+          const existingBirthday = loadedNotes.find(n => n.note_type === 'birthday' && n.title === 'My Birthday');
+          if (!existingBirthday) {
+            const hJson = { ...h, 'Content-Type': 'application/json' };
+            const res = await fetch(`${supabaseUrl}/rest/v1/calendar_notes`, {
+              method: 'POST',
+              headers: { ...hJson, Prefer: 'return=representation' },
+              body: JSON.stringify({
+                profile_id: session.user.id,
+                note_date: profile.dob,
+                title: 'My Birthday',
+                content: '',
+                recurrence_rule: 'yearly',
+                recurrence_end_date: null,
+                note_type: 'birthday',
+              }),
+            });
+            if (res.ok) {
+              const [created] = await res.json();
+              if (created) {
+                const newInstances = expandRecurringNote(created).map(({ date, instanceId }) => ({
+                  id: instanceId,
+                  title: 'My Birthday',
+                  date,
+                  type: 'birthday' as const,
+                  description: '',
+                  noteId: created.id,
+                  recurrenceRule: created.recurrence_rule,
+                }));
+                setItems(prev => [...prev, ...newInstances].sort((a, b) => a.date.localeCompare(b.date)));
+              }
+            }
+          }
+        }
+      }
+
       // Daily birthday notification digest
       const today = new Date().toISOString().split('T')[0];
       const lastBirthdayCheck = localStorage.getItem('haven-birthday-check-date');
@@ -450,7 +490,19 @@ function CalendarContent() {
         });
         if (res.ok) {
           const [created] = await res.json();
-          if (created) setNotes(prev => [...prev, created]);
+          if (created) {
+            setNotes(prev => [...prev, created]);
+            const newInstances = expandRecurringNote(created).map(({ date, instanceId }) => ({
+              id: instanceId,
+              title: created.title || 'Birthday',
+              date,
+              type: 'birthday' as const,
+              description: created.content,
+              noteId: created.id,
+              recurrenceRule: created.recurrence_rule,
+            }));
+            setItems(prev => [...prev, ...newInstances].sort((a, b) => a.date.localeCompare(b.date)));
+          }
         }
       }
       cancelNote();
@@ -711,8 +763,8 @@ function CalendarContent() {
                   <button
                     key={day}
                     onClick={() => { setSelectedDate(dateStr); cancelNote(); }}
-                    className={`h-12 flex flex-col items-center justify-start pt-1.5 border-b border-r border-gray-50 last:border-r-0 transition-colors ${
-                      isSelected ? 'bg-emerald-600' : isToday ? 'bg-emerald-50' : isPast ? 'bg-gray-50/50' : 'hover:bg-gray-50'
+                    className={`h-12 flex flex-col items-center justify-start pt-1.5 border-b border-r last:border-r-0 transition-colors ${
+                      isSelected ? 'bg-emerald-600 border-emerald-600' : isToday ? 'bg-emerald-50 border-gray-50' : isPast ? 'bg-gray-50/50 border-gray-50' : 'hover:bg-gray-50 border-gray-50'
                     }`}
                   >
                     <span className={`text-xs font-semibold leading-none ${
@@ -973,16 +1025,7 @@ function CalendarContent() {
             </div>
           )}
 
-          {/* Empty state */}
-          {items.length === 0 && !loading && (
-            <div className="text-center py-12">
-              <p className="text-gray-500 font-medium mb-2">Your calendar is empty</p>
-              <p className="text-gray-400 text-sm mb-4">RSVP to events or create your own to see them here</p>
-              <Link href="/events" className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold text-sm hover:bg-emerald-700 transition-colors">
-                Browse events
-              </Link>
-            </div>
-          )}
+
         </div>
         </div>
       </div>

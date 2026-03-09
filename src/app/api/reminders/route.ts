@@ -70,5 +70,43 @@ export async function GET(req: NextRequest) {
     fired++;
   }
 
+  // ── Birthday notifications ──────────────────────────────────────────────
+  const todayMMDD = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayKey = `birthday-${now.toISOString().slice(0, 10)}`;
+
+  // Find users whose birthday is today and haven't been notified yet
+  const { data: birthdayProfiles } = await supabase
+    .from('profiles')
+    .select('id, family_name, display_name, dob, push_subscriptions(endpoint, p256dh, auth)')
+    .not('dob', 'is', null)
+    .like('dob', `%-${todayMMDD}`);
+
+  if (birthdayProfiles?.length) {
+    for (const profile of birthdayProfiles) {
+      // Check we haven't already sent this today
+      const { data: existing } = await supabase
+        .from('notifications')
+        .select('id')
+        .eq('user_id', profile.id)
+        .eq('type', 'birthday_self')
+        .gte('created_at', now.toISOString().slice(0, 10))
+        .limit(1);
+
+      if (existing?.length) continue;
+
+      const name = profile.display_name || profile.family_name || 'there';
+      await supabase.from('notifications').insert({
+        user_id: profile.id,
+        actor_id: profile.id,
+        type: 'birthday_self',
+        title: `Happy Birthday, ${name}!`,
+        body: 'Wishing you a wonderful day from everyone at Haven.',
+        link: '/calendar',
+        read: false,
+      });
+      fired++;
+    }
+  }
+
   return NextResponse.json({ ok: true, fired });
 }

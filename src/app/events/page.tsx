@@ -91,9 +91,9 @@ const categoryLabels: Record<string, string> = {
 };
 
 export default function EventsPage() {
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<Event[]>(() => getCached<Event[]>('events:list') || []);
   const [privateHostedEvents, setPrivateHostedEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !getCached<Event[]>('events:list'));
   const [userId, setUserId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -147,7 +147,7 @@ export default function EventsPage() {
   const [loadingAttendees, setLoadingAttendees] = useState(false);
   const [inviteablePeople, setInviteablePeople] = useState<any[]>([]);
   const [showInviteSheet, setShowInviteSheet] = useState(false);
-  const [showAllMembers, setShowAllMembers] = useState(false);
+  const [shownMembers, setShownMembers] = useState(4);
   // Event detail tabs
   const [eventDetailTab, setEventDetailTab] = useState<'info' | 'chat'>('info');
   const [eventChatMessages, setEventChatMessages] = useState<any[]>([]);
@@ -167,8 +167,10 @@ export default function EventsPage() {
   const [pastEventsSubTab, setPastEventsSubTab] = useState<'attended' | 'hosted'>('attended');
   const [showPastEvents, setShowPastEvents] = useState(false);
   const [showInvitations, setShowInvitations] = useState(false);
-  const [showAllPastHosted, setShowAllPastHosted] = useState(false);
-  const [showAllPastAttended, setShowAllPastAttended] = useState(false);
+  const [shownPastHosted, setShownPastHosted] = useState(4);
+  const [shownPastAttended, setShownPastAttended] = useState(4);
+  const [shownUpcomingHosted, setShownUpcomingHosted] = useState(4);
+  const [shownUpcomingGoing, setShownUpcomingGoing] = useState(4);
   const [invitations, setInvitations] = useState<EventInvitation[]>([]);
   const [loadingInvitations, setLoadingInvitations] = useState(false);
   const [processingInvite, setProcessingInvite] = useState<string | null>(null);
@@ -176,7 +178,9 @@ export default function EventsPage() {
   const [mainTab, setMainTab] = useState<'discover' | 'mine'>('mine');
   const router = useRouter();
 
-  // Auto-open create modal if ?create=1 is in the URL
+
+
+// Auto-open create modal if ?create=1 is in the URL
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -447,31 +451,29 @@ export default function EventsPage() {
     const existingGroup = (eventReactions[messageId] || []).find(g => g.users.includes(userId));
     const isSameEmoji = existingGroup?.emoji === emoji;
 
-    // Remove existing reaction (if any)
-    if (existingGroup) {
-      await fetch(
-        `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.event&user_id=eq.${userId}&emoji=eq.${encodeURIComponent(existingGroup.emoji)}`,
-        { method: 'DELETE', headers: h }
-      );
-      setEventReactions(prev => {
-        const groups = (prev[messageId] || [])
-          .map(g => g.emoji === existingGroup.emoji ? { ...g, users: g.users.filter(u => u !== userId) } : g)
-          .filter(g => g.users.length > 0);
-        return { ...prev, [messageId]: groups };
-      });
-    }
+    // Always remove ALL existing reactions for this user on this message
+    await fetch(
+      `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.event&user_id=eq.${userId}`,
+      { method: 'DELETE', headers: h }
+    );
+    setEventReactions(prev => {
+      const groups = (prev[messageId] || [])
+        .map(g => ({ ...g, users: g.users.filter(u => u !== userId) }))
+        .filter(g => g.users.length > 0);
+      return { ...prev, [messageId]: groups };
+    });
 
     // Add new reaction only if it's a different emoji (same emoji = toggle off)
     if (!isSameEmoji) {
       await fetch(`${supabaseUrl}/rest/v1/message_reactions`, {
         method: 'POST',
-        headers: { ...h, 'Prefer': 'return=minimal,resolution=ignore-duplicates' },
+        headers: { ...h, 'Prefer': 'return=minimal' },
         body: JSON.stringify({ message_id: messageId, message_type: 'event', user_id: userId, emoji }),
       });
       setEventReactions(prev => {
         const groups = [...(prev[messageId] || [])];
         const group = groups.find(g => g.emoji === emoji);
-        if (group) group.users.push(userId);
+        if (group) group.users = [...group.users, userId];
         else groups.push({ emoji, users: [userId] });
         return { ...prev, [messageId]: groups };
       });
@@ -886,7 +888,7 @@ export default function EventsPage() {
                   const eventDate = new Date(ev.event_date + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'long' });
                   fetch('/api/email', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
                     body: JSON.stringify({ type: 'rsvp', to: host.email, eventTitle: ev.title, eventDate, attendeeName }),
                   }).catch(() => {});
                 }
@@ -1678,7 +1680,7 @@ export default function EventsPage() {
                       <p className="text-sm text-gray-400 text-center py-3">No one has RSVP'd yet</p>
                     ) : (
                       <div className="space-y-2">
-                        {(showAllMembers ? attendees : attendees.slice(0, 4)).map(p => (
+                        {attendees.slice(0, shownMembers).map(p => (
                           <div key={p.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-emerald-700 overflow-hidden">
@@ -1707,9 +1709,9 @@ export default function EventsPage() {
                             </button>
                           </div>
                         ))}
-                        {attendees.length > 4 && (
-                          <button onClick={() => setShowAllMembers(v => !v)} className="w-full text-center text-sm text-emerald-600 font-medium py-1.5 hover:text-emerald-700">
-                            {showAllMembers ? 'Show less' : `Show all ${attendees.length} members`}
+                        {attendees.length > shownMembers && (
+                          <button onClick={() => setShownMembers(n => n + 10)} className="w-full text-center text-sm text-emerald-600 font-medium py-1.5 hover:text-emerald-700">
+                            Show 10 more
                           </button>
                         )}
                       </div>
@@ -1856,7 +1858,7 @@ export default function EventsPage() {
         {/* Category filters removed — add back when user volume justifies it */}
 
         {/* Browse location — discover only */}
-        {mainTab === 'discover' && <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />}
+        {mainTab === 'discover' && <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} alwaysOpen />}
 
         {/* Calendar view */}
         {eventsViewMode === 'calendar' && (
@@ -1999,7 +2001,12 @@ export default function EventsPage() {
                   {upcomingHosted.length > 0 && (
                     <div className="mb-5">
                       <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Hosting</h2>
-                      <div className="space-y-2">{upcomingHosted.map(e => eventCard(e, 'hosting'))}</div>
+                      <div className="space-y-2">{upcomingHosted.slice(0, shownUpcomingHosted).map(e => eventCard(e, 'hosting'))}</div>
+                      {upcomingHosted.length > shownUpcomingHosted && (
+                        <button onClick={() => setShownUpcomingHosted(n => n + 10)} className="mt-2 w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+                          Show 10 more
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -2007,7 +2014,12 @@ export default function EventsPage() {
                   {upcomingGoing.length > 0 && (
                     <div className="mb-5">
                       <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Going</h2>
-                      <div className="space-y-2">{upcomingGoing.map(e => eventCard(e, 'going'))}</div>
+                      <div className="space-y-2">{upcomingGoing.slice(0, shownUpcomingGoing).map(e => eventCard(e, 'going'))}</div>
+                      {upcomingGoing.length > shownUpcomingGoing && (
+                        <button onClick={() => setShownUpcomingGoing(n => n + 10)} className="mt-2 w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+                          Show 10 more
+                        </button>
+                      )}
                     </div>
                   )}
                 </>
@@ -2109,14 +2121,14 @@ export default function EventsPage() {
                             Hosted ({pastHosted.length})
                           </h2>
                           <div className="space-y-2">
-                            {(showAllPastHosted ? pastHosted : pastHosted.slice(0, 3)).map(e => eventCard(e, 'past'))}
+                            {pastHosted.slice(0, shownPastHosted).map(e => eventCard(e, 'past'))}
                           </div>
-                          {pastHosted.length > 3 && (
+                          {pastHosted.length > shownPastHosted && (
                             <button
-                              onClick={() => setShowAllPastHosted(v => !v)}
+                              onClick={() => setShownPastHosted(n => n + 10)}
                               className="mt-2 w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
                             >
-                              {showAllPastHosted ? 'Show less' : `Show all ${pastHosted.length}`}
+                              Show 10 more
                             </button>
                           )}
                         </div>
@@ -2129,14 +2141,14 @@ export default function EventsPage() {
                             Attended ({pastGoing.length})
                           </h2>
                           <div className="space-y-2">
-                            {(showAllPastAttended ? pastGoing : pastGoing.slice(0, 3)).map(e => eventCard(e, 'past'))}
+                            {pastGoing.slice(0, shownPastAttended).map(e => eventCard(e, 'past'))}
                           </div>
-                          {pastGoing.length > 3 && (
+                          {pastGoing.length > shownPastAttended && (
                             <button
-                              onClick={() => setShowAllPastAttended(v => !v)}
+                              onClick={() => setShownPastAttended(n => n + 10)}
                               className="mt-2 w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
                             >
-                              {showAllPastAttended ? 'Show less' : `Show all ${pastGoing.length}`}
+                              Show 10 more
                             </button>
                           )}
                         </div>
@@ -2167,7 +2179,8 @@ export default function EventsPage() {
             <p className="text-center text-sm text-gray-400 py-4">Tap a day to see events</p>
           );
           if (displayEvents.length === 0) return (
-            <div className="text-center py-12 px-6">              <p className="font-semibold text-gray-800 mb-1">No events nearby yet</p>
+            <div className="text-center py-12 px-6">
+              <p className="font-semibold text-gray-800 mb-1">No events nearby yet</p>
               <p className="text-sm text-gray-500">Be the first to organise something — a park day, a study session, a field trip. It only takes a minute.</p>
               <button
                 onClick={() => setShowCreateModal(true)}
@@ -2175,6 +2188,15 @@ export default function EventsPage() {
               >
                 Create an event
               </button>
+              <div className="mt-6 text-sm text-gray-400">
+                <p>Try increasing your search radius.</p>
+                <a href="/settings" className="mt-2 inline-flex items-center justify-center group">
+                  <svg className="w-6 h-6 text-gray-400 group-hover:text-emerald-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0Z" />
+                  </svg>
+                </a>
+              </div>
             </div>
           );
           return (
@@ -2244,7 +2266,7 @@ export default function EventsPage() {
         {mainTab === 'discover' && eventsViewMode !== 'calendar' && (() => {
           const today = new Date().toISOString().slice(0, 10);
           const count = filteredEvents.filter(e => e.event_date >= today && !e._hidden && !e.user_rsvp && e.host_id !== userId && !hiddenEvents.has(e.id)).length;
-          if (count === 0) return null;
+          if (count === 0) return null; // empty state already shows the nudge
           return (
             <div className="text-center py-6 text-sm text-gray-400">
               <p>That's everything nearby.</p>

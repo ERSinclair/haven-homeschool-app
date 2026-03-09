@@ -54,11 +54,11 @@ export default function SimpleLocationPicker({
         `types=place,locality,district,address,poi&` +
         `limit=8`;
       
-      console.log('Geocoding request:', url);
+      
       const response = await fetch(url);
       
       const data = await response.json();
-      console.log('Geocoding response:', data);
+      
       
       if (data.features && data.features.length > 0) {
         // Show all results (proximity already prioritizes local ones)
@@ -99,7 +99,7 @@ export default function SimpleLocationPicker({
       lng: suggestion.center[0]
     };
     
-    console.log('Location selected:', location);
+    
     
     setQuery(suggestion.place_name);
     setShowSuggestions(false);

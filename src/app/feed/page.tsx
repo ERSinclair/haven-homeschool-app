@@ -38,7 +38,8 @@ export default function FeedPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAllNotifs, setShowAllNotifs] = useState(false);
+  const [notifsShown, setNotifsShown] = useState(4);
+  const [statsShown, setStatsShown] = useState(4);
   const [emailVerified, setEmailVerified] = useState(true);
   const [verifyDismissed, setVerifyDismissed] = useState(false);
   const [profile, setProfile] = useState<any>(null);
@@ -243,7 +244,7 @@ export default function FeedPage() {
 
   const greeting = () => {
     const name = (profile?.display_name || profile?.family_name || '').split(' ')[0] || '';
-    return `Welcome back${name ? `, ${name}` : ''}`;
+    return `Hi${name ? ` ${name}` : ''}`;
   };
 
   const formatTime = (iso: string) => {
@@ -365,12 +366,7 @@ export default function FeedPage() {
             </div>
           )}
 
-          {/* Greeting */}
-          <div className="mb-5 text-center">
-            <h1 className="text-2xl font-bold text-gray-900">{greeting()}</h1>
-          </div>
-
-          {/* Invite a Friend — first thing below greeting */}
+          {/* Invite a Friend */}
           <section className="mb-5">
             <InviteToHaven />
           </section>
@@ -405,159 +401,8 @@ export default function FeedPage() {
             </div>
           ))}
 
-          {/* Quick Nav */}
-          <section className="mb-6">
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              {[
-                {
-                  href: '/discover',
-                  label: 'Discover',
-                  sub: 'Find local families',
-                  color: 'text-emerald-600',
-                  bg: 'bg-emerald-50',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
-                },
-                {
-                  href: '/circles',
-                  label: 'Circles',
-                  sub: 'Your groups',
-                  color: 'text-blue-600',
-                  bg: 'bg-blue-50',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="8.5" cy="12" r="6" strokeWidth={2} /><circle cx="15.5" cy="12" r="6" strokeWidth={2} /></svg>,
-                },
-                {
-                  href: '/events',
-                  label: 'Events',
-                  sub: 'Upcoming meetups',
-                  color: 'text-amber-600',
-                  bg: 'bg-amber-50',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
-                },
-                {
-                  href: '/messages',
-                  label: 'Messages',
-                  sub: 'Direct messages',
-                  color: 'text-purple-600',
-                  bg: 'bg-purple-50',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
-                },
-              ].map(({ href, label, sub, color, bg, icon }) => (
-                <button
-                  key={href}
-                  onClick={() => router.push(href)}
-                  className="flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm hover:border-gray-200 active:scale-[0.98] transition-all text-left"
-                >
-                  <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-shrink-0 ${color}`}>
-                    {icon}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 leading-tight">{label}</p>
-                    <p className="text-xs text-gray-400 leading-tight mt-0.5">{sub}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* Community Board */}
-            <button
-              onClick={() => router.push('/board')}
-              className="w-full flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm hover:border-violet-200 hover:bg-violet-50 active:scale-[0.98] transition-all text-left group"
-            >
-              <div className="w-9 h-9 rounded-xl bg-violet-50 group-hover:bg-violet-100 flex items-center justify-center flex-shrink-0 transition-colors">
-                <svg className="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900">Community Board</p>
-                <p className="text-xs text-gray-400 mt-0.5">Questions, curriculum, local tips</p>
-              </div>
-              <svg className="w-4 h-4 text-gray-300 group-hover:text-violet-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </section>
-
-          {/* Birthdays today */}
-          {todayBirthdays.length > 0 && (
-            <section className="mb-4">
-              <div className="bg-pink-50 border border-pink-200 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-lg">🎂</span>
-                  <p className="font-semibold text-pink-800 text-sm">Birthdays today</p>
-                </div>
-                <div className="space-y-1">
-                  {todayBirthdays.map((name, i) => (
-                    <p key={i} className="text-sm text-pink-700">{name}</p>
-                  ))}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* Search */}
-          <section className="mb-6">
-            <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Search families, events, circles..."
-                className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-2xl text-sm shadow-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                    window.location.href = `/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`;
-                  }
-                }}
-              />
-            </div>
-          </section>
-
-          {/* Stat Cards */}
-          <section className="mb-8">
-            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">This week</h2>
-
-            {loading ? (
-              <div className="space-y-2">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="h-16 bg-white rounded-2xl border border-gray-100 animate-pulse" />
-                ))}
-              </div>
-            ) : statCards.length === 0 ? (
-              <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-center">
-                <p className="text-sm font-semibold text-gray-700 mb-0.5">All quiet this week</p>
-                <p className="text-xs text-gray-400">New families, events, and circle activity will show up here.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {(statCards as any[]).map((card, i) => (
-                  <button
-                    key={i}
-                    onClick={() => card.href && router.push(card.href)}
-                    className="w-full rounded-2xl p-3.5 border border-gray-100 bg-white shadow-sm text-left flex items-center gap-3 hover:border-gray-200 active:scale-[0.98] transition-all"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center flex-shrink-0">
-                      {card.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-gray-900 leading-tight">{card.label}</p>
-                      <p className="text-xs text-gray-400 mt-0.5 leading-tight">{card.sub}</p>
-                    </div>
-                    {card.badge > 0 && (
-                      <span className="min-w-[20px] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1.5 leading-none flex-shrink-0">
-                        {card.badge > 9 ? '9+' : card.badge}
-                      </span>
-                    )}
-                    <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-
           {/* Notifications */}
-          <section>
+          <section className="mb-6">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wide">Notifications</h2>
               {notifications.some(n => !n.read) && (
@@ -579,11 +424,10 @@ export default function FeedPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {(showAllNotifs ? notifications : notifications.slice(0, 3)).map(n => (
+                {notifications.slice(0, notifsShown).map(n => (
                   <button
                     key={n.id}
                     onClick={() => {
-                      // Mark as read
                       const session = getStoredSession();
                       if (session?.user) {
                         fetch(`${supabaseUrl}/rest/v1/notifications?id=eq.${n.id}`, {
@@ -594,7 +438,6 @@ export default function FeedPage() {
                         setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
                         if (stats) setStats(s => s ? { ...s, unreadNotifications: Math.max(0, s.unreadNotifications - 1) } : s);
                       }
-                      // Navigate based on type
                       if (n.reference_type === 'event') router.push(`/events/${n.reference_id}`);
                       else if (n.reference_type === 'circle') router.push(`/circles/${n.reference_id}`);
                       else if (n.reference_type === 'connection' || n.reference_type === 'connection_request') router.push('/connections');
@@ -619,8 +462,106 @@ export default function FeedPage() {
                     </div>
                   </button>
                 ))}
+                {notifications.length > notifsShown && (
+                  <button
+                    onClick={() => setNotifsShown(n => n + 10)}
+                    className="w-full py-2.5 text-sm text-gray-400 font-medium hover:text-gray-600 transition-colors"
+                  >
+                    Show more
+                  </button>
+                )}
               </div>
             )}
+          </section>
+
+          {/* Birthdays today */}
+          {todayBirthdays.length > 0 && (
+            <section className="mb-4">
+              <div className="bg-pink-50 border border-pink-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">🎂</span>
+                  <p className="font-semibold text-pink-800 text-sm">Birthdays today</p>
+                </div>
+                <div className="space-y-1">
+                  {todayBirthdays.map((name, i) => (
+                    <p key={i} className="text-sm text-pink-700">{name}</p>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Stat Cards */}
+          <section className="mb-8">
+            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">This week</h2>
+
+            {loading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-16 bg-white rounded-2xl border border-gray-100 animate-pulse" />
+                ))}
+              </div>
+            ) : statCards.length === 0 ? (
+              <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-center">
+                <p className="text-sm font-semibold text-gray-700 mb-0.5">All quiet this week</p>
+                <p className="text-xs text-gray-400">New families, events, and circle activity will show up here.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(statCards as any[]).slice(0, statsShown).map((card, i) => (
+                  <button
+                    key={i}
+                    onClick={() => card.href && router.push(card.href)}
+                    className="w-full rounded-2xl p-3.5 border border-gray-100 bg-white shadow-sm text-left flex items-center gap-3 hover:border-gray-200 active:scale-[0.98] transition-all"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center flex-shrink-0">
+                      {card.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 leading-tight">{card.label}</p>
+                      <p className="text-xs text-gray-400 mt-0.5 leading-tight">{card.sub}</p>
+                    </div>
+                    {card.badge > 0 && (
+                      <span className="min-w-[20px] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1.5 leading-none flex-shrink-0">
+                        {card.badge > 9 ? '9+' : card.badge}
+                      </span>
+                    )}
+                    <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </button>
+                ))}
+                {(statCards as any[]).length > statsShown && (
+                  <button
+                    onClick={() => setStatsShown(n => n + 10)}
+                    className="w-full py-2.5 text-sm text-gray-400 font-medium hover:text-gray-600 transition-colors"
+                  >
+                    Show more
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+
+
+
+          {/* Community Board */}
+          <section className="mb-4">
+            <button
+              onClick={() => router.push('/board')}
+              className="w-full flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm hover:border-violet-200 hover:bg-violet-50 active:scale-[0.98] transition-all text-left group"
+            >
+              <div className="w-9 h-9 rounded-xl bg-violet-50 group-hover:bg-violet-100 flex items-center justify-center flex-shrink-0 transition-colors">
+                <svg className="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900">Community Board</p>
+                <p className="text-xs text-gray-400 mt-0.5">Questions, curriculum, local tips</p>
+              </div>
+              <svg className="w-4 h-4 text-gray-300 group-hover:text-violet-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </section>
 
           {/* Feedback + Support */}

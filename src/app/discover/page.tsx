@@ -141,9 +141,9 @@ function getLocationCoords(locationName: string): { lat: number; lng: number } |
 function EnhancedDiscoverPage() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [families, setFamilies] = useState<Family[]>([]);
+  const [families, setFamilies] = useState<Family[]>(() => getCached<Family[]>('discover:families') || []);
   const [filteredFamilies, setFilteredFamilies] = useState<Family[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !getCached<Family[]>('discover:families'));
   const [selectedFamily, setSelectedFamily] = useState<Family | null>(null);
   const [reportBlockTarget, setReportBlockTarget] = useState<{ id: string; name: string; mode: 'report' | 'block' } | null>(null);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
@@ -185,6 +185,7 @@ function EnhancedDiscoverPage() {
     typeof window !== 'undefined' && sessionStorage.getItem('haven-nearby-banner-dismissed') === 'true'
   );
   const [locationMissing, setLocationMissing] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   // Radius search - with localStorage persistence for testing
   const [searchRadius] = useState(() => loadSearchRadius());
@@ -201,7 +202,9 @@ function EnhancedDiscoverPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Auto-open profile from ?profile= query param (e.g. from notification links)
+
+
+// Auto-open profile from ?profile= query param (e.g. from notification links)
   useEffect(() => {
     const profileId = searchParams.get('profile');
     if (!profileId) return;
@@ -302,7 +305,6 @@ function EnhancedDiscoverPage() {
         );
         
         if (!profileRes.ok) {
-          console.error('Enhanced Discover: Profile fetch failed:', profileRes.status);
           setIsLoading(false);
           return;
         }
@@ -392,9 +394,7 @@ function EnhancedDiscoverPage() {
         );
         
         if (!familiesRes.ok) {
-          console.error('Enhanced Discover: Families fetch failed:', familiesRes.status);
           const errorData = await familiesRes.json();
-          console.error('Enhanced Discover: Families error:', errorData);
           setIsLoading(false);
           return;
         }
@@ -422,7 +422,6 @@ function EnhancedDiscoverPage() {
         // Load existing connection requests
         await loadConnectionRequests();
       } catch (err) {
-        console.error('Enhanced Discover: Error:', err);
       } finally {
         setIsLoading(false);
       }
@@ -628,17 +627,53 @@ function EnhancedDiscoverPage() {
       });
     }
 
-    // Sort families alphabetically by last name
-    const getLastName = (family: Family) => {
-      const fullName = family.family_name || family.display_name || '';
-      const nameParts = fullName.trim().split(' ');
-      return nameParts.length > 1 ? nameParts[nameParts.length - 1] : fullName;
+    // Sort families by relevance:
+    // 1. Online now (active within 15 min)
+    // 2. Profile completeness (has avatar + bio)
+    // 3. Distance (closer first, if location known)
+    // 4. Recently active (within 7 days)
+    // 5. Alphabetical by name as tiebreaker
+    const sortActiveLocation = browseLocation ?? userLocation;
+    const now = Date.now();
+    const ONLINE_MS = 15 * 60 * 1000;      // 15 min
+    const RECENT_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+    const getDistance = (family: Family): number => {
+      if (!sortActiveLocation) return 9999;
+      const coords = (family.location_lat && family.location_lng)
+        ? { lat: family.location_lat, lng: family.location_lng }
+        : getLocationCoords(family.location_name);
+      if (!coords) return 9999;
+      return calculateDistance(sortActiveLocation.lat, sortActiveLocation.lng, coords.lat, coords.lng);
     };
 
     const sortedFamilies = [...filtered].sort((a, b) => {
-      const lastNameA = getLastName(a).toLowerCase();
-      const lastNameB = getLastName(b).toLowerCase();
-      return lastNameA.localeCompare(lastNameB);
+      // 1. Online now
+      const aOnline = a.is_online ? 1 : 0;
+      const bOnline = b.is_online ? 1 : 0;
+      if (bOnline !== aOnline) return bOnline - aOnline;
+
+      // 2. Profile completeness (avatar + bio = complete)
+      const aComplete = (a.avatar_url ? 1 : 0) + (a.bio?.trim() ? 1 : 0);
+      const bComplete = (b.avatar_url ? 1 : 0) + (b.bio?.trim() ? 1 : 0);
+      if (bComplete !== aComplete) return bComplete - aComplete;
+
+      // 3. Distance (closer = better)
+      const aDist = getDistance(a);
+      const bDist = getDistance(b);
+      if (Math.abs(aDist - bDist) > 0.5) return aDist - bDist; // >0.5km difference matters
+
+      // 4. Recently active (within 7 days)
+      const aActiveAt = a.last_active_at ? new Date(a.last_active_at).getTime() : 0;
+      const bActiveAt = b.last_active_at ? new Date(b.last_active_at).getTime() : 0;
+      const aRecent = (now - aActiveAt) < RECENT_MS ? 1 : 0;
+      const bRecent = (now - bActiveAt) < RECENT_MS ? 1 : 0;
+      if (bRecent !== aRecent) return bRecent - aRecent;
+
+      // 5. Alphabetical by name
+      const aName = (a.family_name || a.display_name || '').toLowerCase();
+      const bName = (b.family_name || b.display_name || '').toLowerCase();
+      return aName.localeCompare(bName);
     });
 
     setFilteredFamilies(sortedFamilies);
@@ -659,7 +694,7 @@ function EnhancedDiscoverPage() {
       try {
         const sUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const sKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        const session = JSON.parse(localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token') || '{}');
+        const session = JSON.parse(localStorage.getItem('sb-auth-token') || '{}');
         if (!session.access_token) return;
         for (const [context, term] of entries) {
           await fetch(`${sUrl}/rest/v1/search_insights`, {
@@ -820,7 +855,7 @@ function EnhancedDiscoverPage() {
           newMap.delete(familyId);
           return newMap;
         });
-        
+
         return;
       }
 
@@ -885,7 +920,7 @@ function EnhancedDiscoverPage() {
             if (rec?.email) {
               fetch('/api/email', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
                 body: JSON.stringify({ type: 'connection_request', to: rec.email, fromName: senderName }),
               }).catch(() => {});
             }
@@ -1143,10 +1178,45 @@ function EnhancedDiscoverPage() {
           </div>
         )}
 
-        <>
+        {/* Search bar */}
+        <div className="relative mb-2">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search families, locations..."
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
 
-        {/* Account type tab bar — always visible */}
-        <div className="flex justify-evenly mb-3 bg-white rounded-xl p-0.5 border border-gray-200">
+        {/* Filter toggle button */}
+        <div className="flex justify-start mb-2">
+          <button
+            onClick={() => setShowFilters(v => !v)}
+            className="text-xs font-semibold text-gray-500 hover:text-emerald-600 transition-colors"
+          >
+            {showFilters ? '− Filters' : '+ Filters'}
+          </button>
+        </div>
+
+        {/* Collapsible filter panel */}
+        {showFilters && (<>
+
+        {/* Account type tab bar */}
+        <div className="flex justify-evenly mb-2 bg-white rounded-xl p-0.5 border border-gray-200">
           {([
             { value: 'all',       label: 'All' },
             { value: 'family',    label: 'Families' },
@@ -1182,12 +1252,15 @@ function EnhancedDiscoverPage() {
         {/* Family status chips — shown when Families tab active */}
         {activeTab === 'family' && (
           <>
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
               {([
-                { value: 'all',         label: 'All' },
-                { value: 'new',         label: 'Home Ed' },
-                { value: 'considering', label: 'Community' },
-                { value: 'other',       label: 'Other' },
+                { value: 'all',          label: 'All' },
+                { value: 'new',          label: 'Home Education' },
+                { value: 'social',       label: 'Social Activities' },
+                { value: 'considering',  label: 'Community' },
+                { value: 'new_to_area',  label: 'New to Area' },
+                { value: 'experienced',  label: 'Extracurricular' },
+                { value: 'other',        label: 'Other' },
               ] as const).map(chip => (
                 <button
                   key={chip.value}
@@ -1223,7 +1296,7 @@ function EnhancedDiscoverPage() {
 
         {/* Education approach chips — only shown when Home Ed filter is active */}
         {activeTab === 'family' && familyStatusFilter === 'new' && (
-          <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
+          <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
             {(['all', 'Eclectic', 'Relaxed', 'Charlotte Mason', 'Classical', 'Unschooling', 'Montessori', 'Waldorf/Steiner', 'Faith-based', 'Unit Study', 'Online/Virtual'] as const).map(approach => (
               <button
                 key={approach}
@@ -1243,7 +1316,7 @@ function EnhancedDiscoverPage() {
         {/* Teacher type chips — shown when Teachers tab is active */}
         {activeTab === 'teacher' && (
           <>
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
               {([
                 { value: 'all',             label: 'All' },
                 { value: 'extracurricular', label: 'Extracurricular' },
@@ -1275,7 +1348,7 @@ function EnhancedDiscoverPage() {
             {/* Extracurricular sub-filter */}
             {teacherTypeFilter === 'extracurricular' && (
               <>
-                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
+                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
                   {(['all', 'Music', 'Sport', 'Arts', 'Other'] as const).map(sub => (
                     <button
                       key={sub}
@@ -1303,7 +1376,7 @@ function EnhancedDiscoverPage() {
             {/* High School sub-filter */}
             {teacherTypeFilter === 'high' && (
               <>
-                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
+                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
                   {(['all', 'Math', 'English', 'Other'] as const).map(sub => (
                     <button
                       key={sub}
@@ -1333,7 +1406,7 @@ function EnhancedDiscoverPage() {
         {/* Business type chips — shown when Business tab is active */}
         {activeTab === 'business' && (
           <>
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide justify-center">
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
               {([
                 { value: 'all',       label: 'All' },
                 { value: 'playspace', label: 'Play' },
@@ -1379,8 +1452,6 @@ function EnhancedDiscoverPage() {
           </div>
         )}
 
-        </>
-
         {/* Kids age range + Map view */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -1409,6 +1480,8 @@ function EnhancedDiscoverPage() {
         <div className="mb-2">
           <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} alwaysOpen />
         </div>
+
+        </>)} {/* end collapsible filters */}
 
         {/* Content */}
         <div>
@@ -1491,6 +1564,7 @@ function EnhancedDiscoverPage() {
                         name={family.family_name || family.display_name || 'Family'}
                         size="lg"
                         editable={false}
+                        viewable={true}
                       />
                     </div>
                     {/* Right: info */}
@@ -1579,16 +1653,36 @@ function EnhancedDiscoverPage() {
                   {/* Action icons — add contact under avatar, message centre, hide mirrored right */}
                   <div className="grid items-center pt-0 pb-2 px-3 -mt-1" style={{ gridTemplateColumns: '87px 1fr 87px' }}>
                     <div className="flex justify-center">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); sendConnectionRequest(family.id); }}
-                        disabled={getConnectionButtonState(family.id).disabled}
-                        className={`transition-colors ${getConnectionButtonState(family.id).disabled ? 'text-emerald-400' : 'text-gray-400 hover:text-emerald-500'}`}
-                        title={getConnectionButtonState(family.id).text}
-                      >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
-                        </svg>
-                      </button>
+                      {(() => {
+                        const conn = connectionRequests.get(family.id);
+                        const isPendingRequester = conn?.status === 'pending' && conn.isRequester;
+                        const isAccepted = conn?.status === 'accepted';
+                        return (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); sendConnectionRequest(family.id); }}
+                            disabled={isAccepted}
+                            className="transition-all"
+                            title={isPendingRequester ? 'Waiting for response (tap to cancel)' : isAccepted ? 'Connected' : 'Add contact'}
+                          >
+                            {isAccepted ? (
+                              /* Checkmark — connected */
+                              <svg className="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            ) : isPendingRequester ? (
+                              /* Clock — waiting */
+                              <svg className="w-6 h-6 text-amber-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            ) : (
+                              /* Add person */
+                              <svg className="w-6 h-6 text-gray-400 hover:text-emerald-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
                     <div className="flex justify-center">
                       <button

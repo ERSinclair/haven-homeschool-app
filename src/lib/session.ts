@@ -1,8 +1,8 @@
 // Bypass Supabase SDK for auth - read directly from localStorage
 
-const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ryvecaicjhzfsikfedkp.supabase.co';
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const STORAGE_KEY = 'sb-auth-token';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export type StoredSession = {
   access_token: string;

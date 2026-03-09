@@ -9,6 +9,8 @@ import { enablePushNotifications, getNotificationPermission } from '@/lib/push';
 import { toast } from '@/lib/toast';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { NotificationsPageSkeleton } from '@/components/SkeletonLoader';
+import { getCached, setCached, clearCached } from '@/lib/pageCache';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -102,8 +104,8 @@ function groupByDate(notifications: Notification[]): { label: string; items: Not
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<Notification[]>(() => getCached<Notification[]>('notifications:list') ?? []);
+  const [loading, setLoading] = useState(() => !getCached<Notification[]>('notifications:list'));
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [processing, setProcessing] = useState<Set<string>>(new Set());
   const [pushPermission, setPushPermission] = useState<string>('default');
@@ -160,7 +162,9 @@ export default function NotificationsPage() {
         }
       }
 
-      setNotifications(notifs.map(n => ({ ...n, actor: n.actor_id ? profileMap[n.actor_id] : undefined })));
+      const enriched = notifs.map(n => ({ ...n, actor: n.actor_id ? profileMap[n.actor_id] : undefined }));
+      setNotifications(enriched);
+      setCached('notifications:list', enriched);
     } catch { /* silent */ }
     finally { setLoading(false); }
   };
@@ -179,7 +183,12 @@ export default function NotificationsPage() {
   const handleMarkAllRead = async () => {
     const session = getStoredSession();
     if (!session) return;
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifications(prev => {
+      const updated = prev.map(n => ({ ...n, read: true }));
+      setCached('notifications:list', updated);
+      return updated;
+    });
+    clearCached('notifications:list');
     await markAllNotificationsRead(session.user.id, session.access_token);
   };
 
@@ -257,9 +266,12 @@ export default function NotificationsPage() {
   const groups = groupByDate(displayed);
 
   if (loading) return (
-    <div className="min-h-screen bg-transparent flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-    </div>
+    <ProtectedRoute>
+      <div className="min-h-screen bg-transparent pb-32">
+        <AppHeader title="Notifications" />
+        <NotificationsPageSkeleton />
+      </div>
+    </ProtectedRoute>
   );
 
   return (

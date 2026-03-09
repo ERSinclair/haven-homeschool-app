@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { checkProfileCompletion, getResumeSignupUrl } from '@/lib/profileCompletion';
+
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,14 +16,6 @@ export default function LoginPage() {
   // Load saved email on component mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // Redirect away if already logged in
-    try {
-      const stored = sessionStorage.getItem('supabase-session') || localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.access_token) { router.replace('/discover'); return; }
-      }
-    } catch { /* no session */ }
     // Pre-fill saved email
     const savedEmail = localStorage.getItem('haven-saved-email');
     if (savedEmail && savedEmail.includes('@')) setEmail(savedEmail);
@@ -45,67 +37,18 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
     try {
-      const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey!,
-        },
-        body: JSON.stringify({ email, password }),
-      });
-      
-      const result = await response.json();
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (!response.ok) {
-        setError(result.error_description || result.msg || 'Login failed');
+      if (error || !data.session) {
+        setError(error?.message || 'Login failed');
         setLoading(false);
         return;
       }
 
-      // Store session manually in localStorage (bypassing SDK)
-      const storageKey = `sb-ryvecaicjhzfsikfedkp-auth-token`;
-      localStorage.setItem(storageKey, JSON.stringify({
-        access_token: result.access_token,
-        refresh_token: result.refresh_token,
-        expires_at: result.expires_at,
-        expires_in: result.expires_in,
-        token_type: result.token_type,
-        user: result.user,
-      }));
-
-      
-      // Check if profile is complete
-      try {
-        const profileRes = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?id=eq.${result.user.id}&select=*`,
-          {
-            headers: {
-              'apikey': supabaseKey!,
-              'Authorization': `Bearer ${result.access_token}`,
-            },
-          }
-        );
-
-        if (profileRes.ok) {
-          const profiles = await profileRes.json();
-          const profile = profiles[0];
-          const completionStep = checkProfileCompletion(profile);
-          if (completionStep !== 'complete') {
-            sessionStorage.setItem('haven-profile-nudge', '1');
-          }
-          window.location.href = '/feed';
-        } else {
-          window.location.href = '/signup/resume?step=2';
-        }
-      } catch (profileErr) {
-        console.error('Error checking profile:', profileErr);
-        // If we can't check profile, assume incomplete and resume signup
-        window.location.href = '/signup/resume?step=2';
-      }
+      // Navigate immediately — no extra profile fetch needed on login.
+      // The feed page handles the profile-nudge check on load.
+      router.push('/feed');
     } catch (err) {
       console.error('Login exception:', err);
       setError('Something went wrong. Please try again.');
@@ -123,7 +66,7 @@ export default function LoginPage() {
 
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="font-bold text-emerald-600 text-4xl" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</h1>
+          <Link href="/" className="font-bold text-emerald-600 text-4xl" style={{ fontFamily: 'var(--font-fredoka)' }}>Haven</Link>
         </div>
 
         {/* Content */}
@@ -177,12 +120,17 @@ export default function LoginPage() {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-6">
+        <div className="text-center mt-6 space-y-2">
           <p className="text-gray-600 text-sm">
             New to Haven?{' '}
             <Link href="/signup" className="text-emerald-600 hover:underline font-medium">
               Create account
             </Link>
+          </p>
+          <p>
+            <a href="mailto:cane@familyhaven.app?subject=Haven Feedback" className="text-xs text-gray-400 hover:text-gray-600">
+              Send feedback or report a bug
+            </a>
           </p>
         </div>
       </div>

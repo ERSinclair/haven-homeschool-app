@@ -5,53 +5,17 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // Reduce auth state race conditions
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,  // Prevent URL-based auth race conditions
-    storageKey: 'sb-auth-token', // Consistent storage key
-    flowType: 'pkce',
-  },
-  global: {
-    // Enhanced fetch wrapper with comprehensive error handling
-    fetch: (url, options = {}) => {
-      // Create a timeout controller as fallback
-      const timeoutController = new AbortController();
-      const timeoutId = setTimeout(() => timeoutController.abort(), 10000); // 10s timeout
-      
-      const combinedSignal = options.signal || timeoutController.signal;
-      
-      const fetchPromise = fetch(url, {
-        ...options,
-        signal: combinedSignal,
-      }).catch((error) => {
-        clearTimeout(timeoutId);
-        
-        // Silently handle AbortErrors without logging or re-throwing
-        if (error.name === 'AbortError' || error.message?.includes('aborted')) {
-          // Return a resolved promise with empty response to prevent further errors
-          return new Response('{}', {
-            status: 200,
-            statusText: 'OK',
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        throw error;
-      });
-
-      // Clean up timeout when request completes
-      fetchPromise.finally(() => clearTimeout(timeoutId));
-      
-      return fetchPromise;
-    },
+    detectSessionInUrl: false,
+    storageKey: 'sb-auth-token',
   },
   db: {
     schema: 'public',
   },
-  // Additional stability options
   realtime: {
     params: {
-      eventsPerSecond: 2, // Reduce realtime event frequency
+      eventsPerSecond: 2,
     },
   },
 })

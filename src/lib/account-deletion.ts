@@ -149,18 +149,27 @@ export const adminDeleteUser = async (userId: string, reason?: string): Promise<
 };
 
 /**
- * User function to delete their own account
+ * User function to delete their own account.
+ * Calls the server-side API route which uses the service role key
+ * to fully remove all data AND the auth user entry.
  */
 export const deleteMyAccount = async (): Promise<void> => {
   const session = getStoredSession();
-  if (!session?.user) {
+  if (!session?.access_token) {
     throw new Error('Not authenticated');
   }
-  
-  console.log(`User ${session.user.id} deleting their own account`);
-  await deleteAccount(session.user.id, false);
-  
-  // Clear local session after successful deletion
+
+  const res = await fetch('/api/account/delete', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? 'Account deletion failed');
+  }
+
+  // Wipe local session — auth user is now gone
   localStorage.clear();
   sessionStorage.clear();
 };

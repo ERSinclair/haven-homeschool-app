@@ -12,7 +12,7 @@ function ResumeSignupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
+const STORAGE_KEY = 'sb-auth-token';
 
   const [step, setStep] = useState(2);
   const [loading, setLoading] = useState(true);
@@ -36,8 +36,8 @@ const STORAGE_KEY = 'sb-ryvecaicjhzfsikfedkp-auth-token';
   const [userId, setUserId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ryvecaicjhzfsikfedkp.supabase.co';
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_HqXqQ5cjrg1CJIFIyL2QnA_WlwZ4AjB';
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   useEffect(() => {
     const loadProfile = async () => {

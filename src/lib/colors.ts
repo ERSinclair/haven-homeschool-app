@@ -38,7 +38,7 @@ export const statusColors: Record<string, { bg: string; text: string; border: st
   },
   new: {
     bg: 'bg-emerald-100',
-    text: 'text-emerald-700', 
+    text: 'text-emerald-700',
     border: 'border-emerald-400',
     dot: 'bg-emerald-500',
   },
@@ -48,26 +48,42 @@ export const statusColors: Record<string, { bg: string; text: string; border: st
     border: 'border-emerald-400',
     dot: 'bg-emerald-500',
   },
-  connecting: {
-    bg: 'bg-violet-100',
-    text: 'text-violet-700',
-    border: 'border-violet-400',
-    dot: 'bg-violet-500',
+  social: {
+    bg: 'bg-blue-50',
+    text: 'text-blue-700',
+    border: 'border-blue-200',
+    dot: 'bg-blue-500',
+  },
+  new_to_area: {
+    bg: 'bg-orange-50',
+    text: 'text-orange-700',
+    border: 'border-orange-200',
+    dot: 'bg-orange-500',
+  },
+  other: {
+    bg: 'bg-gray-100',
+    text: 'text-gray-700',
+    border: 'border-gray-300',
+    dot: 'bg-gray-500',
   },
 };
 
 export const statusLabels: Record<string, string> = {
   considering: 'Community',
-  new: 'Homeschool',
+  new: 'Home Education',
   experienced: 'Extracurricular',
-  connecting: 'Just Checking It Out',
+  social: 'Social Activities',
+  new_to_area: 'New to Area',
+  other: 'Other',
 };
 
 export const statusIcons: Record<string, string> = {
   considering: '',
   new: '',
   experienced: '',
-  connecting: '',
+  social: '',
+  new_to_area: '',
+  other: '',
 };
 
 // User type badge styles — consistent across the app

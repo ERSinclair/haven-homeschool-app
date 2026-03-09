@@ -4,7 +4,7 @@ import ImageCropModal from '@/components/ImageCropModal';
 import { useState } from 'react';
 import { getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
-import SimpleLocationPicker from '@/components/SimpleLocationPicker';
+import MapPinPicker from '@/components/MapPinPicker';
 
 type EventData = {
   id: string;
@@ -258,6 +258,7 @@ export default function CreateEventModal({
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                maxLength={100}
                 className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
                 placeholder="Event title"
               />
@@ -544,18 +545,16 @@ export default function CreateEventModal({
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                 Location <span className="text-red-500">*</span>
               </label>
-              <SimpleLocationPicker
-                onLocationSelect={(loc) => { setExactLocation(loc); setLocationError(false); }}
+              <MapPinPicker
+                onSelect={(loc) => {
+                  setExactLocation({ name: loc.name, address: loc.name, lat: loc.lat, lng: loc.lng });
+                  setLocationError(false);
+                }}
+                initialLocation={exactLocation ? { name: exactLocation.name, lat: exactLocation.lat, lng: exactLocation.lng } : null}
                 placeholder="Search for address or venue..."
               />
               {locationError && !exactLocation && (
                 <p className="text-xs text-red-500 mt-1">Location is required</p>
-              )}
-              {exactLocation && (
-                <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                  <div className="text-sm font-medium text-emerald-900">{exactLocation.name}</div>
-                  <div className="text-xs text-emerald-700">{exactLocation.address}</div>
-                </div>
               )}
             </div>
 
@@ -653,6 +652,7 @@ export default function CreateEventModal({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                maxLength={1000}
                 className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400"
                 rows={4}
                 placeholder="What's the plan?"

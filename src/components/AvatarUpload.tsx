@@ -306,7 +306,7 @@ export default function AvatarUpload({
               objectFit: 'cover'
             }}
             onError={() => {
-              console.log('Avatar image failed to load:', avatarUrl);
+              
               setAvatarUrl(null);
             }}
           />

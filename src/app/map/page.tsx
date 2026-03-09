@@ -19,6 +19,7 @@ type Family = {
   is_verified: boolean;
   created_at: string;
   admin_level?: 'gold' | 'silver' | 'bronze' | null;
+  avatar_url?: string;
 };
 
 type Profile = {
@@ -51,7 +52,7 @@ export default function MapPage() {
       try {
         const [profileRes, familiesRes] = await Promise.all([
           fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=id,location_name`, { headers }),
-          fetch(`${supabaseUrl}/rest/v1/profiles?id=neq.${session.user.id}&select=id,family_name,display_name,location_name,kids_ages,status,bio,interests,is_verified,created_at,admin_level`, { headers }),
+          fetch(`${supabaseUrl}/rest/v1/profiles?id=neq.${session.user.id}&select=id,family_name,display_name,location_name,kids_ages,status,bio,interests,is_verified,created_at,admin_level,avatar_url`, { headers }),
         ]);
 
         const [profileData, familiesData] = await Promise.all([profileRes.json(), familiesRes.json()]);
@@ -83,12 +84,7 @@ export default function MapPage() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center h-[600px] rounded-xl bg-white shadow-sm">
-              <div className="text-center">
-                <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                <p className="text-gray-500 text-sm">Loading families...</p>
-              </div>
-            </div>
+            <div className="h-[600px] rounded-xl bg-gray-200 animate-pulse" />
           ) : (
             <FamilyMap
               families={families}

@@ -16,21 +16,21 @@ import EmojiPicker from '@/components/EmojiPicker';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const TAGS = [
-  { value: 'all',        label: 'All' },
-  { value: 'question',   label: 'Questions' },
-  { value: 'curriculum', label: 'Curriculum' },
-  { value: 'local',      label: 'Local' },
-  { value: 'events',     label: 'Events' },
-  { value: 'general',    label: 'General' },
-] as const;
+const TAGS: { value: string; label: string }[] = [
+  { value: 'all',     label: 'All' },
+  { value: 'local',   label: 'Local' },
+  { value: 'general', label: 'General' },
+  { value: 'other',   label: 'Other' },
+];
 
 const TAG_COLORS: Record<string, string> = {
+  local:   'bg-emerald-100 text-emerald-700',
+  general: 'bg-gray-100 text-gray-600',
+  other:   'bg-orange-100 text-orange-700',
+  // legacy tags still in DB
   question:   'bg-purple-100 text-purple-700',
   curriculum: 'bg-blue-100 text-blue-700',
-  local:      'bg-emerald-100 text-emerald-700',
   events:     'bg-amber-100 text-amber-700',
-  general:    'bg-gray-100 text-gray-600',
 };
 
 type Post = {
@@ -67,7 +67,8 @@ export default function BoardPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [tag, setTag] = useState('question');
+  const [tag, setTag] = useState('local');
+  const [otherDescription, setOtherDescription] = useState('');
   const [posting, setPosting] = useState(false);
   const [boardImageFile, setBoardImageFile] = useState<File | null>(null);
   const [boardImagePreview, setBoardImagePreview] = useState<string | null>(null);
@@ -178,7 +179,7 @@ export default function BoardPage() {
         body: JSON.stringify({
           author_id: session!.user.id,
           title: title.trim(),
-          content: content.trim(),
+          content: tag === 'other' && otherDescription.trim() ? `[${otherDescription.trim()}] ${content.trim()}` : content.trim(),
           tag,
           ...(imageUrl && { image_url: imageUrl, image_type: imageType }),
         }),
@@ -186,7 +187,8 @@ export default function BoardPage() {
       if (res.ok) {
         setTitle('');
         setContent('');
-        setTag('question');
+        setTag('local');
+        setOtherDescription('');
         setBoardImageFile(null);
         setBoardImagePreview(null);
         setShowCreate(false);
@@ -226,21 +228,6 @@ export default function BoardPage() {
           {/* Browse location */}
           <BrowseLocation current={browseLocation} onChange={loc => { setBrowseLocation(loc); }} />
 
-          {/* Tag filter */}
-          <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200 overflow-x-auto">
-            {TAGS.map(t => (
-              <button
-                key={t.value}
-                onClick={() => setActiveTag(t.value)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                  activeTag === t.value ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
           {/* Create post button */}
           <button
             onClick={() => setShowCreate(v => !v)}
@@ -256,26 +243,12 @@ export default function BoardPage() {
           {/* Create post form */}
           {showCreate && (
             <div className="bg-white rounded-2xl shadow-sm p-4 mb-4 space-y-3">
-              <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200">
-                {TAGS.filter(t => t.value !== 'all').map(t => (
-                  <button
-                    key={t.value}
-                    onClick={() => setTag(t.value)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      tag === t.value
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
               <input
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="Title — what are you asking or sharing?"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                placeholder="Title"
+                maxLength={120}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500"
               />
               <div className="relative">
                 {showBoardEmojiPicker && (
@@ -301,6 +274,7 @@ export default function BoardPage() {
                   onChange={e => setContent(e.target.value)}
                   placeholder="Share more detail..."
                   rows={4}
+                  maxLength={2000}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 resize-none"
                 />
                 <button

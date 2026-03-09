@@ -7,6 +7,7 @@ import ScrollToTop from "@/components/ScrollToTop";
 import PageWrapper from "@/components/PageWrapper";
 import { AuthProvider } from "@/lib/AuthContext";
 import { ThemeProvider } from "@/lib/ThemeContext";
+import OfflineBanner from "@/components/OfflineBanner";
 import "@/lib/errorHandler"; // Global error suppression
 
 const nunito = Nunito({
@@ -38,6 +39,7 @@ export const viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({
@@ -71,6 +73,7 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <AuthProvider>
+            <OfflineBanner />
             <ScrollToTop />
             <main className="min-h-screen" style={{ paddingBottom: '5rem' }}>
               <PageWrapper>{children}</PageWrapper>

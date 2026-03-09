@@ -33,7 +33,7 @@ export default function AdminStatsPage() {
 
       // Load search insights
       try {
-        const session = JSON.parse(sessionStorage.getItem('supabase-session') || localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token') || '{}');
+        const session = JSON.parse(sessionStorage.getItem('supabase-session') || localStorage.getItem('sb-auth-token') || '{}');
         const res = await fetch(
           `${supabaseUrl}/rest/v1/search_insights?select=context,term,count&order=count.desc&limit=100`,
           { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }

@@ -108,16 +108,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (isMounted) {
             setSession(session);
             setUser(session?.user ?? null);
+            // Unblock ProtectedRoute immediately — don't wait for profile
+            setLoading(false);
           }
           
           if (session?.user && isMounted) {
-            await fetchProfile(session.user.id, abortController.signal);
+            // Fetch profile in background — pages that need it will wait on profile separately
+            fetchProfile(session.user.id, abortController.signal);
           } else if (isMounted) {
             setProfile(null);
-          }
-          
-          if (isMounted) {
-            setLoading(false);
           }
         } catch (err) {
           // Suppress AbortError and cleanup-related errors
@@ -125,9 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
           console.error('Auth state change error:', err);
-          if (isMounted) {
-            setLoading(false);
-          }
+          if (isMounted) setLoading(false);
         }
       }
     );

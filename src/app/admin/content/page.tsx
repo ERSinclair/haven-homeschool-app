@@ -23,7 +23,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 function getSession() {
   try {
-    const s = sessionStorage.getItem('supabase-session') || localStorage.getItem('sb-ryvecaicjhzfsikfedkp-auth-token');
+    const s = sessionStorage.getItem('supabase-session') || localStorage.getItem('sb-auth-token');
     return s ? JSON.parse(s) : null;
   } catch { return null; }
 }

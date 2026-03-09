@@ -18,6 +18,8 @@ import AdminBadge from '@/components/AdminBadge';
 import { submitBugReport, submitFeedback } from '@/lib/feedback';
 import { registerPush } from '@/lib/push';
 import ReportBlockModal from '@/components/ReportBlockModal';
+import { ProfilePageSkeleton } from '@/components/SkeletonLoader';
+import { getCached, setCached, clearCached } from '@/lib/pageCache';
 
 type Profile = {
   id: string;
@@ -50,8 +52,8 @@ type Profile = {
 function ProfilePageInner() {
   const searchParams = useSearchParams();
   const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<Profile | null>(() => getCached<Profile>('profile:own') ?? null);
+  const [loading, setLoading] = useState(() => !getCached<Profile>('profile:own'));
   const [loadError, setLoadError] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -151,13 +153,11 @@ function ProfilePageInner() {
             avatarUrl = null;
           }
           
-          setProfile({
-            ...profileData,
-            avatar_url: avatarUrl,
-            status: cleanedStatus
-          });
+          const cleanedProfile = { ...profileData, avatar_url: avatarUrl, status: cleanedStatus };
+          setProfile(cleanedProfile);
+          setCached('profile:own', cleanedProfile);
           // Handle edit data status properly
-          const predefinedStatuses = ['considering', 'new', 'experienced', 'connecting'];
+          const predefinedStatuses = ['considering', 'new', 'social', 'experienced', 'new_to_area', 'connecting', 'group-lessons', 'tutoring', 'sport', 'music', 'supplies'];
           const hasValidPredefinedStatus = cleanedStatus.some(s => predefinedStatuses.includes(s));
           
           setEditData({
@@ -333,6 +333,7 @@ function ProfilePageInner() {
       toast('Error saving profile. Please try again.', 'error');
     } finally {
       setIsSaving(false);
+      clearCached('profile:own'); // force fresh load next visit
     }
   };
 
@@ -470,26 +471,37 @@ function ProfilePageInner() {
     return [];
   };
 
-  const getStatusInfo = (status: string) => {
+  const getStatusInfo = (status: string): { label: string; color: string } | null => {
     const statusMap: Record<string, string> = {
+      // Family
       'considering': 'Community',
-      'new': 'Homeschool',
+      'new': 'Home Education',
+      'social': 'Social Activities',
       'experienced': 'Extracurricular',
-      'connecting': 'Just Checking It Out',
+      'new_to_area': 'New to Area',
+      'other': 'Other',
+      // Business services
+      'group-lessons': 'Group Lessons',
+      'tutoring': 'Tutoring',
+      'sport': 'Sport',
+      'music': 'Music',
+      'supplies': 'Supplies',
     };
-    return {
-      label: statusMap[status] || status,
-      color: 'bg-emerald-100 text-emerald-700',
-    };
+    const label = statusMap[status];
+    if (!label) return null; // unknown/old value — silently skip
+    return { label, color: 'bg-emerald-100 text-emerald-700' };
   };
 
 ""
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-transparent flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
+      <ProtectedRoute>
+        <div className="min-h-screen bg-transparent pb-32">
+          <AppHeader title="Profile" />
+          <ProfilePageSkeleton />
+        </div>
+      </ProtectedRoute>
     );
   }
 
@@ -601,12 +613,7 @@ function ProfilePageInner() {
         )}
 
         {/* Discoverability warning — own profile only, not editing, only when location truly unresolvable */}
-        {!isEditing && !isViewingOtherUser && profile?.location_name && !profile?.location_lat && !profile?.location_lng && (() => {
-          const knownSuburbs = ['torquay','geelong','anglesea','lorne','melbourne','ocean grove','barwon heads','point lonsdale'];
-          const loc = (profile.location_name || '').toLowerCase();
-          const resolvable = knownSuburbs.some(s => loc.includes(s) || s.includes(loc));
-          return !resolvable;
-        })() && (
+        {!isEditing && !isViewingOtherUser && profile?.location_name && !profile?.location_lat && !profile?.location_lng && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
             <p className="text-sm font-semibold text-amber-800 mb-1">You may not be visible in Discover</p>
             <p className="text-xs text-amber-700 mb-3">
@@ -688,7 +695,7 @@ function ProfilePageInner() {
                 editable={!isViewingOtherUser}
                 showFamilySilhouette={true}
                 onAvatarChange={(newUrl) => {
-                  console.log('Profile page: Avatar changed to:', newUrl);
+                  
                   setProfile(prev => prev ? { ...prev, avatar_url: newUrl || undefined } : prev);
                 }}
               />
@@ -749,18 +756,25 @@ function ProfilePageInner() {
             </div>
           </div>
 
-          {/* Why you're here */}
+          {/* Why you're here / Services */}
           <div className="mb-6 text-center">
             {isEditing ? (
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
-                  {[
+                  {(profile?.user_type === 'business' ? [
+                    { value: 'group-lessons', label: 'Group Lessons', icon: '' },
+                    { value: 'tutoring', label: 'Tutoring', icon: '' },
+                    { value: 'sport', label: 'Sport', icon: '' },
+                    { value: 'music', label: 'Music', icon: '' },
+                    { value: 'other', label: 'Other', icon: '' },
+                  ] : [
                     { value: 'considering', label: 'Community', icon: '' },
-                    { value: 'new', label: 'Homeschool', icon: '' },
+                    { value: 'new', label: 'Home Education', icon: '' },
+                    { value: 'social', label: 'Social Activities', icon: '' },
                     { value: 'experienced', label: 'Extracurricular', icon: '' },
-                    { value: 'connecting', label: 'Just Checking It Out', icon: '' },
-                    { value: 'other', label: 'Other', icon: '' }
-                  ].map((opt) => (
+                    { value: 'new_to_area', label: 'New to Area', icon: '' },
+                    { value: 'other', label: 'Other', icon: '' },
+                  ]).map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
@@ -836,6 +850,7 @@ function ProfilePageInner() {
               <div className="flex flex-wrap gap-2 justify-center">
                 {profileStatus.length > 0 ? profileStatus.map((status) => {
                   const info = getStatusInfo(status);
+                  if (!info) return null;
                   return (
                     <span key={status} className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${info.color}`}>
                       {info.label}
@@ -924,13 +939,17 @@ function ProfilePageInner() {
           {/* Bio */}
           <div className="mb-6 text-center">
             {isEditing ? (
-              <textarea
-                value={editData.bio}
-                onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
-                className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-center bg-white text-gray-700"
-                rows={4}
-                placeholder="Tell other families why you're here."
-              />
+              <>
+                <textarea
+                  value={editData.bio}
+                  onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
+                  className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-center bg-white text-gray-700"
+                  rows={4}
+                  maxLength={500}
+                  placeholder="Tell other families why you're here."
+                />
+                <p className="text-xs text-gray-400 text-right mt-1">{editData.bio?.length ?? 0}/500</p>
+              </>
             ) : (
               <div className="p-3">
                 <p className="text-gray-700">
@@ -1129,7 +1148,7 @@ function ProfilePageInner() {
                   setIsEditing(false);
                   if (profile) {
                     // Handle status - check if it's a predefined value or custom description
-                    const predefinedStatuses = ['considering', 'new', 'experienced', 'connecting'];
+                    const predefinedStatuses = ['considering', 'new', 'experienced', 'social', 'new_to_area', 'other'];
                     const profileStatus = parseStatus(profile.status);
                     const predefinedSelected = profileStatus.filter(s => predefinedStatuses.includes(s));
                     const customSelected = profileStatus.filter(s => !predefinedStatuses.includes(s));

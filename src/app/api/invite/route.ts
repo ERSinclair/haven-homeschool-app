@@ -9,6 +9,11 @@ const supabaseAdmin = () => createClient(
 
 export async function POST(req: NextRequest) {
   try {
+    const token = req.headers.get('Authorization')?.replace('Bearer ', '').trim();
+    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { error: authErr } = await supabaseAdmin().auth.getUser(token);
+    if (authErr) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { invitedBy, inviteeEmail, type, targetId, targetName } = await req.json();
 
     if (!invitedBy || !inviteeEmail || !type || !targetId || !targetName) {

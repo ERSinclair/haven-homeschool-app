@@ -22,7 +22,7 @@ export default function InviteToHaven() {
 
     const res = await fetch('/api/invite/haven', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({ invitedBy: session.user.id, inviteeEmail: trimmed }),
     });
 

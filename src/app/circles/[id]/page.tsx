@@ -15,6 +15,7 @@ import ChatView, { ChatMessage as ChatViewMessage } from '@/components/ChatView'
 import ProfileCardModal from '@/components/ProfileCardModal';
 import MessageContextMenu from '@/components/MessageContextMenu';
 import EmailInviteInput from '@/components/EmailInviteInput';
+import MapPinPicker from '@/components/MapPinPicker';
 
 type Circle = {
   id: string;
@@ -29,6 +30,8 @@ type Circle = {
   next_meetup_date?: string | null;
   next_meetup_time?: string | null;
   meetup_location?: string | null;
+  meetup_lat?: number | null;
+  meetup_lng?: number | null;
   meetup_notes?: string | null;
   cover_image_url?: string | null;
   is_public: boolean;
@@ -134,6 +137,8 @@ export default function CirclePage() {
   const [meetupDate, setMeetupDate] = useState('');
   const [meetupTime, setMeetupTime] = useState('09:00');
   const [meetupLocation, setMeetupLocation] = useState('');
+  const [meetupLat, setMeetupLat] = useState<number | null>(null);
+  const [meetupLng, setMeetupLng] = useState<number | null>(null);
   const [meetupNotes, setMeetupNotes] = useState('');
   const [savingMeetup, setSavingMeetup] = useState(false);
   const [showMeetupForm, setShowMeetupForm] = useState(false);
@@ -224,6 +229,8 @@ export default function CirclePage() {
         if (circleData.next_meetup_date) setMeetupDate(circleData.next_meetup_date);
         if (circleData.next_meetup_time) setMeetupTime(circleData.next_meetup_time.slice(0, 5));
         if (circleData.meetup_location) setMeetupLocation(circleData.meetup_location);
+        if (circleData.meetup_lat) setMeetupLat(circleData.meetup_lat);
+        if (circleData.meetup_lng) setMeetupLng(circleData.meetup_lng);
         if (circleData.meetup_notes) setMeetupNotes(circleData.meetup_notes);
 
         // Load members
@@ -374,31 +381,29 @@ export default function CirclePage() {
     const existingGroup = (circleReactions[messageId] || []).find(g => g.users.includes(currentUserId));
     const isSameEmoji = existingGroup?.emoji === emoji;
 
-    // Remove existing reaction (if any)
-    if (existingGroup) {
-      await fetch(
-        `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.circle&user_id=eq.${currentUserId}&emoji=eq.${encodeURIComponent(existingGroup.emoji)}`,
-        { method: 'DELETE', headers: h }
-      );
-      setCircleReactions(prev => {
-        const groups = (prev[messageId] || [])
-          .map(g => g.emoji === existingGroup.emoji ? { ...g, users: g.users.filter(u => u !== currentUserId) } : g)
-          .filter(g => g.users.length > 0);
-        return { ...prev, [messageId]: groups };
-      });
-    }
+    // Always remove ALL existing reactions for this user on this message
+    await fetch(
+      `${supabaseUrl}/rest/v1/message_reactions?message_id=eq.${messageId}&message_type=eq.circle&user_id=eq.${currentUserId}`,
+      { method: 'DELETE', headers: h }
+    );
+    setCircleReactions(prev => {
+      const groups = (prev[messageId] || [])
+        .map(g => ({ ...g, users: g.users.filter(u => u !== currentUserId) }))
+        .filter(g => g.users.length > 0);
+      return { ...prev, [messageId]: groups };
+    });
 
     // Add new reaction only if it's a different emoji (same emoji = toggle off)
     if (!isSameEmoji) {
       await fetch(`${supabaseUrl}/rest/v1/message_reactions`, {
         method: 'POST',
-        headers: { ...h, 'Prefer': 'return=minimal,resolution=ignore-duplicates' },
+        headers: { ...h, 'Prefer': 'return=minimal' },
         body: JSON.stringify({ message_id: messageId, message_type: 'circle', user_id: currentUserId, emoji }),
       });
       setCircleReactions(prev => {
         const groups = [...(prev[messageId] || [])];
         const group = groups.find(g => g.emoji === emoji);
-        if (group) group.users.push(currentUserId);
+        if (group) group.users = [...group.users, currentUserId];
         else groups.push({ emoji, users: [currentUserId] });
         return { ...prev, [messageId]: groups };
       });
@@ -738,7 +743,7 @@ export default function CirclePage() {
           if (invitee?.email) {
             fetch('/api/email', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
               body: JSON.stringify({ type: 'circle_invite', to: invitee.email, circleName: circle?.name || 'a circle' }),
             }).catch(() => {});
           }
@@ -1206,9 +1211,9 @@ createNotification({
       {coverCropSrc && (
         <ImageCropModal
           imageSrc={coverCropSrc}
-          aspect={16 / 9}
+          aspect={3 / 1}
           circular={false}
-          title="Crop cover photo"
+          title="Position banner photo"
           onConfirm={handleCoverCropConfirm}
           onCancel={() => setCoverCropSrc(null)}
         />
@@ -1567,7 +1572,28 @@ createNotification({
                     {(() => { const [h, m] = circle.next_meetup_time!.split(':'); const hr = parseInt(h); return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`; })()}
                   </p>
                 )}
-                {circle.meetup_location && <p className="text-emerald-700 text-sm mt-1">{circle.meetup_location}</p>}
+                {circle.meetup_location && (
+                  <div className="flex items-start gap-1.5 mt-1">
+                    <svg className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-emerald-700 text-sm">{circle.meetup_location}</span>
+                  </div>
+                )}
+                {circle.meetup_lat && circle.meetup_lng && (
+                  <a
+                    href={`https://maps.apple.com/?ll=${circle.meetup_lat},${circle.meetup_lng}&q=${encodeURIComponent(circle.meetup_location || 'Meetup')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 mt-2 text-xs font-medium text-emerald-600 hover:text-emerald-700 bg-white border border-emerald-200 rounded-lg px-3 py-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                    Open in Maps
+                  </a>
+                )}
                 {circle.meetup_notes && <p className="text-gray-600 text-sm mt-2">{circle.meetup_notes}</p>}
                 <a
                   href="/calendar"
@@ -1701,12 +1727,11 @@ createNotification({
                 })()}
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Location</label>
-                  <input
-                    type="text"
-                    value={meetupLocation}
-                    onChange={e => setMeetupLocation(e.target.value)}
-                    placeholder="Park, community hall, address..."
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500"
+                  <MapPinPicker
+                    onSelect={(loc) => { setMeetupLocation(loc.name); setMeetupLat(loc.lat); setMeetupLng(loc.lng); }}
+                    initialLocation={meetupLat && meetupLng ? { name: meetupLocation, lat: meetupLat, lng: meetupLng } : null}
+                    placeholder="Search or tap map to pin location..."
+                    height={180}
                   />
                 </div>
                 <div>
@@ -1741,11 +1766,12 @@ createNotification({
                             next_meetup_date: meetupDate,
                             next_meetup_time: meetupTime || null,
                             meetup_location: meetupLocation || null,
+                            ...(meetupLat != null && meetupLng != null ? { meetup_lat: meetupLat, meetup_lng: meetupLng } : {}),
                             meetup_notes: meetupNotes || null,
                           }),
                         });
                         if (res.ok) {
-                          setCircle(prev => prev ? { ...prev, next_meetup_date: meetupDate, next_meetup_time: meetupTime || null, meetup_location: meetupLocation || null, meetup_notes: meetupNotes || null } : null);
+                          setCircle(prev => prev ? { ...prev, next_meetup_date: meetupDate, next_meetup_time: meetupTime || null, meetup_location: meetupLocation || null, meetup_lat: meetupLat ?? null, meetup_lng: meetupLng ?? null, meetup_notes: meetupNotes || null } : null);
                           setShowMeetupForm(false);
                         }
                       } catch { /* silent */ }
@@ -1770,7 +1796,7 @@ createNotification({
                             body: JSON.stringify({ next_meetup_date: null, next_meetup_time: null, meetup_location: null, meetup_notes: null }),
                           });
                           setCircle(prev => prev ? { ...prev, next_meetup_date: null, next_meetup_time: null, meetup_location: null, meetup_notes: null } : null);
-                          setMeetupDate(''); setMeetupTime('09:00'); setMeetupLocation(''); setMeetupNotes('');
+                          setMeetupDate(''); setMeetupTime('09:00'); setMeetupLocation(''); setMeetupLat(null); setMeetupLng(null); setMeetupNotes('');
                           setShowMeetupForm(false);
                         } catch { /* silent */ }
                         finally { setSavingMeetup(false); }

@@ -10,6 +10,7 @@ import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { ConnectionsPageSkeleton } from '@/components/SkeletonLoader';
 import InviteToHaven from '@/components/InviteToHaven';
+import { getCached, setCached } from '@/lib/pageCache';
 
 type Connection = {
   id: string;
@@ -29,10 +30,10 @@ type Connection = {
 };
 
 export default function ConnectionsPage() {
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<Connection[]>([]);
-  const [sentRequests, setSentRequests] = useState<Connection[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [connections, setConnections] = useState<Connection[]>(() => getCached<Connection[]>('connections:list') ?? []);
+  const [pendingRequests, setPendingRequests] = useState<Connection[]>(() => getCached<Connection[]>('connections:pending') ?? []);
+  const [sentRequests, setSentRequests] = useState<Connection[]>(() => getCached<Connection[]>('connections:sent') ?? []);
+  const [loading, setLoading] = useState(() => !getCached<Connection[]>('connections:list'));
   const [autoSwitched, setAutoSwitched] = useState(false);
   const [activeTab, setActiveTab] = useState<'connections' | 'requests' | 'sent'>(() => {
     if (typeof window !== 'undefined') {
@@ -345,6 +346,9 @@ export default function ConnectionsPage() {
       setConnections(processedConnections);
       setPendingRequests(processedRequests);
       setSentRequests(processedSentRequests);
+      setCached('connections:list', processedConnections);
+      setCached('connections:pending', processedRequests);
+      setCached('connections:sent', processedSentRequests);
     } catch (err) {
       console.error('Error loading connections:', err);
       setError('Failed to load connections');

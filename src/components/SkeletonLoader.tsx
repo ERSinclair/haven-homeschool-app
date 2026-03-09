@@ -133,3 +133,62 @@ export function ConnectionsPageSkeleton() {
     </div>
   );
 }
+
+// ── Profile page skeleton ───────────────────────────────────
+export function ProfilePageSkeleton() {
+  return (
+    <div className="max-w-md mx-auto px-4 pt-2 pb-8">
+      {/* Profile card */}
+      <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm mb-4">
+        <div className="flex flex-col items-center gap-3">
+          <Shimmer className="w-20 h-20 rounded-full" />
+          <Shimmer className="h-5 w-40" />
+          <Shimmer className="h-4 w-24" />
+          <div className="flex gap-2">
+            <Shimmer className="h-6 w-20 rounded-full" />
+            <Shimmer className="h-6 w-20 rounded-full" />
+          </div>
+        </div>
+      </div>
+      {/* Bio card */}
+      <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm mb-4 space-y-2">
+        <Shimmer className="h-4 w-full" />
+        <Shimmer className="h-4 w-5/6" />
+        <Shimmer className="h-4 w-3/4" />
+      </div>
+      {/* Kids card */}
+      <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm space-y-2">
+        <Shimmer className="h-4 w-24 mb-3" />
+        <div className="flex gap-2">
+          <Shimmer className="w-10 h-10 rounded-full" />
+          <Shimmer className="w-10 h-10 rounded-full" />
+          <Shimmer className="w-10 h-10 rounded-full" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Notification item skeleton ──────────────────────────────
+export function NotificationItemSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+      <div className="flex items-start gap-3">
+        <Shimmer className="w-10 h-10 rounded-full flex-shrink-0" />
+        <div className="flex-1 space-y-2">
+          <Shimmer className="h-4 w-3/4" />
+          <Shimmer className="h-3 w-1/2" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function NotificationsPageSkeleton() {
+  return (
+    <div className="max-w-md mx-auto px-4 pt-2 pb-8 space-y-3">
+      <Shimmer className="h-5 w-32 mb-2" />
+      {[1, 2, 3, 4, 5].map(i => <NotificationItemSkeleton key={i} />)}
+    </div>
+  );
+}
