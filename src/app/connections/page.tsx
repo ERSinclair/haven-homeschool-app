@@ -33,6 +33,11 @@ export default function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>(() => getCached<Connection[]>('connections:list') ?? []);
   const [pendingRequests, setPendingRequests] = useState<Connection[]>(() => getCached<Connection[]>('connections:pending') ?? []);
   const [sentRequests, setSentRequests] = useState<Connection[]>(() => getCached<Connection[]>('connections:sent') ?? []);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  type FamilyLinkReq = { id: string; otherId: string; name: string; avatar_url?: string; relationship: string; relationship_label?: string; isRequester: boolean };
+  const [pendingFamilyLinks, setPendingFamilyLinks] = useState<FamilyLinkReq[]>([]);
+  const [sentFamilyLinks, setSentFamilyLinks] = useState<FamilyLinkReq[]>([]);
   const [loading, setLoading] = useState(() => !getCached<Connection[]>('connections:list'));
   const [autoSwitched, setAutoSwitched] = useState(false);
   const [activeTab, setActiveTab] = useState<'connections' | 'requests' | 'sent'>(() => {
@@ -349,6 +354,35 @@ export default function ConnectionsPage() {
       setCached('connections:list', processedConnections);
       setCached('connections:pending', processedRequests);
       setCached('connections:sent', processedSentRequests);
+
+      // Load pending family links
+      try {
+        const flRes = await fetch(
+          `${supabaseUrl}/rest/v1/family_links?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&status=eq.pending&select=*`,
+          { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+        );
+        if (flRes.ok) {
+          const flRaw = await flRes.json();
+          const otherIds = flRaw.map((l: any) => l.requester_id === session.user.id ? l.receiver_id : l.requester_id);
+          let profMap: Record<string, any> = {};
+          if (otherIds.length > 0) {
+            const pRes = await fetch(
+              `${supabaseUrl}/rest/v1/profiles?id=in.(${[...new Set(otherIds)].join(',')})&select=id,family_name,display_name,avatar_url`,
+              { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+            );
+            if (pRes.ok) { const ps = await pRes.json(); ps.forEach((p: any) => { profMap[p.id] = p; }); }
+          }
+          const mapped: FamilyLinkReq[] = flRaw.map((l: any) => {
+            const isReq = l.requester_id === session.user.id;
+            const otherId = isReq ? l.receiver_id : l.requester_id;
+            const p = profMap[otherId] || {};
+            const RELS: Record<string, string> = { partner:'Partner', co_parent:'Co-parent', grandparent:'Grandparent', aunt_uncle:'Aunt / Uncle', sibling:'Sibling', close_friend:'Close Friend', other:'Other' };
+            return { id: l.id, otherId, name: p.display_name || p.family_name || 'Unknown', avatar_url: p.avatar_url, relationship: l.relationship_label || RELS[l.relationship] || l.relationship, isRequester: isReq };
+          });
+          setPendingFamilyLinks(mapped.filter(l => !l.isRequester));
+          setSentFamilyLinks(mapped.filter(l => l.isRequester));
+        }
+      } catch { /* ignore */ }
     } catch (err) {
       console.error('Error loading connections:', err);
       setError('Failed to load connections');
@@ -432,6 +466,22 @@ export default function ConnectionsPage() {
       console.error('Error rejecting request:', err);
       setError('Failed to reject connection request');
     }
+  };
+
+  const handleFamilyLinkAccept = async (linkId: string) => {
+    const session = getStoredSession(); if (!session) return;
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+    await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${linkId}`, { method: 'PATCH', headers: h, body: JSON.stringify({ status: 'accepted' }) });
+    setPendingFamilyLinks(prev => prev.filter(l => l.id !== linkId));
+    toast('Family link accepted!');
+  };
+
+  const handleFamilyLinkDecline = async (linkId: string) => {
+    const session = getStoredSession(); if (!session) return;
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+    await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${linkId}`, { method: 'DELETE', headers: h });
+    setPendingFamilyLinks(prev => prev.filter(l => l.id !== linkId));
+    setSentFamilyLinks(prev => prev.filter(l => l.id !== linkId));
   };
 
   const handleDeleteConnection = async () => {
@@ -523,9 +573,9 @@ export default function ConnectionsPage() {
             }`}
           >
             Requests
-            {pendingRequests.length > 0 && (
+            {(pendingRequests.length + pendingFamilyLinks.length) > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center border border-white leading-none">
-                {pendingRequests.length > 9 ? '9+' : pendingRequests.length}
+                {(pendingRequests.length + pendingFamilyLinks.length) > 9 ? '9+' : pendingRequests.length + pendingFamilyLinks.length}
               </span>
             )}
           </button>
@@ -535,7 +585,7 @@ export default function ConnectionsPage() {
               activeTab === 'sent' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            Sent ({filteredSentRequests.length})
+            Sent ({filteredSentRequests.length + sentFamilyLinks.length})
           </button>
         </div>
 
@@ -715,7 +765,27 @@ export default function ConnectionsPage() {
         {/* Requests Tab */}
         {activeTab === 'requests' && (
           <div className="space-y-4">
-            {filteredPendingRequests.length === 0 ? (
+            {/* Family link requests */}
+            {pendingFamilyLinks.map(fl => (
+              <div key={fl.id} className="bg-white rounded-xl shadow-sm border border-amber-100 p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-base font-bold text-amber-700 flex-shrink-0 overflow-hidden">
+                    {fl.avatar_url ? <img src={fl.avatar_url} className="w-full h-full object-cover" alt={fl.name} /> : fl.name.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 text-sm">{fl.name}</h3>
+                    <p className="text-xs text-gray-500">Wants to link as family · <span className="font-medium text-amber-700">{fl.relationship}</span></p>
+                  </div>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex-shrink-0">Family</span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => handleFamilyLinkAccept(fl.id)} className="flex-1 px-2 py-1.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 text-sm">Accept</button>
+                  <button onClick={() => handleFamilyLinkDecline(fl.id)} className="flex-1 px-2 py-1.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 text-sm">Decline</button>
+                </div>
+              </div>
+            ))}
+
+            {filteredPendingRequests.length === 0 && pendingFamilyLinks.length === 0 ? (
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
                   <span className="text-2xl font-bold text-emerald-600">R</span>
@@ -790,7 +860,26 @@ export default function ConnectionsPage() {
         {/* Sent Requests Tab */}
         {activeTab === 'sent' && (
           <div className="space-y-4">
-            {filteredSentRequests.length === 0 ? (
+            {/* Sent family link requests */}
+            {sentFamilyLinks.map(fl => (
+              <div key={fl.id} className="bg-white rounded-xl shadow-sm border border-amber-100 p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-base font-bold text-amber-700 flex-shrink-0 overflow-hidden">
+                    {fl.avatar_url ? <img src={fl.avatar_url} className="w-full h-full object-cover" alt={fl.name} /> : fl.name.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 text-sm">{fl.name}</h3>
+                    <p className="text-xs text-gray-500">Family request sent · <span className="font-medium text-amber-700">{fl.relationship}</span></p>
+                  </div>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex-shrink-0">Family</span>
+                </div>
+                <button onClick={() => handleFamilyLinkDecline(fl.id)} className="w-full px-4 py-1.5 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 text-sm border border-red-100">
+                  Cancel request
+                </button>
+              </div>
+            ))}
+
+            {filteredSentRequests.length === 0 && sentFamilyLinks.length === 0 ? (
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
                   <span className="text-2xl font-bold text-emerald-600">S</span>

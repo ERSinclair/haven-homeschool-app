@@ -78,8 +78,8 @@ body {
   background: repeating-linear-gradient(
     to bottom,
     #ecfdf5 0px,
-    #ffffff 400px,
-    #ecfdf5 800px
+    #ffffff 1400px,
+    #ecfdf5 3200px
   );
   color: var(--foreground);
   font-family: var(--font-nunito), system-ui, sans-serif;

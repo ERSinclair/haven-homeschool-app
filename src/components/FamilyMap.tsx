@@ -5,8 +5,9 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { toast } from '@/lib/toast';
 
-// Block Mapbox telemetry
-if (typeof window !== 'undefined') {
+// Block Mapbox telemetry — guard against double-patching on re-renders
+if (typeof window !== 'undefined' && !(window as any).__mapboxFetchPatched) {
+  (window as any).__mapboxFetchPatched = true;
   const originalFetch = window.fetch.bind(window);
   window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
     const url = typeof input === 'string' ? input : input.toString();

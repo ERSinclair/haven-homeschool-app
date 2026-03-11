@@ -300,6 +300,7 @@ function CalendarContent() {
   const [calViewMode, setCalViewMode] = useState<CalViewMode>('month');
   const [noteCategory, setNoteCategory] = useState('personal');
   const [noteTime, setNoteTime] = useState('');
+  const [showNoteTimePicker, setShowNoteTimePicker] = useState(false);
   const [quickInput, setQuickInput] = useState('');
   const [quickParsed, setQuickParsed] = useState<ParsedNote | null>(null);
   const [savingQuick, setSavingQuick] = useState(false);
@@ -1354,19 +1355,83 @@ function CalendarContent() {
                         autoFocus
                         className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400 text-sm resize-none"
                       />
-                      {/* Time (optional) */}
-                      <div className="flex items-center gap-3">
-                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Time <span className="text-gray-400 font-normal text-xs">(optional)</span></label>
-                        <input
-                          type="time"
-                          value={noteTime}
-                          onChange={e => setNoteTime(e.target.value)}
-                          className="p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 text-sm"
-                        />
-                        {noteTime && (
-                          <button type="button" onClick={() => setNoteTime('')} className="text-xs text-gray-400 hover:text-gray-600">Clear</button>
-                        )}
-                      </div>
+                      {/* Time (optional) — scroll-wheel picker */}
+                      {(() => {
+                        const [hStr, mStr] = (noteTime || '09:00').split(':');
+                        const hour24 = parseInt(hStr || '9', 10);
+                        const isPM = hour24 >= 12;
+                        const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+                        const minute = Math.round(parseInt(mStr || '0', 10) / 5) * 5 % 60;
+                        const hours = [12,1,2,3,4,5,6,7,8,9,10,11];
+                        const minutes = [0,5,10,15,20,25,30,35,40,45,50,55];
+                        const formatted = noteTime ? `${hour12}:${String(minute).padStart(2,'0')} ${isPM ? 'PM' : 'AM'}` : 'No time';
+                        const setHour = (h12: number) => {
+                          const h24 = h12 === 12 ? (isPM ? 12 : 0) : isPM ? h12 + 12 : h12;
+                          setNoteTime(`${String(h24).padStart(2,'0')}:${String(minute).padStart(2,'0')}`);
+                        };
+                        const setMin = (m: number) => setNoteTime(`${String(hour24).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+                        const toggleAmPm = (pm: boolean) => {
+                          const h24 = hour12 === 12 ? (pm ? 12 : 0) : pm ? hour12 + 12 : hour12;
+                          setNoteTime(`${String(h24).padStart(2,'0')}:${String(minute).padStart(2,'0')}`);
+                        };
+                        return (
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Time</span>
+                              <div className="flex gap-1.5">
+                                <button type="button" onMouseDown={e => e.stopPropagation()}
+                                  onClick={() => { setNoteTime(''); setShowNoteTimePicker(false); }}
+                                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${!noteTime ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white/60 text-gray-500 border-white/60 hover:border-emerald-300'}`}>
+                                  No time
+                                </button>
+                                <button type="button" onMouseDown={e => e.stopPropagation()}
+                                  onClick={() => { if (!noteTime) setNoteTime('09:00'); setShowNoteTimePicker(v => !v); }}
+                                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${noteTime ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white/60 text-gray-500 border-white/60 hover:border-emerald-300'}`}>
+                                  {noteTime ? formatted : 'Set time'}
+                                </button>
+                              </div>
+                            </div>
+                            {showNoteTimePicker && (
+                              <div className="mt-2 rounded-2xl border border-white/40 overflow-hidden shadow-md" style={{ background: 'rgba(255,255,255,0.75)', backdropFilter: 'blur(16px)' }}>
+                                <div className="relative" style={{height: 200}}>
+                                  <div className="absolute inset-x-0 pointer-events-none z-10" style={{top: '50%', transform: 'translateY(-50%)', height: 40, background: 'rgba(16,185,129,0.07)', borderTop: '1.5px solid rgba(16,185,129,0.2)', borderBottom: '1.5px solid rgba(16,185,129,0.2)'}} />
+                                  <div className="flex h-full">
+                                    <div className="flex-1 overflow-y-scroll" style={{scrollSnapType:'y mandatory', scrollbarWidth:'none'}}
+                                      ref={el => { if (el) el.scrollTop = hours.indexOf(hour12) * 40; }}>
+                                      <div style={{paddingTop: 80, paddingBottom: 80}}>
+                                        {hours.map(h => (
+                                          <div key={h} onClick={() => setHour(h)} style={{scrollSnapAlign:'center', height: 40}}
+                                            className={`flex items-center justify-center text-xl font-bold cursor-pointer transition-colors ${h === hour12 ? 'text-emerald-600' : 'text-gray-300'}`}>
+                                            {String(h).padStart(2,'0')}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center justify-center w-5 text-xl font-bold text-gray-300 flex-shrink-0 pointer-events-none">:</div>
+                                    <div className="flex-1 overflow-y-scroll" style={{scrollSnapType:'y mandatory', scrollbarWidth:'none'}}
+                                      ref={el => { if (el) el.scrollTop = minutes.indexOf(minute) * 40; }}>
+                                      <div style={{paddingTop: 80, paddingBottom: 80}}>
+                                        {minutes.map(m => (
+                                          <div key={m} onClick={() => setMin(m)} style={{scrollSnapAlign:'center', height: 40}}
+                                            className={`flex items-center justify-center text-xl font-bold cursor-pointer transition-colors ${m === minute ? 'text-emerald-600' : 'text-gray-300'}`}>
+                                            {String(m).padStart(2,'0')}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-col items-center justify-center gap-2 px-3 flex-shrink-0 border-l border-gray-100">
+                                      <button type="button" onClick={() => toggleAmPm(false)}
+                                        className={`w-12 py-2.5 rounded-xl text-sm font-bold transition-colors ${!isPM ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:bg-gray-100'}`}>AM</button>
+                                      <button type="button" onClick={() => toggleAmPm(true)}
+                                        className={`w-12 py-2.5 rounded-xl text-sm font-bold transition-colors ${isPM ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:bg-gray-100'}`}>PM</button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                   {/* Recurrence — hidden for birthdays */}

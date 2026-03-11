@@ -9,6 +9,19 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
+// Block Mapbox telemetry — guard against double-patching
+if (typeof window !== 'undefined' && !(window as any).__mapboxFetchPatched) {
+  (window as any).__mapboxFetchPatched = true;
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('events.mapbox.com') || url.includes('/events/v2') || url.includes('mapbox-turnstile')) {
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }
+    return _origFetch(input, init);
+  };
+}
+
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 const DEFAULT_CENTER: [number, number] = [144.3256, -38.3305]; // Torquay
 const DEFAULT_ZOOM = 12;

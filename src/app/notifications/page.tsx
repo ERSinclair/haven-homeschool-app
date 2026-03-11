@@ -171,6 +171,19 @@ export default function NotificationsPage() {
       const enriched = notifs.map(n => ({ ...n, actor: n.actor_id ? profileMap[n.actor_id] : undefined }));
       setNotifications(enriched);
       setCached('notifications:list', enriched);
+
+      // Mark all non-actionable unread notifications as read now that user is viewing them
+      // (actionable ones like connection_request / family_link_request stay unread until acted on)
+      const actionableTypes = new Set(['connection_request', 'family_link_request', 'circle_invite']);
+      const toMark = enriched.filter(n => !n.read && !actionableTypes.has(n.type)).map(n => n.id);
+      if (toMark.length > 0) {
+        fetch(`${supabaseUrl}/rest/v1/notifications?id=in.(${toMark.join(',')})`, {
+          method: 'PATCH',
+          headers: { ...h, 'Prefer': 'return=minimal', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ read: true }),
+        }).catch(() => {});
+        setNotifications(prev => prev.map(n => toMark.includes(n.id) ? { ...n, read: true } : n));
+      }
     } catch { /* silent */ }
     finally { setLoading(false); }
   };
@@ -288,7 +301,7 @@ export default function NotificationsPage() {
           }
         }
         toast('Family link accepted', 'success');
-        router.push('/family');
+        router.push('/profile');
       } else {
         await fetch(`${supabaseUrl}/rest/v1/family_links?requester_id=eq.${notif.actor_id}&receiver_id=eq.${session.user.id}&status=eq.pending`, {
           method: 'DELETE', headers: deleteH,

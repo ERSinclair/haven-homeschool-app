@@ -20,7 +20,7 @@ import { loadSearchRadius } from '@/lib/preferences';
 import ReportBlockModal from '@/components/ReportBlockModal';
 import { DiscoverPageSkeleton } from '@/components/SkeletonLoader';
 import { getCached, setCached } from '@/lib/pageCache';
-import { sendFamilyLinkRequest, RELATIONSHIPS, type RelationshipValue } from '@/lib/familyLinks';
+
 
 type Family = {
   id: string;
@@ -147,11 +147,7 @@ function EnhancedDiscoverPage() {
   const [isLoading, setIsLoading] = useState(() => !getCached<Family[]>('discover:families'));
   const [selectedFamily, setSelectedFamily] = useState<Family | null>(null);
   const [reportBlockTarget, setReportBlockTarget] = useState<{ id: string; name: string; mode: 'report' | 'block' } | null>(null);
-  const [familyLinkModal, setFamilyLinkModal] = useState<{ id: string; name: string } | null>(null);
-  const [familyLinkRelationship, setFamilyLinkRelationship] = useState<RelationshipValue>('partner');
-  const [familyLinkOtherLabel, setFamilyLinkOtherLabel] = useState('');
-  const [sendingFamilyLink, setSendingFamilyLink] = useState(false);
-  const [familyLinkStatuses, setFamilyLinkStatuses] = useState<Map<string, { status: string; isRequester: boolean; linkId?: string }>>(new Map());
+
   type SubProfile = { id: string; name: string; type: string; dob?: string; avatar_url?: string; is_visible: boolean; bio?: string };
   const [detailSubProfiles, setDetailSubProfiles] = useState<SubProfile[]>([]);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
@@ -771,52 +767,7 @@ function EnhancedDiscoverPage() {
 
 
   // Check family link status for a given profile
-  const checkFamilyLinkStatus = async (profileId: string) => {
-    const session = getStoredSession();
-    if (!session) return;
-    const _url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const _key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    const res = await fetch(
-      `${_url}/rest/v1/family_links?or=(and(requester_id.eq.${session.user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${session.user.id}))&select=id,status,requester_id&limit=1`,
-      { headers: { 'apikey': _key!, 'Authorization': `Bearer ${session.access_token}` } }
-    );
-    if (res.ok) {
-      const links = await res.json();
-      if (links?.length > 0) {
-        setFamilyLinkStatuses(prev => new Map(prev).set(profileId, {
-          status: links[0].status,
-          isRequester: links[0].requester_id === session.user.id,
-          linkId: links[0].id,
-        }));
-      }
-    }
-  };
-
-  const cancelFamilyLinkRequest = async (profileId: string) => {
-    const session = getStoredSession();
-    if (!session) return;
-    const entry = familyLinkStatuses.get(profileId);
-    if (!entry?.linkId) return;
-    const _url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const _key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    await fetch(`${_url}/rest/v1/family_links?id=eq.${entry.linkId}`, {
-      method: 'DELETE',
-      headers: { 'apikey': _key!, 'Authorization': `Bearer ${session.access_token}` },
-    });
-    setFamilyLinkStatuses(prev => { const m = new Map(prev); m.delete(profileId); return m; });
-    toast('Family request cancelled');
-  };
-
-  const getFamilyButtonState = (familyId: string) => {
-    const entry = familyLinkStatuses.get(familyId);
-    if (!entry) return { text: 'Family', disabled: false, style: 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 active:scale-[0.98]' };
-    if (entry.status === 'accepted') return { text: 'Linked', disabled: true, style: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
-    if (entry.status === 'pending' && entry.isRequester) return { text: 'Requested', disabled: false, style: 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-red-50 hover:text-red-500 hover:border-red-200 active:scale-[0.98]' };
-    if (entry.status === 'pending' && !entry.isRequester) return { text: 'Accept', disabled: false, style: 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 active:scale-[0.98]' };
-    return { text: 'Family', disabled: false, style: 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 active:scale-[0.98]' };
-  };
-
-  // Helper function to get connection button state
+    // Helper function to get connection button state
   const getConnectionButtonState = (familyId: string) => {
     const connection = connectionRequests.get(familyId);
     
@@ -938,8 +889,14 @@ function EnhancedDiscoverPage() {
         return;
       }
 
-      // Create new connection request (only if no connection exists)
-      if (!existingConnection) {
+      // Create new connection request — allow if no connection or if declined
+      if (!existingConnection || existingConnection.status === 'declined') {
+        // Clean up any stale row first (declined, or anything left over) to prevent duplicates
+        await fetch(
+          `${supabaseUrl}/rest/v1/connections?or=(and(requester_id.eq.${session.user.id},receiver_id.eq.${familyId}),and(requester_id.eq.${familyId},receiver_id.eq.${session.user.id}))`,
+          { method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+        );
+
         const response = await fetch(
           `${supabaseUrl}/rest/v1/connections`,
           {
@@ -1072,7 +1029,6 @@ function EnhancedDiscoverPage() {
   // Load detail modal data when profile opens
   useEffect(() => {
     if (!selectedFamilyDetails?.id) return;
-    checkFamilyLinkStatus(selectedFamilyDetails.id);
     // Load sub-profiles if connected
     const isConnected = connectionRequests.get(selectedFamilyDetails.id)?.status === 'accepted';
     if (isConnected) {
@@ -2232,20 +2188,7 @@ function EnhancedDiscoverPage() {
               >
                 Profile
               </button>
-              <button
-                onClick={() => {
-                  const entry = familyLinkStatuses.get(selectedFamilyDetails.id);
-                  if (entry?.status === 'pending' && entry.isRequester) {
-                    cancelFamilyLinkRequest(selectedFamilyDetails.id);
-                  } else if (!getFamilyButtonState(selectedFamilyDetails.id).disabled) {
-                    setFamilyLinkModal({ id: selectedFamilyDetails.id, name: selectedFamilyDetails.display_name || selectedFamilyDetails.family_name?.split(' ')[0] || 'them' });
-                  }
-                }}
-                disabled={getFamilyButtonState(selectedFamilyDetails.id).disabled}
-                className={`flex-1 py-2.5 rounded-xl font-semibold transition-all text-sm ${getFamilyButtonState(selectedFamilyDetails.id).style}`}
-              >
-                {getFamilyButtonState(selectedFamilyDetails.id).text}
-              </button>
+
               {selectedFamilyDetails.show_birthday && selectedFamilyDetails.dob && connectionRequests.get(selectedFamilyDetails.id)?.status === 'accepted' && (
                 <button
                   onClick={() => addBirthdayToCalendar(selectedFamilyDetails)}
@@ -2364,80 +2307,7 @@ function EnhancedDiscoverPage() {
         </div>
       )}
 
-      {/* Modal removed - now using inline text input */}
-      
-      {/* Family Link Modal */}
-      {familyLinkModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white/90 backdrop-blur-md rounded-2xl max-w-sm w-full p-6 shadow-xl border border-white/60">
-            <h3 className="text-lg font-bold text-gray-900 mb-1">Link as family</h3>
-            <p className="text-sm text-gray-500 mb-4">How are you and {familyLinkModal.name} related?</p>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {RELATIONSHIPS.map(r => (
-                <button
-                  key={r.value}
-                  onClick={() => { setFamilyLinkRelationship(r.value); if (r.value !== 'other') setFamilyLinkOtherLabel(''); }}
-                  className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all ${
-                    familyLinkRelationship === r.value
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-400'
-                  }`}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-            {familyLinkRelationship === 'other' && (
-              <input
-                type="text"
-                value={familyLinkOtherLabel}
-                onChange={e => setFamilyLinkOtherLabel(e.target.value)}
-                placeholder="Describe the relationship (e.g. Godparent)"
-                maxLength={60}
-                className="w-full px-3.5 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent mb-4"
-                autoFocus
-              />
-            )}
-            <div className="flex gap-2 mt-1">
-              <button
-                onClick={() => { setFamilyLinkModal(null); setFamilyLinkOtherLabel(''); }}
-                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 active:scale-[0.98] transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={sendingFamilyLink || (familyLinkRelationship === 'other' && !familyLinkOtherLabel.trim())}
-                onClick={async () => {
-                  if (!familyLinkModal) return;
-                  setSendingFamilyLink(true);
-                  const myName = profile?.name || 'Someone';
-                  const result = await sendFamilyLinkRequest(
-                    familyLinkModal.id,
-                    familyLinkRelationship,
-                    myName,
-                    familyLinkRelationship === 'other' ? familyLinkOtherLabel.trim() : undefined,
-                  );
-                  setSendingFamilyLink(false);
-                  setFamilyLinkModal(null);
-                  setFamilyLinkOtherLabel('');
-                  if (result.alreadyExists) {
-                    toast('Already linked with this person', 'info');
-                    setFamilyLinkStatuses(prev => new Map(prev).set(familyLinkModal!.id, { status: 'pending', isRequester: true }));
-                  } else if (result.ok) {
-                    toast('Family link request sent', 'success');
-                    setFamilyLinkStatuses(prev => new Map(prev).set(familyLinkModal!.id, { status: 'pending', isRequester: true }));
-                  } else {
-                    toast('Failed to send request', 'error');
-                  }
-                }}
-                className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold text-sm hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
-              >
-                {sendingFamilyLink ? 'Sending...' : 'Send request'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Bottom spacing for mobile nav */}
       <div className="h-20"></div>

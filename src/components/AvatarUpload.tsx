@@ -206,10 +206,12 @@ export default function AvatarUpload({
   };
 
   const handleClick = () => {
-    if (editable && !uploading) {
-      fileInputRef.current?.click();
-    } else if (viewable && avatarUrl && !editable) {
+    // When both editable and viewable: tap image = fullscreen preview
+    // editing is done via the camera icon button below
+    if (viewable && avatarUrl) {
       setViewingFullscreen(true);
+    } else if (editable && !uploading) {
+      fileInputRef.current?.click();
     }
   };
 
@@ -402,6 +404,34 @@ export default function AvatarUpload({
             animation: 'spin 1s linear infinite'
           }} />
         </div>
+      )}
+
+      {/* Camera edit button — separate from tap-to-view */}
+      {editable && !uploading && (
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            right: 0,
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            background: '#059669',
+            border: '2px solid white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </button>
       )}
 
       {/* Hidden file input */}

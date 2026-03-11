@@ -19,6 +19,8 @@ import { submitBugReport, submitFeedback } from '@/lib/feedback';
 import { registerPush } from '@/lib/push';
 import ReportBlockModal from '@/components/ReportBlockModal';
 import ImageCropModal from '@/components/ImageCropModal';
+import ConfirmModal from '@/components/ConfirmModal';
+import { sendFamilyLinkRequest, RELATIONSHIPS, type RelationshipValue, getFamilyLinks } from '@/lib/familyLinks';
 import { ProfilePageSkeleton } from '@/components/SkeletonLoader';
 import { getCached, setCached, clearCached } from '@/lib/pageCache';
 
@@ -53,6 +55,14 @@ type Profile = {
 
 function ProfilePageInner() {
   const searchParams = useSearchParams();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // Haven-themed confirm modal
+  const [confirmState, setConfirmState] = useState<{ message: string; confirmLabel?: string; destructive?: boolean; onConfirm: () => void } | null>(null);
+  const havenConfirm = (message: string, onConfirm: () => void, opts?: { confirmLabel?: string; destructive?: boolean }) =>
+    setConfirmState({ message, onConfirm, ...opts });
+
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(() => getCached<Profile>('profile:own') ?? null);
   const [loading, setLoading] = useState(() => !getCached<Profile>('profile:own'));
@@ -89,6 +99,27 @@ function ProfilePageInner() {
   const [children, setChildren] = useState<{ id: number; age: string }[]>([{ id: 1, age: '' }]);
   const [selectedLocationCoords, setSelectedLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
+
+  // ── Haven Family (linked accounts) ──────────────────────────────────────────
+  type FamilyLink = {
+    id: string; requester_id: string; receiver_id: string;
+    status: 'pending' | 'accepted' | 'declined';
+    relationship: string; relationship_label?: string; created_at: string;
+    other?: { id: string; family_name?: string; display_name?: string; avatar_url?: string };
+  };
+  const [familyLinks, setFamilyLinks] = useState<FamilyLink[]>([]);
+  const [familySearchQuery, setFamilySearchQuery] = useState('');
+  const [familySearchResults, setFamilySearchResults] = useState<any[]>([]);
+  const [familySearching, setFamilySearching] = useState(false);
+  const [showFamilySearch, setShowFamilySearch] = useState(false);
+  // Modal for sending a link request (own profile search OR viewing other user)
+  const [familyLinkTarget, setFamilyLinkTarget] = useState<{ id: string; name: string } | null>(null);
+  const [familyLinkRel, setFamilyLinkRel] = useState<RelationshipValue>('partner');
+  const [familyLinkOtherLabel2, setFamilyLinkOtherLabel2] = useState('');
+  const [sendingFamilyLinkModal, setSendingFamilyLinkModal] = useState(false);
+  // Status when viewing another user's profile
+  const [viewedFamilyStatus, setViewedFamilyStatus] = useState<{ status: string; isRequester: boolean; linkId?: string } | null>(null);
+  const [viewedConnStatus, setViewedConnStatus] = useState<{ status: string; isRequester: boolean; connId: string } | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
 
@@ -236,6 +267,57 @@ function ProfilePageInner() {
           if (spRes.ok) setSubProfiles(await spRes.json());
         } catch { /* sub_profiles table may not exist yet */ }
 
+        // Load family links (own profile) or link status (viewing other)
+        try {
+          const flH = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+          if (!viewingOtherUser) {
+            // Load all links for own profile
+            const flRes = await fetch(
+              `${supabaseUrl}/rest/v1/family_links?or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&select=*&order=created_at.desc`,
+              { headers: flH }
+            );
+            if (flRes.ok) {
+              const raw: FamilyLink[] = await flRes.json();
+              const withProfiles = await Promise.all(raw.map(async link => {
+                const otherId = link.requester_id === session.user.id ? link.receiver_id : link.requester_id;
+                const pRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${otherId}&select=id,family_name,display_name,avatar_url`, { headers: flH });
+                const [other] = pRes.ok ? await pRes.json() : [undefined];
+                return { ...link, other };
+              }));
+              setFamilyLinks(withProfiles);
+            }
+          } else {
+            // Check link status with viewed user
+            const flRes = await fetch(
+              `${supabaseUrl}/rest/v1/family_links?or=(and(requester_id.eq.${session.user.id},receiver_id.eq.${targetUserId}),and(requester_id.eq.${targetUserId},receiver_id.eq.${session.user.id}))&select=id,status,requester_id&limit=1`,
+              { headers: flH }
+            );
+            if (flRes.ok) {
+              const links = await flRes.json();
+              if (links?.length > 0) {
+                setViewedFamilyStatus({ status: links[0].status, isRequester: links[0].requester_id === session.user.id, linkId: links[0].id });
+              } else {
+                setViewedFamilyStatus(null);
+              }
+            }
+            // Also check connection status with viewed user
+            try {
+              const cRes = await fetch(
+                `${supabaseUrl}/rest/v1/connections?or=(and(requester_id.eq.${session.user.id},receiver_id.eq.${targetUserId}),and(requester_id.eq.${targetUserId},receiver_id.eq.${session.user.id}))&select=id,status,requester_id&limit=1`,
+                { headers: flH }
+              );
+              if (cRes.ok) {
+                const conns = await cRes.json();
+                if (conns?.length > 0) {
+                  setViewedConnStatus({ status: conns[0].status, isRequester: conns[0].requester_id === session.user.id, connId: conns[0].id });
+                } else {
+                  setViewedConnStatus(null);
+                }
+              }
+            } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
+
         // Check URL parameters for auto-edit mode (only for own profile)
         if (!viewingOtherUser && urlParams.get('edit') === 'true') {
           setIsEditing(true);
@@ -368,17 +450,101 @@ function ProfilePageInner() {
     finally { setSavingSubProfile(false); }
   };
 
-  const deleteSubProfile = async (id: string) => {
-    if (!window.confirm('Remove this family member?')) return;
-    const session = getStoredSession();
-    if (!session) return;
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    await fetch(`${supabaseUrl}/rest/v1/sub_profiles?id=eq.${id}`, {
-      method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
-    });
-    setSubProfiles(prev => prev.filter(s => s.id !== id));
-    toast('Removed');
+  const deleteSubProfile = (id: string) => {
+    havenConfirm('Remove this family member?', async () => {
+      const session = getStoredSession();
+      if (!session) return;
+      await fetch(`${supabaseUrl}/rest/v1/sub_profiles?id=eq.${id}`, {
+        method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+      });
+      setSubProfiles(prev => prev.filter(s => s.id !== id));
+      toast('Removed');
+    }, { confirmLabel: 'Remove', destructive: true });
+  };
+
+  // ── Family link handlers ─────────────────────────────────────────────────
+  const acceptFamilyLink = async (linkId: string) => {
+    const session = getStoredSession(); if (!session) return;
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+    await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${linkId}`, { method: 'PATCH', headers: h, body: JSON.stringify({ status: 'accepted' }) });
+    setFamilyLinks(prev => prev.map(l => l.id === linkId ? { ...l, status: 'accepted' } : l));
+    toast('Family linked', 'success');
+  };
+
+  const removeFamilyLink = (linkId: string) => {
+    havenConfirm('Remove this family link?', async () => {
+      const session = getStoredSession(); if (!session) return;
+      const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+      await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${linkId}`, { method: 'DELETE', headers: h });
+      setFamilyLinks(prev => prev.filter(l => l.id !== linkId));
+      toast('Link removed');
+    }, { confirmLabel: 'Remove', destructive: true });
+  };
+
+  const searchFamilyUsers = async (q: string) => {
+    setFamilySearchQuery(q);
+    if (q.trim().length < 2) { setFamilySearchResults([]); return; }
+    setFamilySearching(true);
+    try {
+      const session = getStoredSession(); if (!session) return;
+      const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?or=(family_name.ilike.*${encodeURIComponent(q)}*,display_name.ilike.*${encodeURIComponent(q)}*)&id=neq.${session.user.id}&select=id,family_name,display_name,avatar_url,location_name&limit=8`,
+        { headers: h }
+      );
+      if (res.ok) {
+        const results = await res.json();
+        // Filter out already-linked users
+        const linkedIds = new Set(familyLinks.map(l => l.other?.id).filter(Boolean));
+        setFamilySearchResults(results.filter((r: any) => !linkedIds.has(r.id)));
+      }
+    } finally { setFamilySearching(false); }
+  };
+
+  const doSendFamilyLink = async () => {
+    if (!familyLinkTarget || !user) return;
+    setSendingFamilyLinkModal(true);
+    const myName = profile?.display_name || profile?.family_name || 'Someone';
+    const result = await sendFamilyLinkRequest(
+      familyLinkTarget.id, familyLinkRel, myName,
+      familyLinkRel === 'other' ? familyLinkOtherLabel2.trim() : undefined,
+    );
+    setSendingFamilyLinkModal(false);
+    setFamilyLinkTarget(null); setFamilyLinkOtherLabel2(''); setFamilyLinkRel('partner');
+    setShowFamilySearch(false); setFamilySearchQuery(''); setFamilySearchResults([]);
+    if (result.alreadyExists) {
+      toast('Already linked with this person', 'info');
+    } else if (result.ok) {
+      toast('Family link request sent', 'success');
+      // Add as pending outgoing in local state
+      setFamilyLinks(prev => [...prev, {
+        id: 'tmp-' + Date.now(), requester_id: user.id, receiver_id: familyLinkTarget.id,
+        status: 'pending', relationship: familyLinkRel, created_at: new Date().toISOString(),
+        other: { id: familyLinkTarget.id, display_name: familyLinkTarget.name },
+      }]);
+      // If viewing other user, update their status
+      setViewedFamilyStatus({ status: 'pending', isRequester: true, linkId: undefined });
+    } else {
+      toast('Failed to send request', 'error');
+    }
+  };
+
+  const cancelViewedFamilyRequest = async () => {
+    const session = getStoredSession(); if (!session || !profile) return;
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+    // If we don't have the linkId cached, query for it
+    let linkId = viewedFamilyStatus?.linkId;
+    if (!linkId) {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/family_links?requester_id=eq.${session.user.id}&receiver_id=eq.${profile.id}&status=eq.pending&select=id&limit=1`,
+        { headers: h }
+      );
+      if (res.ok) { const [l] = await res.json(); linkId = l?.id; }
+    }
+    if (!linkId) { toast('Request not found', 'error'); return; }
+    await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${linkId}`, { method: 'DELETE', headers: h });
+    setViewedFamilyStatus(null);
+    toast('Request cancelled');
   };
 
   const handleSave = async () => {
@@ -744,9 +910,9 @@ function ProfilePageInner() {
             <Link href="/board" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Board
             </Link>
-            <Link href="/family" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
+            <button onClick={() => document.getElementById('haven-family-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Family
-            </Link>
+            </button>
           </div>
         )}
 
@@ -1402,8 +1568,8 @@ function ProfilePageInner() {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">Family Members</h3>
                 {!isViewingOtherUser && (
-                  <button onClick={openNewSubProfile} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
-                    + Add
+                  <button onClick={openNewSubProfile} className="text-xl font-semibold text-emerald-600 hover:text-emerald-700 leading-none">
+                    +
                   </button>
                 )}
               </div>
@@ -1447,6 +1613,198 @@ function ProfilePageInner() {
             </div>
           )}
         </div>
+
+        {/* ── Haven Family (linked accounts) ── */}
+        {!isViewingOtherUser && (
+          <div id="haven-family-section" className="bg-white border border-gray-100 rounded-2xl shadow-sm mb-4 overflow-hidden">
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-50">
+              <h3 className="text-sm font-bold text-gray-800">Haven Family</h3>
+              <button
+                onClick={() => { setShowFamilySearch(v => !v); setFamilySearchQuery(''); setFamilySearchResults([]); }}
+                className="text-xl font-semibold text-emerald-600 hover:text-emerald-700 leading-none"
+              >
+                {showFamilySearch ? '✕' : '+'}
+              </button>
+            </div>
+
+            {/* Search */}
+            {showFamilySearch && (
+              <div className="px-4 py-3 border-b border-gray-50">
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <input
+                    type="text"
+                    value={familySearchQuery}
+                    onChange={e => searchFamilyUsers(e.target.value)}
+                    placeholder="Search by name..."
+                    className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                    autoFocus
+                  />
+                </div>
+                {familySearching && <p className="text-xs text-gray-400 mt-2 text-center">Searching...</p>}
+                {familySearchResults.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {familySearchResults.map(r => {
+                      const name = r.display_name || r.family_name || 'Unknown';
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => setFamilyLinkTarget({ id: r.id, name })}
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-gray-50 text-left"
+                        >
+                          {r.avatar_url ? (
+                            <img src={r.avatar_url} className="w-8 h-8 rounded-full object-cover flex-shrink-0" alt={name} />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-sm font-bold text-emerald-700 flex-shrink-0">{name.charAt(0)}</div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{name}</p>
+                            {r.location_name && <p className="text-xs text-gray-400 truncate">{r.location_name}</p>}
+                          </div>
+                          <span className="text-xs text-emerald-600 font-semibold flex-shrink-0">Link</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {familySearchQuery.length >= 2 && !familySearching && familySearchResults.length === 0 && (
+                  <p className="text-xs text-gray-400 text-center mt-2 py-2">No results — they may not be on Haven yet</p>
+                )}
+              </div>
+            )}
+
+            {/* Link list */}
+            <div className="divide-y divide-gray-50">
+              {familyLinks.length === 0 && !showFamilySearch && (
+                <p className="text-xs text-gray-400 text-center py-5 px-4">Link family accounts to share calendars and stay in sync</p>
+              )}
+              {familyLinks.map(link => {
+                const name = link.other?.display_name || link.other?.family_name || 'Unknown';
+                const isRequester = link.requester_id === user?.id;
+                const relLabel = link.relationship_label || RELATIONSHIPS.find(r => r.value === link.relationship)?.label || link.relationship;
+                return (
+                  <div key={link.id} className="flex items-center gap-3 px-4 py-3">
+                    {link.other?.avatar_url ? (
+                      <img src={link.other.avatar_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt={name} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-base font-bold text-emerald-700 flex-shrink-0">{name.charAt(0)}</div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{name}</p>
+                      <p className="text-xs text-gray-400 truncate">{relLabel}</p>
+                    </div>
+                    {link.status === 'accepted' ? (
+                      <button onClick={() => removeFamilyLink(link.id)} className="text-xs text-gray-300 hover:text-red-400 transition-colors">Remove</button>
+                    ) : link.status === 'pending' && !isRequester ? (
+                      <div className="flex gap-1.5">
+                        <button onClick={() => removeFamilyLink(link.id)} className="px-2.5 py-1 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">Decline</button>
+                        <button onClick={() => acceptFamilyLink(link.id)} className="px-2.5 py-1 text-xs text-white bg-emerald-600 rounded-lg hover:bg-emerald-700">Accept</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => havenConfirm('Cancel this family request?', async () => {
+                          const session = getStoredSession(); if (!session) return;
+                          await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${link.id}`, {
+                            method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+                          });
+                          setFamilyLinks(prev => prev.filter(l => l.id !== link.id));
+                          toast('Request cancelled');
+                        }, { confirmLabel: 'Cancel request', destructive: true })}
+                        className="text-xs text-gray-400 hover:text-red-400 transition-colors"
+                      >
+                        Pending · cancel
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Connection status — viewing another user */}
+        {isViewingOtherUser && profile && user && viewedConnStatus?.status === 'pending' && !viewedConnStatus.isRequester && (
+          <div className="mb-3 px-1">
+            <div className="bg-white border border-emerald-100 rounded-xl p-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-800">{profile.display_name || profile.family_name} wants to connect</p>
+                <p className="text-xs text-gray-400">Connection request</p>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <button
+                  onClick={async () => {
+                    const session = getStoredSession(); if (!session) return;
+                    await fetch(`${supabaseUrl}/rest/v1/connections?id=eq.${viewedConnStatus.connId}`, {
+                      method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+                    });
+                    setViewedConnStatus(null);
+                    toast('Request declined');
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50"
+                >
+                  Decline
+                </button>
+                <button
+                  onClick={async () => {
+                    const session = getStoredSession(); if (!session) return;
+                    await fetch(`${supabaseUrl}/rest/v1/connections?id=eq.${viewedConnStatus.connId}`, {
+                      method: 'PATCH',
+                      headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                      body: JSON.stringify({ status: 'accepted' }),
+                    });
+                    setViewedConnStatus({ ...viewedConnStatus, status: 'accepted' });
+                    toast('Connected!');
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
+                >
+                  Accept
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Family link button — viewing another user */}
+        {isViewingOtherUser && profile && user && (
+          <div className="mb-4 px-1">
+            {viewedFamilyStatus?.status === 'accepted' ? (
+              <div className="flex items-center justify-center gap-2 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-sm font-semibold text-emerald-700">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                Family linked
+              </div>
+            ) : viewedFamilyStatus?.status === 'pending' && viewedFamilyStatus.isRequester ? (
+              <button onClick={cancelViewedFamilyRequest} className="w-full py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
+                Request sent — tap to cancel
+              </button>
+            ) : viewedFamilyStatus?.status === 'pending' && !viewedFamilyStatus.isRequester ? (
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const session = getStoredSession(); if (!session || !viewedFamilyStatus.linkId) return;
+                    await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${viewedFamilyStatus.linkId}`, {
+                      method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+                    });
+                    setViewedFamilyStatus(null);
+                    toast('Request declined');
+                  }}
+                  className="flex-1 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-200"
+                >
+                  Decline
+                </button>
+                <button onClick={() => acceptFamilyLink(viewedFamilyStatus.linkId!)} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">
+                  Accept family link
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setFamilyLinkTarget({ id: profile.id, name: profile.display_name || profile.family_name || 'them' })}
+                className="w-full py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-colors"
+              >
+                Link as family
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Support Haven card */}
         {!isViewingOtherUser && (
@@ -1806,6 +2164,51 @@ function ProfilePageInner() {
             }}
             onCancel={() => setSubProfileCropSrc(null)}
           />
+        </div>
+      )}
+      {/* Haven confirm modal */}
+      {confirmState && (
+        <ConfirmModal
+          message={confirmState.message}
+          confirmLabel={confirmState.confirmLabel}
+          destructive={confirmState.destructive}
+          onConfirm={() => { setConfirmState(null); confirmState.onConfirm(); }}
+          onCancel={() => setConfirmState(null)}
+        />
+      )}
+
+      {/* Family link request modal */}
+      {familyLinkTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-md" onClick={() => { setFamilyLinkTarget(null); setFamilyLinkOtherLabel2(''); setFamilyLinkRel('partner'); }} />
+          <div className="relative w-full max-w-sm rounded-3xl shadow-2xl border border-white/40 px-5 py-6"
+            style={{ background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(32px) saturate(1.6)', WebkitBackdropFilter: 'blur(32px) saturate(1.6)' }}>
+            <h3 className="text-base font-bold text-gray-900 mb-1">Link as family</h3>
+            <p className="text-sm text-gray-500 mb-4">How are you and <strong>{familyLinkTarget.name}</strong> related?</p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {RELATIONSHIPS.map(r => (
+                <button key={r.value}
+                  onClick={() => { setFamilyLinkRel(r.value); if (r.value !== 'other') setFamilyLinkOtherLabel2(''); }}
+                  className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all ${familyLinkRel === r.value ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white/60 text-gray-600 border-white/80 hover:border-emerald-400'}`}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {familyLinkRel === 'other' && (
+              <input type="text" value={familyLinkOtherLabel2} onChange={e => setFamilyLinkOtherLabel2(e.target.value)}
+                placeholder="Describe the relationship (e.g. Godparent)" maxLength={60} autoFocus
+                className="w-full px-3.5 py-3 border border-white/60 rounded-2xl text-sm bg-white/60 focus:ring-2 focus:ring-emerald-500 mb-4 placeholder:text-gray-400" />
+            )}
+            <div className="flex gap-2 mt-2">
+              <button onClick={() => { setFamilyLinkTarget(null); setFamilyLinkOtherLabel2(''); setFamilyLinkRel('partner'); }}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-2xl font-semibold text-sm hover:bg-gray-200">Cancel</button>
+              <button onClick={doSendFamilyLink}
+                disabled={sendingFamilyLinkModal || (familyLinkRel === 'other' && !familyLinkOtherLabel2.trim())}
+                className="flex-1 py-2.5 bg-emerald-600 text-white rounded-2xl font-semibold text-sm hover:bg-emerald-700 disabled:opacity-50">
+                {sendingFamilyLinkModal ? 'Sending...' : 'Send request'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -63,7 +63,7 @@ export async function sendFamilyLinkRequest(
     type: 'family_link_request',
     title: `${senderName} wants to link as family`,
     body: 'Tap to accept or decline',
-    link: '/family',
+    link: '/notifications',
     referenceId: session.user.id,
     accessToken: session.access_token,
   });

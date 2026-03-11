@@ -2667,7 +2667,8 @@ export default function EventsPage() {
                               const [, m] = (tempEventTime || '09:00').split(':');
                               setTempEventTime(`${String(hour).padStart(2, '0')}:${m || '00'}`);
                             }}
-                            className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            className="flex-1 border border-white/60 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            style={{ background: 'rgba(255,255,255,0.6)' }}
                           >
                             {['6 AM','7 AM','8 AM','9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM'].map(h => (
                               <option key={h} value={h}>{h}</option>
@@ -2679,7 +2680,8 @@ export default function EventsPage() {
                               const [h] = (tempEventTime || '09:00').split(':');
                               setTempEventTime(`${h}:${e.target.value}`);
                             }}
-                            className="w-24 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            className="w-24 border border-white/60 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            style={{ background: 'rgba(255,255,255,0.6)' }}
                           >
                             {['00','15','30','45'].map(m => (
                               <option key={m} value={m}>{m === '00' ? ':00' : `:${m}`}</option>
