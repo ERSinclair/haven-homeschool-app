@@ -183,17 +183,6 @@ export default function CirclesDiscoverPage() {
           {/* Browse location */}
           <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} />
 
-          {/* Search */}
-          <div className="mb-6">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Search circles..."
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
-            />
-          </div>
-
           {filtered.length === 0 ? (
             <div className="text-center py-16">
               <h3 className="font-semibold text-gray-900 mb-2">

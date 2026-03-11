@@ -34,6 +34,8 @@ const TYPE_ICON: Record<string, string> = {
   circle_invite:       '⭕',
   event_rsvp:          '📅',
   message:             '💬',
+  family_link_request: '👨‍👩‍👧‍👦',
+  family_link_accepted:'👨‍👩‍👧‍👦',
 };
 
 const TYPE_COLOR: Record<string, string> = {
@@ -42,6 +44,8 @@ const TYPE_COLOR: Record<string, string> = {
   circle_invite:       'bg-purple-50 text-purple-700 border-purple-200',
   event_rsvp:          'bg-blue-50 text-blue-700 border-blue-200',
   message:             'bg-gray-50 text-gray-700 border-gray-200',
+  family_link_request: 'bg-amber-50 text-amber-700 border-amber-200',
+  family_link_accepted:'bg-amber-50 text-amber-700 border-amber-200',
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -50,6 +54,8 @@ const TYPE_LABEL: Record<string, string> = {
   circle_invite:       'Circle',
   event_rsvp:          'Event',
   message:             'Message',
+  family_link_request: 'Family',
+  family_link_accepted:'Family',
 };
 
 function ActorAvatar({ actor, type }: { actor?: Notification['actor']; type: string }) {
@@ -261,6 +267,40 @@ export default function NotificationsPage() {
     finally { setProcessing(prev => { const s = new Set(prev); s.delete(notif.id); return s; }); }
   };
 
+  const handleFamilyLinkRequest = async (notif: Notification, accept: boolean) => {
+    const session = getStoredSession();
+    if (!session) return;
+    setProcessing(prev => new Set(prev).add(notif.id));
+    try {
+      const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+      const deleteH = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+      if (accept) {
+        const linkRes = await fetch(
+          `${supabaseUrl}/rest/v1/family_links?requester_id=eq.${notif.actor_id}&receiver_id=eq.${session.user.id}&status=eq.pending&select=id&limit=1`,
+          { headers: deleteH }
+        );
+        if (linkRes.ok) {
+          const [link] = await linkRes.json();
+          if (link) {
+            await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${link.id}`, {
+              method: 'PATCH', headers: h, body: JSON.stringify({ status: 'accepted' }),
+            });
+          }
+        }
+        toast('Family link accepted', 'success');
+        router.push('/family');
+      } else {
+        await fetch(`${supabaseUrl}/rest/v1/family_links?requester_id=eq.${notif.actor_id}&receiver_id=eq.${session.user.id}&status=eq.pending`, {
+          method: 'DELETE', headers: deleteH,
+        });
+        toast('Declined');
+      }
+      await fetch(`${supabaseUrl}/rest/v1/notifications?id=eq.${notif.id}`, { method: 'DELETE', headers: deleteH });
+      setNotifications(prev => prev.filter(n => n.id !== notif.id));
+    } catch { /* silent */ }
+    finally { setProcessing(prev => { const s = new Set(prev); s.delete(notif.id); return s; }); }
+  };
+
   const displayed = filter === 'unread' ? notifications.filter(n => !n.read) : notifications;
   const unreadCount = notifications.filter(n => !n.read).length;
   const groups = groupByDate(displayed);
@@ -397,6 +437,32 @@ export default function NotificationsPage() {
                                 {isProcessing ? '...' : 'Join circle'}
                               </button>
                               <button onClick={() => handleCircleInvite(notif, false)} disabled={isProcessing} className="flex-1 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200 disabled:opacity-50">
+                                {isProcessing ? '...' : 'Decline'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Family link request — inline accept/decline
+                      if (notif.type === 'family_link_request') {
+                        return (
+                          <div key={notif.id} className={`bg-white rounded-2xl p-4 border shadow-sm ${!notif.read ? 'border-amber-200' : 'border-gray-100'}`}>
+                            <div className="flex items-start gap-3 mb-3">
+                              <ActorAvatar actor={notif.actor} type={notif.type} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="font-semibold text-gray-900 text-sm">{notif.title}</p>
+                                  <span className="text-xs text-gray-400 flex-shrink-0">{formatTime(notif.created_at)}</span>
+                                </div>
+                                {notif.body && <p className="text-xs text-gray-500 mt-0.5">{notif.body}</p>}
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => handleFamilyLinkRequest(notif, true)} disabled={isProcessing} className="flex-1 py-2 bg-amber-500 text-white text-sm font-semibold rounded-xl hover:bg-amber-600 disabled:opacity-50">
+                                {isProcessing ? '...' : 'Accept'}
+                              </button>
+                              <button onClick={() => handleFamilyLinkRequest(notif, false)} disabled={isProcessing} className="flex-1 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200 disabled:opacity-50">
                                 {isProcessing ? '...' : 'Decline'}
                               </button>
                             </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   value: string;        // YYYY-MM-DD or ''
@@ -17,11 +17,17 @@ const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 export default function DatePickerDropdown({ value, onChange, onClose, minDate, maxDate, month, onMonthChange }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const [showYearPicker, setShowYearPicker] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
 
   const [year, monthNum] = month.split('-').map(Number);
   const firstDay = new Date(year, monthNum - 1, 1).getDay();
   const daysInMonth = new Date(year, monthNum, 0).getDate();
+
+  const currentYear = new Date().getFullYear();
+  const minYear = maxDate ? parseInt(maxDate.slice(0, 4)) - 120 : currentYear - 120;
+  const maxYear = maxDate ? parseInt(maxDate.slice(0, 4)) : currentYear;
+  const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => maxYear - i);
 
   const prevMonth = () => {
     const d = new Date(year, monthNum - 2, 1);
@@ -32,11 +38,17 @@ export default function DatePickerDropdown({ value, onChange, onClose, minDate, 
     onMonthChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  const monthLabel = new Date(year, monthNum - 1, 1).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' });
+  const selectYear = (y: number) => {
+    onMonthChange(`${y}-${String(monthNum).padStart(2, '0')}`);
+    setShowYearPicker(false);
+  };
+
+  const monthName = new Date(year, monthNum - 1, 1).toLocaleDateString('en-AU', { month: 'short' });
 
   const select = (day: number) => {
     const dateStr = `${year}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     if (minDate && dateStr < minDate) return;
+    if (maxDate && dateStr > maxDate) return;
     onChange(dateStr);
     onClose();
   };
@@ -60,11 +72,37 @@ export default function DatePickerDropdown({ value, onChange, onClose, minDate, 
         <button type="button" onClick={prevMonth} className="p-1 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
         </button>
-        <span className="text-xs font-semibold text-gray-800">{monthLabel}</span>
+        <div className="flex items-center gap-1">
+          <span className="text-xs font-semibold text-gray-800">{monthName}</span>
+          <button
+            type="button"
+            onClick={() => setShowYearPicker(v => !v)}
+            className="text-xs font-bold text-emerald-600 hover:text-emerald-700 px-1.5 py-0.5 rounded-lg hover:bg-emerald-50 transition-colors"
+          >
+            {year}
+          </button>
+        </div>
         <button type="button" onClick={nextMonth} className="p-1 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7"/></svg>
         </button>
       </div>
+
+      {/* Year picker grid */}
+      {showYearPicker && (
+        <div className="max-h-40 overflow-y-auto grid grid-cols-4 gap-1 mb-2 border-b border-gray-100 pb-2">
+          {years.map(y => (
+            <button
+              key={y}
+              type="button"
+              onClick={() => selectYear(y)}
+              className={`py-1 rounded-lg text-xs font-medium transition-colors
+                ${y === year ? 'bg-emerald-600 text-white' : 'text-gray-700 hover:bg-emerald-50 hover:text-emerald-700'}`}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Day headers */}
       <div className="grid grid-cols-7 mb-1">

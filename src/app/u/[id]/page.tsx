@@ -15,6 +15,7 @@ type PublicProfile = {
   bio?: string;
   location_name?: string;
   avatar_url?: string;
+  banner_url?: string;
   kids_ages?: number[];
   dob?: string;
   show_birthday?: boolean;
@@ -54,6 +55,8 @@ export default function PublicProfilePage() {
   const [notFound, setNotFound] = useState(false);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [alreadyConnected, setAlreadyConnected] = useState(false);
+  type SubProfile = { id: string; name: string; type: string; dob?: string; avatar_url?: string; bio?: string };
+  const [subProfiles, setSubProfiles] = useState<SubProfile[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -63,7 +66,7 @@ export default function PublicProfilePage() {
 
         // Fetch profile (public read, no auth needed)
         const profRes = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?id=eq.${id}&select=id,family_name,display_name,bio,location_name,avatar_url,kids_ages,homeschool_approaches,interests,user_type,dob,show_birthday`,
+          `${supabaseUrl}/rest/v1/profiles?id=eq.${id}&select=id,family_name,display_name,bio,location_name,avatar_url,banner_url,kids_ages,homeschool_approaches,interests,user_type,dob,show_birthday`,
           { headers: h }
         );
         if (!profRes.ok) { setNotFound(true); setLoading(false); return; }
@@ -92,7 +95,16 @@ export default function PublicProfilePage() {
           );
           if (connRes.ok) {
             const conns = await connRes.json();
+            const connected = conns.some((c: any) => c.status === 'accepted');
             if (conns.length > 0) setAlreadyConnected(true);
+            // Load sub-profiles for connections only
+            if (connected) {
+              const spRes = await fetch(
+                `${supabaseUrl}/rest/v1/sub_profiles?parent_profile_id=eq.${id}&is_visible=eq.true&order=created_at.asc`,
+                { headers: ah }
+              );
+              if (spRes.ok) setSubProfiles(await spRes.json());
+            }
           }
         }
       } catch { setNotFound(true); }
@@ -144,8 +156,14 @@ export default function PublicProfilePage() {
 
         {/* Profile card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
-          {/* Header strip */}
-          <div className="h-16 bg-gradient-to-r from-emerald-400 to-emerald-600" />
+          {/* Header strip / banner */}
+          {profile?.banner_url ? (
+            <div className="h-32 overflow-hidden">
+              <img src={profile.banner_url} alt="Banner" className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className="h-16 bg-gradient-to-r from-emerald-400 to-emerald-600" />
+          )}
 
           <div className="px-6 pb-6">
             {/* Avatar */}
@@ -199,19 +217,40 @@ export default function PublicProfilePage() {
             {profile?.kids_ages && profile.kids_ages.length > 0 && (
               <div className="flex items-center gap-1.5 mt-3 flex-wrap">
                 <span className="text-xs text-gray-500">Kids:</span>
-                {profile.kids_ages.map((age, i) => (
-                  <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">
-                    {age === 0 ? 'Under 1' : `${age}yo`}
+                {[...profile.kids_ages].sort((a, b) => a - b).map((age, i) => (
+                  <span key={i} className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full">
+                    {age === 0 ? 'Under 1' : age}
                   </span>
                 ))}
               </div>
             )}
 
             {/* Homeschool approaches */}
+            {subProfiles.length > 0 && (
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <span className="text-xs text-gray-500 font-medium">Family:</span>
+                {subProfiles.map(sp => {
+                  const age = sp.dob ? Math.floor((Date.now() - new Date(sp.dob).getTime()) / 3.15576e10) : null;
+                  return (
+                    <div key={sp.id} className="flex items-center gap-1.5">
+                      {sp.avatar_url ? (
+                        <img src={sp.avatar_url} alt={sp.name} className="w-7 h-7 rounded-full object-cover" />
+                      ) : (
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${sp.type === 'child' ? 'bg-emerald-100 text-emerald-700' : sp.type === 'partner' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {sp.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="text-xs text-gray-700 font-medium">{sp.name}{age !== null && age >= 0 && age <= 18 ? ` (${age === 0 ? '<1' : age})` : ''}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {profile?.homeschool_approaches && profile.homeschool_approaches.length > 0 && (
               <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                 {profile.homeschool_approaches.map((a, i) => (
-                  <span key={i} className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full">
+                  <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">
                     {a}
                   </span>
                 ))}
@@ -259,13 +298,15 @@ export default function PublicProfilePage() {
           </div>
         )}
 
-        {/* Haven branding footer */}
-        <div className="text-center mt-8 space-y-1">
-          <p className="text-xs text-gray-400">Find homeschool families near you</p>
-          <Link href="/signup" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700">
-            Join Haven — it's free
-          </Link>
-        </div>
+        {/* Haven branding footer — only for logged-out visitors */}
+        {!getStoredSession()?.user && (
+          <div className="text-center mt-8 space-y-1">
+            <p className="text-xs text-gray-400">Find homeschool families near you</p>
+            <Link href="/signup" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700">
+              Join Haven — it's free
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -18,8 +18,9 @@ export default function ForgotPasswordPage() {
     setError(null);
 
     try {
+      const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://familyhaven.app';
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: `${origin}/reset-password`,
       });
 
       if (error) {

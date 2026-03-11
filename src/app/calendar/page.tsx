@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import { undoDelete } from '@/lib/undo';
+import { toast } from '@/lib/toast';
+import { getFamilyLinks } from '@/lib/familyLinks';
 import ReminderPicker, { ReminderConfig, offsetToMs } from '@/components/ReminderPicker';
 import DatePickerModal from '@/components/DatePickerModal';
 import AppHeader from '@/components/AppHeader';
@@ -20,13 +22,15 @@ type CalItem = {
   title: string;
   date: string;          // YYYY-MM-DD
   time?: string;         // HH:MM
-  type: 'hosting' | 'attending' | 'circle' | 'note' | 'birthday';
+  type: 'hosting' | 'attending' | 'circle' | 'note' | 'birthday' | 'family';
+  familyMemberName?: string;
   location?: string;
   description?: string;
   eventId?: string;      // links back to /events
   circleId?: string;     // links back to /circles/[id]
   noteId?: string;       // links to calendar_notes.id
   recurrenceRule?: 'weekly' | 'fortnightly' | 'monthly' | 'yearly' | null;
+  category?: string;
 };
 
 type CalNote = {
@@ -37,6 +41,8 @@ type CalNote = {
   recurrence_rule?: 'weekly' | 'fortnightly' | 'monthly' | 'yearly' | null;
   recurrence_end_date?: string | null;
   note_type?: 'note' | 'birthday';
+  category?: string;
+  note_time?: string;
 };
 
 // ─── Recurring Note Expansion ─────────────────────────────────────────────────
@@ -78,7 +84,78 @@ function expandRecurringNote(note: CalNote): { date: string; instanceId: string 
   return instances;
 }
 
-// ─── ICS Generator (Phase 4) ─────────────────────────────────────────────────
+// ─── Natural Language Parser ──────────────────────────────────────────────────
+
+type ParsedNote = {
+  title: string;
+  time?: string;
+  category?: string;
+  recurrence?: 'weekly' | 'fortnightly' | 'monthly' | 'yearly';
+};
+
+function parseNaturalLanguage(input: string): ParsedNote {
+  let remaining = input.trim();
+  let time: string | undefined;
+  let category: string | undefined;
+  let recurrence: ParsedNote['recurrence'];
+
+  // Time: "3pm", "3:30pm", "9am", "9:30 am", "14:00"
+  const timeMatch = remaining.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i)
+    || remaining.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  if (timeMatch) {
+    if (timeMatch[3]) {
+      // 12-hour
+      let h = parseInt(timeMatch[1]);
+      const m = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+      if (timeMatch[3].toLowerCase() === 'pm' && h !== 12) h += 12;
+      if (timeMatch[3].toLowerCase() === 'am' && h === 12) h = 0;
+      time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    } else {
+      // 24-hour
+      time = `${String(timeMatch[1]).padStart(2, '0')}:${String(timeMatch[2]).padStart(2, '0')}`;
+    }
+    remaining = remaining.replace(timeMatch[0], '').trim();
+  }
+
+  // Recurrence keywords
+  if (/\bevery\s+week\b|\bweekly\b/i.test(remaining)) {
+    recurrence = 'weekly';
+    remaining = remaining.replace(/\bevery\s+week\b|\bweekly\b/i, '').trim();
+  } else if (/\bfortnightly\b|\bevery\s+2\s+weeks?\b/i.test(remaining)) {
+    recurrence = 'fortnightly';
+    remaining = remaining.replace(/\bfortnightly\b|\bevery\s+2\s+weeks?\b/i, '').trim();
+  } else if (/\bevery\s+month\b|\bmonthly\b/i.test(remaining)) {
+    recurrence = 'monthly';
+    remaining = remaining.replace(/\bevery\s+month\b|\bmonthly\b/i, '').trim();
+  } else if (/\bevery\s+year\b|\byearly\b|\bannually\b/i.test(remaining)) {
+    recurrence = 'yearly';
+    remaining = remaining.replace(/\bevery\s+year\b|\byearly\b|\bannually\b/i, '').trim();
+  }
+
+  // Category — match label or value
+  const catKeywords: { pattern: RegExp; value: string }[] = [
+    { pattern: /\bbills?\b/i,    value: 'bills' },
+    { pattern: /\bschool\b/i,    value: 'school' },
+    { pattern: /\bfamily\b/i,    value: 'family' },
+    { pattern: /\bhealth\b/i,    value: 'health' },
+    { pattern: /\bsocial\b/i,    value: 'social' },
+    { pattern: /\bpersonal\b/i,  value: 'personal' },
+  ];
+  for (const kw of catKeywords) {
+    if (kw.pattern.test(remaining)) {
+      category = kw.value;
+      remaining = remaining.replace(kw.pattern, '').trim();
+      break;
+    }
+  }
+
+  // Clean up stray "every" and double spaces
+  remaining = remaining.replace(/\bevery\b/i, '').replace(/\s{2,}/g, ' ').trim();
+
+  return { title: remaining || input.trim(), time, category, recurrence };
+}
+
+// ─── ICS Generator ───────────────────────────────────────────────────────────
 
 function generateICS(items: CalItem[]): string {
   const escape = (s: string) => s.replace(/[\\;,]/g, c => `\\${c}`).replace(/\n/g, '\\n');
@@ -139,7 +216,36 @@ const DOT_COLORS: Record<CalItem['type'], string> = {
   circle:    'bg-violet-400',
   note:      'bg-amber-400',
   birthday:  'bg-pink-400',
+  family:    'bg-gray-400',
 };
+
+const BAR_COLORS: Record<CalItem['type'], string> = {
+  hosting:   'bg-emerald-100 text-emerald-800',
+  attending: 'bg-sky-100 text-sky-800',
+  circle:    'bg-violet-100 text-violet-800',
+  note:      'bg-amber-100 text-amber-800',
+  birthday:  'bg-pink-100 text-pink-800',
+  family:    'bg-gray-100 text-gray-600',
+};
+
+const CATEGORIES = [
+  { value: 'personal', label: 'Personal', bar: 'bg-amber-100 text-amber-800',   dot: 'bg-amber-400' },
+  { value: 'bills',    label: 'Bills',    bar: 'bg-orange-100 text-orange-800', dot: 'bg-orange-500' },
+  { value: 'school',   label: 'School',   bar: 'bg-blue-100 text-blue-800',     dot: 'bg-blue-400' },
+  { value: 'family',   label: 'Family',   bar: 'bg-purple-100 text-purple-800', dot: 'bg-purple-400' },
+  { value: 'health',   label: 'Health',   bar: 'bg-teal-100 text-teal-800',     dot: 'bg-teal-400' },
+  { value: 'social',   label: 'Social',   bar: 'bg-rose-100 text-rose-800',     dot: 'bg-rose-400' },
+] as const;
+
+function getItemBarColor(item: CalItem): string {
+  if (item.type === 'note' && item.category) {
+    const cat = CATEGORIES.find(c => c.value === item.category);
+    if (cat) return cat.bar;
+  }
+  return BAR_COLORS[item.type];
+}
+
+type CalViewMode = 'month' | 'week' | 'agenda';
 
 const LABEL_COLORS: Record<CalItem['type'], string> = {
   hosting:   'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -147,6 +253,7 @@ const LABEL_COLORS: Record<CalItem['type'], string> = {
   circle:    'bg-violet-100 text-violet-800 border-violet-200',
   note:      'bg-amber-100 text-amber-800 border-amber-200',
   birthday:  'bg-pink-100 text-pink-800 border-pink-200',
+  family:    'bg-gray-100 text-gray-600 border-gray-200',
 };
 
 const TYPE_LABELS: Record<CalItem['type'], string> = {
@@ -155,6 +262,7 @@ const TYPE_LABELS: Record<CalItem['type'], string> = {
   circle:    'Circle meetup',
   note:      'Note',
   birthday:  'Birthday',
+  family:    'Family',
 };
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -189,6 +297,14 @@ function CalendarContent() {
   const [isBirthday, setIsBirthday] = useState(false);
   const [birthdayName, setBirthdayName] = useState('');
   const [birthdayYear, setBirthdayYear] = useState('');
+  const [calViewMode, setCalViewMode] = useState<CalViewMode>('month');
+  const [noteCategory, setNoteCategory] = useState('personal');
+  const [noteTime, setNoteTime] = useState('');
+  const [quickInput, setQuickInput] = useState('');
+  const [quickParsed, setQuickParsed] = useState<ParsedNote | null>(null);
+  const [savingQuick, setSavingQuick] = useState(false);
+  const [movingNote, setMovingNote] = useState<CalNote | null>(null);
+  const [moveTargetDate, setMoveTargetDate] = useState('');
 
   const loadCalendarData = useCallback(async () => {
     const session = getStoredSession();
@@ -303,6 +419,8 @@ function CalendarContent() {
                 description: n.content,
                 noteId: n.id,
                 recurrenceRule: n.recurrence_rule,
+                category: n.category,
+                time: n.note_time || undefined,
               });
             });
           } else {
@@ -313,9 +431,39 @@ function CalendarContent() {
               type: nType,
               description: n.content,
               noteId: n.id,
+              category: n.category,
+              time: n.note_time || undefined,
             });
           }
         });
+      }
+
+      // Family shared calendars
+      const familyLinks = await getFamilyLinks(session.user.id, session.access_token);
+      for (const link of familyLinks) {
+        const isRequester = link.requester_id === session.user.id;
+        const theyShare = isRequester ? link.receiver_share_calendar : link.requester_share_calendar;
+        if (!theyShare) continue;
+        const otherId = isRequester ? link.receiver_id : link.requester_id;
+        // Fetch their events (hosted + attending)
+        const [theirHosted, theirRsvps, theirProfile] = await Promise.all([
+          fetch(`${supabaseUrl}/rest/v1/events?host_id=eq.${otherId}&is_cancelled=eq.false&select=id,title,event_date,event_time,location_name`, { headers: h }).then(r => r.ok ? r.json() : []),
+          fetch(`${supabaseUrl}/rest/v1/event_rsvps?profile_id=eq.${otherId}&status=eq.going&select=event_id`, { headers: h }).then(r => r.ok ? r.json() : []),
+          fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${otherId}&select=family_name,display_name`, { headers: h }).then(r => r.ok ? r.json().then((d: any[]) => d[0]) : null),
+        ]);
+        const memberName = theirProfile?.display_name || theirProfile?.family_name?.split(' ')[0] || 'Family';
+        theirHosted.forEach((e: any) => {
+          allItems.push({ id: `family-host-${e.id}`, title: `${memberName}: ${e.title}`, date: e.event_date, time: e.event_time, type: 'family', location: e.location_name, familyMemberName: memberName });
+        });
+        if (theirRsvps.length > 0) {
+          const eventIds = theirRsvps.map((r: any) => r.event_id);
+          const theirEvents = await fetch(`${supabaseUrl}/rest/v1/events?id=in.(${eventIds.join(',')})&is_cancelled=eq.false&select=id,title,event_date,event_time,location_name`, { headers: h }).then(r => r.ok ? r.json() : []);
+          theirEvents.forEach((e: any) => {
+            if (!allItems.find(i => i.id === `family-host-${e.id}`)) {
+              allItems.push({ id: `family-rsvp-${e.id}`, title: `${memberName}: ${e.title}`, date: e.event_date, time: e.event_time, type: 'family', location: e.location_name, familyMemberName: memberName });
+            }
+          });
+        }
       }
 
       setItems(allItems.sort((a, b) => a.date.localeCompare(b.date)));
@@ -448,6 +596,8 @@ function CalendarContent() {
     }
     setNoteRecurrence(note.recurrence_rule || 'none');
     setNoteRecurrenceEnd(note.recurrence_end_date || '');
+    setNoteCategory(note.category || 'personal');
+    setNoteTime(note.note_time || '');
     setAddingNote(true);
   };
 
@@ -461,6 +611,8 @@ function CalendarContent() {
     setIsBirthday(false);
     setBirthdayName('');
     setBirthdayYear('');
+    setNoteCategory('personal');
+    setNoteTime('');
   };
 
   const saveBirthday = async () => {
@@ -524,6 +676,8 @@ function CalendarContent() {
           content: noteContent.trim(),
           recurrence_rule: noteRecurrence === 'none' ? null : noteRecurrence,
           recurrence_end_date: noteRecurrence !== 'none' && noteRecurrenceEnd ? noteRecurrenceEnd : null,
+          category: noteCategory,
+          note_time: noteTime || null,
         };
         const res = await fetch(`${supabaseUrl}/rest/v1/calendar_notes?id=eq.${editingNote.id}`, {
           method: 'PATCH',
@@ -532,9 +686,7 @@ function CalendarContent() {
         });
         if (res.ok) {
           const [updated] = await res.json();
-          // Re-fetch all notes to correctly rebuild recurring instances
           setNotes(prev => prev.map(n => n.id === editingNote.id ? updated : n));
-          // Remove old instances for this note, re-expand
           setItems(prev => {
             const filtered = prev.filter(i => i.noteId !== editingNote.id);
             if (updated.recurrence_rule) {
@@ -546,6 +698,8 @@ function CalendarContent() {
                 description: updated.content,
                 noteId: updated.id,
                 recurrenceRule: updated.recurrence_rule,
+                category: updated.category,
+                time: updated.note_time || undefined,
               }));
               return [...filtered, ...newInstances].sort((a, b) => a.date.localeCompare(b.date));
             }
@@ -556,6 +710,8 @@ function CalendarContent() {
               type: 'note' as const,
               description: updated.content,
               noteId: updated.id,
+              category: updated.category,
+              time: updated.note_time || undefined,
             }].sort((a, b) => a.date.localeCompare(b.date));
           });
         }
@@ -569,6 +725,8 @@ function CalendarContent() {
           recurrence_rule: isBirthday ? 'yearly' : (noteRecurrence === 'none' ? null : noteRecurrence),
           recurrence_end_date: noteRecurrence !== 'none' && noteRecurrenceEnd ? noteRecurrenceEnd : null,
           note_type: isBirthday ? 'birthday' : 'note',
+          category: noteCategory,
+          note_time: noteTime || null,
         };
         const res = await fetch(`${supabaseUrl}/rest/v1/calendar_notes`, {
           method: 'POST',
@@ -588,6 +746,8 @@ function CalendarContent() {
               description: created.content,
               noteId: created.id,
               recurrenceRule: created.recurrence_rule,
+              category: created.category,
+              time: created.note_time || undefined,
             }));
             setItems(prev => [...prev, ...newInstances].sort((a, b) => a.date.localeCompare(b.date)));
           } else {
@@ -598,6 +758,8 @@ function CalendarContent() {
               type: createdType,
               description: created.content,
               noteId: created.id,
+              category: created.category,
+              time: created.note_time || undefined,
             }].sort((a, b) => a.date.localeCompare(b.date)));
           }
         }
@@ -645,6 +807,79 @@ function CalendarContent() {
         if (removedNote) setNotes(prev => [...prev, removedNote]);
       },
     });
+  };
+
+  const saveQuickNote = async () => {
+    if (!quickInput.trim() || !selectedDate) return;
+    setSavingQuick(true);
+    const session = getStoredSession();
+    if (!session) { setSavingQuick(false); return; }
+    const parsed = parseNaturalLanguage(quickInput.trim());
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
+    try {
+      const payload = {
+        profile_id: session.user.id,
+        note_date: selectedDate,
+        title: parsed.title,
+        content: '',
+        recurrence_rule: parsed.recurrence || null,
+        recurrence_end_date: null,
+        note_type: 'note',
+        category: parsed.category || 'personal',
+        note_time: parsed.time || null,
+      };
+      const res = await fetch(`${supabaseUrl}/rest/v1/calendar_notes`, { method: 'POST', headers: h, body: JSON.stringify(payload) });
+      if (res.ok) {
+        const [created] = await res.json();
+        setNotes(prev => [...prev, created]);
+        const instances = created.recurrence_rule
+          ? expandRecurringNote(created).map(({ date, instanceId }) => ({
+              id: instanceId, title: created.title, date, type: 'note' as const,
+              description: created.content, noteId: created.id, recurrenceRule: created.recurrence_rule,
+              category: created.category, time: created.note_time || undefined,
+            }))
+          : [{ id: `note-${created.id}`, title: created.title, date: created.note_date, type: 'note' as const,
+               description: created.content, noteId: created.id, category: created.category, time: created.note_time || undefined }];
+        setItems(prev => [...prev, ...instances].sort((a, b) => a.date.localeCompare(b.date)));
+        setQuickInput('');
+        setQuickParsed(null);
+      }
+    } catch { /* silent */ }
+    finally { setSavingQuick(false); }
+  };
+
+  const moveNote = async () => {
+    if (!movingNote || !moveTargetDate) return;
+    const session = getStoredSession();
+    if (!session) return;
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+    try {
+      await fetch(`${supabaseUrl}/rest/v1/calendar_notes?id=eq.${movingNote.id}`, {
+        method: 'PATCH', headers: h, body: JSON.stringify({ note_date: moveTargetDate }),
+      });
+      setNotes(prev => prev.map(n => n.id === movingNote.id ? { ...n, note_date: moveTargetDate } : n));
+      setItems(prev => {
+        const filtered = prev.filter(i => i.noteId !== movingNote.id);
+        const updated = { ...movingNote, note_date: moveTargetDate };
+        if (updated.recurrence_rule) {
+          const newInstances = expandRecurringNote(updated).map(({ date, instanceId }) => ({
+            id: instanceId, title: updated.title || 'Note', date, type: (updated.note_type === 'birthday' ? 'birthday' : 'note') as CalItem['type'],
+            description: updated.content, noteId: updated.id, recurrenceRule: updated.recurrence_rule,
+            category: updated.category, time: updated.note_time || undefined,
+          }));
+          return [...filtered, ...newInstances].sort((a, b) => a.date.localeCompare(b.date));
+        }
+        return [...filtered, {
+          id: `note-${updated.id}`, title: updated.title || 'Note', date: moveTargetDate,
+          type: (updated.note_type === 'birthday' ? 'birthday' : 'note') as CalItem['type'],
+          description: updated.content, noteId: updated.id, category: updated.category, time: updated.note_time || undefined,
+        }].sort((a, b) => a.date.localeCompare(b.date));
+      });
+      setMovingNote(null);
+      setMoveTargetDate('');
+      setSelectedDate(moveTargetDate);
+      toast('Note moved', 'success');
+    } catch { toast('Failed to move note', 'error'); }
   };
 
   const formatTime = (t?: string) => {
@@ -720,8 +955,221 @@ function CalendarContent() {
             </div>
           )}
 
+          {/* View mode toggle */}
+          <div className="flex bg-gray-100 rounded-xl p-0.5 mb-3">
+            {(['month', 'week', 'agenda'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setCalViewMode(mode)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all capitalize ${
+                  calViewMode === mode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+
+          {/* Agenda view */}
+          {calViewMode === 'agenda' && (() => {
+            const futureItems = items.filter(i => i.date >= todayStr).sort((a, b) => {
+              const d = a.date.localeCompare(b.date);
+              if (d !== 0) return d;
+              return (a.time || '99:99').localeCompare(b.time || '99:99');
+            });
+            if (futureItems.length === 0) return (
+              <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center mb-4">
+                <p className="text-gray-400 text-sm">Nothing coming up</p>
+              </div>
+            );
+            // Group by date
+            const grouped: Record<string, CalItem[]> = {};
+            futureItems.forEach(i => { if (!grouped[i.date]) grouped[i.date] = []; grouped[i.date].push(i); });
+            return (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+                {Object.entries(grouped).map(([date, dateItems], gi) => (
+                  <div key={date}>
+                    {gi > 0 && <div className="h-px bg-gray-100 mx-4" />}
+                    <div className="px-4 pt-3 pb-1">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                        {new Date(date + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {date === todayStr && <span className="ml-2 text-emerald-600 normal-case">Today</span>}
+                      </p>
+                    </div>
+                    {dateItems.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => { setSelectedDate(item.date); setCalViewMode('month'); handleItemClick(item); }}
+                        className="w-full text-left flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${DOT_COLORS[item.type]}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{item.title}</p>
+                        </div>
+                        {item.time && <span className="text-xs text-gray-400 flex-shrink-0">{formatTime(item.time)}</span>}
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border flex-shrink-0 ${LABEL_COLORS[item.type]}`}>
+                          {TYPE_LABELS[item.type]}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Week view */}
+          {calViewMode === 'week' && (() => {
+            const sel = new Date(selectedDate + 'T12:00:00');
+            const dow = (sel.getDay() + 6) % 7;
+            const monday = new Date(sel); monday.setDate(sel.getDate() - dow);
+            const weekDays = Array.from({ length: 7 }, (_, i) => {
+              const d = new Date(monday); d.setDate(monday.getDate() + i);
+              return d.toISOString().slice(0, 10);
+            });
+            const weekHasItems = weekDays.some(d => (itemsByDate[d] || []).length > 0);
+            return (
+              <div className="mb-4 space-y-2">
+                {/* Week nav header */}
+                <div className="flex items-center justify-between px-1 pb-1">
+                  <button
+                    onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 7); setSelectedDate(d.toISOString().slice(0, 10)); setCurrentMonth(d); }}
+                    className="p-2 rounded-xl hover:bg-white text-gray-400 hover:text-gray-700 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                  </button>
+                  <span className="text-sm font-semibold text-gray-700">
+                    {new Date(weekDays[0] + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} – {new Date(weekDays[6] + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                  </span>
+                  <button
+                    onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 7); setSelectedDate(d.toISOString().slice(0, 10)); setCurrentMonth(d); }}
+                    className="p-2 rounded-xl hover:bg-white text-gray-400 hover:text-gray-700 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </button>
+                </div>
+
+                {/* Day rows */}
+                {weekDays.map((dateStr, i) => {
+                  const wItems = (itemsByDate[dateStr] || []).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+                  const isToday = dateStr === todayStr;
+                  const isSelected = dateStr === selectedDate;
+                  const isPast = dateStr < todayStr;
+                  const dayNum = parseInt(dateStr.slice(8));
+                  const dayName = DAY_NAMES[i];
+                  const isWeekend = i >= 5;
+
+                  return (
+                    <div
+                      key={dateStr}
+                      className={`rounded-2xl border transition-all ${
+                        isToday
+                          ? 'bg-emerald-50 border-emerald-200 shadow-sm'
+                          : isSelected
+                          ? 'bg-white border-emerald-300 shadow-sm'
+                          : isPast
+                          ? 'bg-gray-50/60 border-gray-100'
+                          : 'bg-white border-gray-100 shadow-sm'
+                      }`}
+                    >
+                      {/* Day header row */}
+                      <button
+                        onClick={() => { setSelectedDate(dateStr); cancelNote(); }}
+                        className="w-full flex items-center gap-3 px-4 py-3"
+                      >
+                        {/* Date badge */}
+                        <div className={`flex flex-col items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 ${
+                          isToday ? 'bg-emerald-600' : isWeekend && !isPast ? 'bg-gray-100' : isPast ? 'bg-gray-100' : 'bg-gray-100'
+                        }`}>
+                          <span className={`text-[10px] font-bold uppercase leading-none mb-0.5 ${isToday ? 'text-emerald-100' : 'text-gray-400'}`}>{dayName}</span>
+                          <span className={`text-base font-bold leading-none ${isToday ? 'text-white' : isPast ? 'text-gray-400' : 'text-gray-800'}`}>{dayNum}</span>
+                        </div>
+
+                        {/* Summary / items preview */}
+                        <div className="flex-1 min-w-0">
+                          {wItems.length === 0 ? (
+                            <p className={`text-sm ${isPast ? 'text-gray-300' : 'text-gray-400'}`}>
+                              {isToday ? 'Nothing on today' : 'Free'}
+                            </p>
+                          ) : (
+                            <div className="space-y-1">
+                              {wItems.slice(0, 3).map(item => {
+                                const barColor = getItemBarColor(item);
+                                const dotColor = DOT_COLORS[item.type];
+                                return (
+                                  <div key={item.id} className="flex items-center gap-2 min-w-0">
+                                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
+                                    {item.time && (
+                                      <span className="text-[10px] text-gray-400 font-medium flex-shrink-0 w-10">
+                                        {(() => {
+                                          const [h, m] = item.time!.split(':').map(Number);
+                                          const ampm = h >= 12 ? 'pm' : 'am';
+                                          const h12 = h % 12 || 12;
+                                          return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2,'0')}${ampm}`;
+                                        })()}
+                                      </span>
+                                    )}
+                                    <span className={`text-xs font-medium truncate ${isPast ? 'text-gray-400' : 'text-gray-700'}`}>{item.title}</span>
+                                  </div>
+                                );
+                              })}
+                              {wItems.length > 3 && (
+                                <p className="text-[10px] text-gray-400 pl-3.5">+{wItems.length - 3} more</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Item count badge */}
+                        {wItems.length > 0 && (
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                            isToday ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}>{wItems.length}</span>
+                        )}
+                      </button>
+
+                      {/* Expanded items — shown when this day is selected */}
+                      {isSelected && wItems.length > 0 && (
+                        <div className="border-t border-gray-100 divide-y divide-gray-50">
+                          {wItems.map(item => (
+                            <button
+                              key={item.id}
+                              onClick={() => handleItemClick(item)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                            >
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${DOT_COLORS[item.type]}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{item.title}</p>
+                                {item.location && <p className="text-xs text-gray-400 truncate">{item.location}</p>}
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {item.time && (
+                                  <span className="text-xs text-gray-400">
+                                    {(() => {
+                                      const [h, m] = item.time!.split(':').map(Number);
+                                      const ampm = h >= 12 ? 'pm' : 'am';
+                                      const h12 = h % 12 || 12;
+                                      return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2,'0')}${ampm}`;
+                                    })()}
+                                  </span>
+                                )}
+                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${LABEL_COLORS[item.type]}`}>
+                                  {TYPE_LABELS[item.type]}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           {/* Calendar grid */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+          {calViewMode === 'month' && <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
             {/* Month nav */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <button
@@ -749,49 +1197,62 @@ function CalendarContent() {
             {/* Grid cells */}
             <div className="grid grid-cols-7">
               {cells.map((day, idx) => {
-                if (day === null) return <div key={`e${idx}`} className="h-12 border-b border-r border-gray-50 last:border-r-0" />;
+                if (day === null) return <div key={`e${idx}`} className="h-[72px] border-b border-r border-gray-50 last:border-r-0" />;
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const dayItems = itemsByDate[dateStr] || [];
                 const isToday = dateStr === todayStr;
                 const isSelected = dateStr === selectedDate;
                 const isPast = dateStr < todayStr;
 
-                // Collect unique dot types for this day
-                const dotTypes = [...new Set(dayItems.map(i => i.type))];
-
                 return (
                   <button
                     key={day}
                     onClick={() => { setSelectedDate(dateStr); cancelNote(); }}
-                    className={`h-12 flex flex-col items-center justify-start pt-1.5 border-b border-r last:border-r-0 transition-colors ${
+                    className={`h-[72px] flex flex-col items-start pt-1.5 px-0.5 pb-1 border-b border-r last:border-r-0 transition-colors overflow-hidden w-full ${
                       isSelected ? 'bg-emerald-600 border-emerald-600' : isToday ? 'bg-emerald-50 border-gray-50' : isPast ? 'bg-gray-50/50 border-gray-50' : 'hover:bg-gray-50 border-gray-50'
                     }`}
                   >
-                    <span className={`text-xs font-semibold leading-none ${
+                    <span className={`text-xs font-semibold leading-none mb-1 w-full text-center ${
                       isSelected ? 'text-white' : isToday ? 'text-emerald-700' : isPast ? 'text-gray-400' : 'text-gray-700'
                     }`}>{day}</span>
-                    {dotTypes.length > 0 && (
-                      <div className="flex gap-0.5 mt-1">
-                        {dotTypes.map(type => (
-                          <div key={type} className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white/80' : DOT_COLORS[type]}`} />
-                        ))}
-                      </div>
-                    )}
+                    <div className="w-full space-y-px">
+                      {dayItems.slice(0, 3).map(item => (
+                        <div
+                          key={item.id}
+                          className={`w-full rounded-sm px-0.5 ${isSelected ? 'bg-white/25' : getItemBarColor(item)}`}
+                        >
+                          <p className={`text-[8px] font-medium leading-tight truncate ${isSelected ? 'text-white' : ''}`}>
+                            {item.title}
+                          </p>
+                        </div>
+                      ))}
+                      {dayItems.length > 3 && (
+                        <p className={`text-[8px] leading-tight pl-0.5 ${isSelected ? 'text-white/70' : 'text-gray-400'}`}>
+                          +{dayItems.length - 3}
+                        </p>
+                      )}
+                    </div>
                   </button>
                 );
               })}
             </div>
 
             {/* Legend */}
-            <div className="flex items-center gap-4 px-4 py-2.5 border-t border-gray-100 flex-wrap">
-              {(Object.entries(DOT_COLORS) as [CalItem['type'], string][]).map(([type, cls]) => (
-                <div key={type} className="flex items-center gap-1.5">
-                  <div className={`w-2 h-2 rounded-full ${cls}`} />
-                  <span className="text-xs text-gray-500">{TYPE_LABELS[type]}</span>
+            <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100 flex-wrap">
+              {(['hosting','attending','circle','birthday'] as CalItem['type'][]).map(type => (
+                <div key={type} className="flex items-center gap-1">
+                  <div className={`w-2 h-2 rounded-full ${DOT_COLORS[type]}`} />
+                  <span className="text-[10px] text-gray-500">{TYPE_LABELS[type]}</span>
+                </div>
+              ))}
+              {CATEGORIES.map(cat => (
+                <div key={cat.value} className="flex items-center gap-1">
+                  <div className={`w-2 h-2 rounded-full ${cat.dot}`} />
+                  <span className="text-[10px] text-gray-500">{cat.label}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </div>}
 
           {/* Selected day events */}
           {(
@@ -860,7 +1321,24 @@ function CalendarContent() {
                     </>
                   ) : (
                     <>
-                      <h3 className="text-lg font-bold text-gray-900">{editingNote ? 'Edit note' : ''}</h3>
+                      <h3 className="text-lg font-bold text-gray-900">{editingNote ? 'Edit note' : 'Add note'}</h3>
+                      {/* Category chips */}
+                      <div className="flex gap-1.5 flex-wrap">
+                        {CATEGORIES.map(cat => (
+                          <button
+                            key={cat.value}
+                            type="button"
+                            onClick={() => setNoteCategory(cat.value)}
+                            className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                              noteCategory === cat.value
+                                ? `${cat.bar} border-current`
+                                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                            }`}
+                          >
+                            {cat.label}
+                          </button>
+                        ))}
+                      </div>
                       <input
                         type="text"
                         value={noteTitle}
@@ -876,6 +1354,19 @@ function CalendarContent() {
                         autoFocus
                         className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400 text-sm resize-none"
                       />
+                      {/* Time (optional) */}
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Time <span className="text-gray-400 font-normal text-xs">(optional)</span></label>
+                        <input
+                          type="time"
+                          value={noteTime}
+                          onChange={e => setNoteTime(e.target.value)}
+                          className="p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 text-sm"
+                        />
+                        {noteTime && (
+                          <button type="button" onClick={() => setNoteTime('')} className="text-xs text-gray-400 hover:text-gray-600">Clear</button>
+                        )}
+                      </div>
                     </>
                   )}
                   {/* Recurrence — hidden for birthdays */}
@@ -945,6 +1436,34 @@ function CalendarContent() {
                 </div>
               )}
 
+              {/* Quick add */}
+              {!addingNote && (
+                <div className="mb-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={quickInput}
+                      onChange={e => { setQuickInput(e.target.value); setQuickParsed(e.target.value.trim() ? parseNaturalLanguage(e.target.value) : null); }}
+                      onKeyDown={e => { if (e.key === 'Enter' && quickInput.trim()) saveQuickNote(); }}
+                      placeholder="Quick add: Pay rent monthly bills 1pm"
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                    {quickInput.trim() && (
+                      <button onClick={saveQuickNote} disabled={savingQuick} className="px-3 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                        {savingQuick ? '...' : 'Add'}
+                      </button>
+                    )}
+                  </div>
+                  {quickParsed && quickInput.trim() && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5 px-1">
+                      {quickParsed.time && <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">{quickParsed.time}</span>}
+                      {quickParsed.recurrence && <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">{quickParsed.recurrence}</span>}
+                      {quickParsed.category && quickParsed.category !== 'personal' && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{quickParsed.category}</span>}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {dayItems.length === 0 && !addingNote ? (
                 <div className="text-center py-6 bg-white rounded-xl border border-gray-100">
                   <p className="text-gray-400 text-sm">Nothing here yet</p>
@@ -984,6 +1503,17 @@ function CalendarContent() {
                             >
                               Edit
                             </button>
+                            {item.type !== 'birthday' && (
+                              <button
+                                onClick={() => {
+                                  const note = notes.find(n => n.id === item.noteId);
+                                  if (note) { setMovingNote(note); setMoveTargetDate(note.note_date); }
+                                }}
+                                className="text-xs font-medium text-gray-400 hover:text-gray-600"
+                              >
+                                Move
+                              </button>
+                            )}
                             <button
                               onClick={() => item.noteId && deleteNote(item.noteId)}
                               className="text-red-400 hover:text-red-600 text-xs font-medium"
@@ -1029,6 +1559,30 @@ function CalendarContent() {
         </div>
         </div>
       </div>
+      {/* Move note modal */}
+      {movingNote && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl">
+            <h3 className="text-base font-bold text-gray-900 mb-1">Move note</h3>
+            <p className="text-sm text-gray-500 mb-4 truncate">{movingNote.title || movingNote.content}</p>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Move to date</label>
+            <input
+              type="date"
+              value={moveTargetDate}
+              onChange={e => setMoveTargetDate(e.target.value)}
+              className="w-full p-3 border border-gray-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-emerald-500 mb-4"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => { setMovingNote(null); setMoveTargetDate(''); }} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold">
+                Cancel
+              </button>
+              <button onClick={moveNote} disabled={!moveTargetDate} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                Move
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ProtectedRoute>
   );
 }

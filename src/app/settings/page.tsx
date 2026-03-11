@@ -255,6 +255,10 @@ export default function SettingsPage() {
               <span className="flex-1 text-gray-700">Change Password</span>
               <span className="text-gray-300">→</span>
             </button>
+            <a href="/family" className="flex items-center w-full p-4 hover:bg-gray-50 text-left">
+              <span className="flex-1 text-gray-700">Family on Haven</span>
+              <span className="text-gray-300">→</span>
+            </a>
           </div>
         </div>
 

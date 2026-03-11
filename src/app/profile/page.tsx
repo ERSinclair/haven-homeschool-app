@@ -18,6 +18,7 @@ import AdminBadge from '@/components/AdminBadge';
 import { submitBugReport, submitFeedback } from '@/lib/feedback';
 import { registerPush } from '@/lib/push';
 import ReportBlockModal from '@/components/ReportBlockModal';
+import ImageCropModal from '@/components/ImageCropModal';
 import { ProfilePageSkeleton } from '@/components/SkeletonLoader';
 import { getCached, setCached, clearCached } from '@/lib/pageCache';
 
@@ -33,6 +34,7 @@ type Profile = {
   status: string | string[];
   bio?: string;
   avatar_url?: string;
+  banner_url?: string;
   is_verified: boolean;
   admin_level?: 'gold' | 'silver' | 'bronze' | null;
   user_type?: 'family' | 'teacher' | 'business' | string;
@@ -87,6 +89,32 @@ function ProfilePageInner() {
   const [children, setChildren] = useState<{ id: number; age: string }[]>([{ id: 1, age: '' }]);
   const [selectedLocationCoords, setSelectedLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [bannerPreview, setBannerPreview] = useState<string | null>(null);
+
+  // Sub-profiles
+  type SubProfile = {
+    id?: string;
+    parent_profile_id?: string;
+    name: string;
+    type: 'child' | 'partner' | 'other';
+    dob?: string;
+    bio?: string;
+    relationship_label?: string;
+    avatar_url?: string;
+    is_visible: boolean;
+  };
+  const [subProfiles, setSubProfiles] = useState<SubProfile[]>([]);
+  const [editingSubProfile, setEditingSubProfile] = useState<SubProfile | null>(null);
+  const [subProfileAvatarFile, setSubProfileAvatarFile] = useState<File | null>(null);
+  const [subProfileAvatarPreview, setSubProfileAvatarPreview] = useState<string | null>(null);
+  const [subProfileCropSrc, setSubProfileCropSrc] = useState<string | null>(null);
+  const [savingSubProfile, setSavingSubProfile] = useState(false);
+  const [showSubDobPicker, setShowSubDobPicker] = useState(false);
+  const [subDobMonth, setSubDobMonth] = useState(() => {
+    const d = new Date(); d.setFullYear(d.getFullYear() - 8);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportType, setReportType] = useState<'bug'|'suggestion'|'feature_request'|'compliment'|'other'>('bug');
   const [reportSubject, setReportSubject] = useState('');
@@ -199,6 +227,15 @@ function ProfilePageInner() {
           }
         }
 
+        // Load sub-profiles
+        try {
+          const spRes = await fetch(
+            `${supabaseUrl}/rest/v1/sub_profiles?parent_profile_id=eq.${targetUserId}&order=created_at.asc`,
+            { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+          );
+          if (spRes.ok) setSubProfiles(await spRes.json());
+        } catch { /* sub_profiles table may not exist yet */ }
+
         // Check URL parameters for auto-edit mode (only for own profile)
         if (!viewingOtherUser && urlParams.get('edit') === 'true') {
           setIsEditing(true);
@@ -256,6 +293,94 @@ function ProfilePageInner() {
     }
   }, [user]);
 
+  const openNewSubProfile = () => {
+    setEditingSubProfile({ name: '', type: 'child', is_visible: true });
+    setSubProfileAvatarFile(null);
+    setSubProfileAvatarPreview(null);
+  };
+
+  const saveSubProfile = async () => {
+    if (!editingSubProfile || !user || !editingSubProfile.name.trim()) return;
+    setSavingSubProfile(true);
+    try {
+      const session = getStoredSession();
+      if (!session) return;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
+
+      const payload = {
+        parent_profile_id: user.id,
+        name: editingSubProfile.name.trim(),
+        type: editingSubProfile.type,
+        dob: editingSubProfile.dob || null,
+        bio: editingSubProfile.bio?.trim() || null,
+        relationship_label: editingSubProfile.type === 'other' ? (editingSubProfile.relationship_label?.trim() || null) : null,
+        is_visible: editingSubProfile.is_visible,
+      };
+
+      let savedSp: SubProfile;
+      if (editingSubProfile.id) {
+        // Update
+        const res = await fetch(`${supabaseUrl}/rest/v1/sub_profiles?id=eq.${editingSubProfile.id}`, {
+          method: 'PATCH', headers: h, body: JSON.stringify(payload),
+        });
+        if (!res.ok) { toast('Failed to save', 'error'); return; }
+        [savedSp] = await res.json();
+      } else {
+        // Create
+        const res = await fetch(`${supabaseUrl}/rest/v1/sub_profiles`, {
+          method: 'POST', headers: h, body: JSON.stringify(payload),
+        });
+        if (!res.ok) { toast('Failed to save', 'error'); return; }
+        [savedSp] = await res.json();
+      }
+
+      // Upload avatar if selected
+      if (subProfileAvatarFile && savedSp?.id) {
+        const ext = subProfileAvatarFile.name.split('.').pop() || 'jpg';
+        const path = `sub-profile-avatars/${savedSp.id}/avatar.${ext}`;
+        const upRes = await fetch(`${supabaseUrl}/storage/v1/object/event-files/${path}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': subProfileAvatarFile.type, 'x-upsert': 'true' },
+          body: subProfileAvatarFile,
+        });
+        if (upRes.ok) {
+          const avatarUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}`;
+          await fetch(`${supabaseUrl}/rest/v1/sub_profiles?id=eq.${savedSp.id}`, {
+            method: 'PATCH',
+            headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ avatar_url: avatarUrl }),
+          });
+          savedSp = { ...savedSp, avatar_url: avatarUrl };
+        }
+      }
+
+      setSubProfiles(prev => {
+        const idx = prev.findIndex(s => s.id === savedSp.id);
+        return idx >= 0 ? prev.map(s => s.id === savedSp.id ? savedSp : s) : [...prev, savedSp];
+      });
+      setEditingSubProfile(null);
+      setSubProfileAvatarFile(null);
+      setSubProfileAvatarPreview(null);
+      toast('Saved', 'success');
+    } catch { toast('Failed to save', 'error'); }
+    finally { setSavingSubProfile(false); }
+  };
+
+  const deleteSubProfile = async (id: string) => {
+    if (!window.confirm('Remove this family member?')) return;
+    const session = getStoredSession();
+    if (!session) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    await fetch(`${supabaseUrl}/rest/v1/sub_profiles?id=eq.${id}`, {
+      method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+    });
+    setSubProfiles(prev => prev.filter(s => s.id !== id));
+    toast('Removed');
+  };
+
   const handleSave = async () => {
     if (!user) return;
     
@@ -312,6 +437,28 @@ function ProfilePageInner() {
         }
       );
 
+      // Upload banner if selected
+      let newBannerUrl: string | undefined;
+      if (bannerFile && res.ok) {
+        const ext = bannerFile.name.split('.').pop() || 'jpg';
+        const path = `profile-banners/${user.id}/banner.${ext}`;
+        const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/event-files/${path}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': bannerFile.type, 'x-upsert': 'true' },
+          body: bannerFile,
+        });
+        if (uploadRes.ok) {
+          newBannerUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}`;
+          await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
+            method: 'PATCH',
+            headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ banner_url: newBannerUrl }),
+          });
+          setBannerFile(null);
+          setBannerPreview(null);
+        }
+      }
+
       if (!res.ok) {
         const err = await res.json();
         toast('Error saving profile: ' + (err.message || 'Unknown error'), 'error');
@@ -332,6 +479,7 @@ function ProfilePageInner() {
             })(),
           // Update coords if geocoding succeeded (clears the discoverability warning)
           ...(coords ? { location_lat: coords.lat, location_lng: coords.lng } : {}),
+          ...(newBannerUrl ? { banner_url: newBannerUrl } : {}),
         } : null);
         setIsEditing(false);
       }
@@ -596,6 +744,9 @@ function ProfilePageInner() {
             <Link href="/board" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Board
             </Link>
+            <Link href="/family" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
+              Family
+            </Link>
           </div>
         )}
 
@@ -690,6 +841,33 @@ function ProfilePageInner() {
               </button>
             </div>
           )}
+          {/* Banner photo */}
+          {(profile?.banner_url || bannerPreview || isEditing) && (
+            <div className="relative w-full h-32 overflow-hidden rounded-t-2xl -mx-0 mb-0">
+              {(bannerPreview || profile?.banner_url) ? (
+                <img src={bannerPreview || profile?.banner_url} alt="Banner" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-r from-emerald-100 to-emerald-50" />
+              )}
+              {isEditing && (
+                <label className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20 hover:bg-black/30 transition-colors group">
+                  <div className="bg-white/80 backdrop-blur-sm rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <span className="text-xs font-semibold text-gray-700">{profile?.banner_url || bannerPreview ? 'Change banner' : 'Add banner photo'}</span>
+                  </div>
+                  <input type="file" accept="image/*" className="sr-only" onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setBannerFile(file);
+                    const reader = new FileReader();
+                    reader.onload = ev => setBannerPreview(ev.target?.result as string);
+                    reader.readAsDataURL(file);
+                  }} />
+                </label>
+              )}
+            </div>
+          )}
+
           {/* Avatar & Name */}
           <div className="text-center pb-6 pt-2">
             <div className="mb-4 flex justify-center relative">
@@ -1217,6 +1395,57 @@ function ProfilePageInner() {
               </button>
             </div>
           )}
+
+          {/* ── Sub-profiles (Family Members) ── */}
+          {(!isViewingOtherUser || subProfiles.filter(s => s.is_visible).length > 0) && (
+            <div className="border-t border-gray-100 pt-5 mt-2">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">Family Members</h3>
+                {!isViewingOtherUser && (
+                  <button onClick={openNewSubProfile} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
+                    + Add
+                  </button>
+                )}
+              </div>
+              {subProfiles.filter(s => isViewingOtherUser ? s.is_visible : true).length === 0 ? (
+                !isViewingOtherUser && (
+                  <p className="text-xs text-gray-400 text-center py-2">Add your kids or partner — visible to connections only</p>
+                )
+              ) : (
+                <div className="flex gap-3 flex-wrap">
+                  {subProfiles.filter(s => isViewingOtherUser ? s.is_visible : true).map(sp => {
+                    const age = sp.dob ? Math.floor((Date.now() - new Date(sp.dob).getTime()) / 3.15576e10) : null;
+                    return (
+                      <button
+                        key={sp.id}
+                        onClick={() => !isViewingOtherUser ? setEditingSubProfile({ ...sp }) : null}
+                        className={`flex flex-col items-center gap-1 ${!isViewingOtherUser ? 'cursor-pointer' : 'cursor-default'}`}
+                      >
+                        <div className="relative">
+                          {sp.avatar_url ? (
+                            <img src={sp.avatar_url} alt={sp.name} className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm" />
+                          ) : (
+                            <div className={`w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold border-2 border-white shadow-sm ${sp.type === 'child' ? 'bg-emerald-100 text-emerald-700' : sp.type === 'partner' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {sp.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          {!sp.is_visible && !isViewingOtherUser && (
+                            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-gray-400 rounded-full flex items-center justify-center">
+                              <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" /><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" /></svg>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs font-semibold text-gray-700 text-center leading-tight max-w-[56px] truncate">{sp.name}</p>
+                        {age !== null && age >= 0 && age <= 18 && (
+                          <p className="text-[10px] text-gray-400 -mt-0.5">{age === 0 ? 'Under 1' : `${age}`}</p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Support Haven card */}
@@ -1412,6 +1641,171 @@ function ProfilePageInner() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Sub-profile Editor Modal */}
+      {editingSubProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Frosted backdrop */}
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-md" onClick={() => { setEditingSubProfile(null); setSubProfileAvatarFile(null); setSubProfileAvatarPreview(null); setSubProfileCropSrc(null); }} />
+
+          {/* Centred card */}
+          <div className="relative w-full max-w-md rounded-3xl max-h-[92vh] overflow-y-auto shadow-2xl border border-white/40"
+            style={{ background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(32px) saturate(1.6)', WebkitBackdropFilter: 'blur(32px) saturate(1.6)' }}>
+
+            <div className="px-5 pb-8 pt-5">
+              <div className="flex items-center justify-end mb-2">
+                <button
+                  onClick={() => { setEditingSubProfile(null); setSubProfileAvatarFile(null); setSubProfileAvatarPreview(null); setSubProfileCropSrc(null); }}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-black/8 text-gray-500 hover:bg-black/12 transition-colors text-lg leading-none"
+                >&times;</button>
+              </div>
+
+              {/* Avatar with crop */}
+              <div className="flex justify-center mb-5">
+                <label className="cursor-pointer group relative">
+                  {(subProfileAvatarPreview || editingSubProfile.avatar_url) ? (
+                    <img src={subProfileAvatarPreview || editingSubProfile.avatar_url} alt="" className="w-24 h-24 rounded-full object-cover ring-4 ring-white shadow-lg" />
+                  ) : (
+                    <div className="w-24 h-24 rounded-full bg-gray-100 border-2 border-dashed border-gray-200 flex items-center justify-center shadow-inner overflow-hidden">
+                      <svg viewBox="0 0 64 64" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="32" cy="29" r="11" fill="rgba(75,85,99,0.8)" stroke="rgba(75,85,99,0.9)" strokeWidth="1" />
+                        <path d="M18 52 C18 44, 24 40, 32 40 C40 40, 46 44, 46 52" fill="rgba(75,85,99,0.8)" stroke="rgba(75,85,99,0.9)" strokeWidth="1" />
+                        <circle cx="13" cy="40" r="7" fill="rgba(75,85,99,0.75)" stroke="rgba(75,85,99,0.85)" strokeWidth="0.8" />
+                        <path d="M4 54 C4 50, 7 47, 13 47 C19 47, 22 50, 22 54" fill="rgba(75,85,99,0.75)" stroke="rgba(75,85,99,0.85)" strokeWidth="0.8" />
+                        <circle cx="51" cy="40" r="7" fill="rgba(75,85,99,0.75)" stroke="rgba(75,85,99,0.85)" strokeWidth="0.8" />
+                        <path d="M42 54 C42 50, 45 47, 51 47 C57 47, 60 50, 60 54" fill="rgba(75,85,99,0.75)" stroke="rgba(75,85,99,0.85)" strokeWidth="0.8" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 rounded-full bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-white text-xs font-semibold">Change</span>
+                  </div>
+                  <input type="file" accept="image/*" className="sr-only" onChange={e => {
+                    const file = e.target.files?.[0]; if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => setSubProfileCropSrc(ev.target?.result as string);
+                    reader.readAsDataURL(file);
+                    e.target.value = '';
+                  }} />
+                </label>
+              </div>
+
+              {/* Type pills */}
+              <div className="flex gap-2 mb-4">
+                {(['child', 'partner', 'other'] as const).map(t => (
+                  <button key={t} type="button"
+                    onClick={() => setEditingSubProfile(p => p ? { ...p, type: t } : p)}
+                    className={`flex-1 py-2.5 rounded-2xl text-sm font-semibold border transition-all ${editingSubProfile.type === t ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white/60 text-gray-600 border-white/80 hover:border-emerald-300 hover:bg-white/80'}`}>
+                    {t === 'child' ? 'Child' : t === 'partner' ? 'Partner' : 'Other'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Other — relationship description (above name) */}
+              {editingSubProfile.type === 'other' && (
+                <input
+                  type="text"
+                  value={editingSubProfile.relationship_label || ''}
+                  onChange={e => setEditingSubProfile(p => p ? { ...p, relationship_label: e.target.value } : p)}
+                  placeholder="Relationship (e.g. Grandparent, Aunt)"
+                  className="w-full px-3.5 py-3 border border-white/60 rounded-2xl text-sm bg-white/60 focus:ring-2 focus:ring-emerald-500 focus:bg-white/80 mb-3 placeholder:text-gray-400 transition-colors"
+                />
+              )}
+
+              {/* Name */}
+              <input
+                type="text"
+                value={editingSubProfile.name}
+                onChange={e => setEditingSubProfile(p => p ? { ...p, name: e.target.value } : p)}
+                placeholder="Name"
+                className="w-full px-3.5 py-3 border border-white/60 rounded-2xl text-sm bg-white/60 focus:ring-2 focus:ring-emerald-500 focus:bg-white/80 mb-3 placeholder:text-gray-400 transition-colors"
+              />
+
+              {/* DOB — Haven date picker */}
+              <div className="mb-3 relative">
+                <button
+                  type="button"
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={() => setShowSubDobPicker(v => !v)}
+                  className="w-full px-3.5 py-3 border border-white/60 rounded-2xl text-sm bg-white/60 hover:bg-white/80 focus:ring-2 focus:ring-emerald-500 text-left transition-colors"
+                >
+                  {editingSubProfile.dob
+                    ? new Date(editingSubProfile.dob + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
+                    : <span className="text-gray-400">Select date of birth</span>}
+                </button>
+                {showSubDobPicker && (
+                  <DatePickerDropdown
+                    value={editingSubProfile.dob || ''}
+                    onChange={v => { setEditingSubProfile(p => p ? { ...p, dob: v || undefined } : p); setShowSubDobPicker(false); }}
+                    onClose={() => setShowSubDobPicker(false)}
+                    maxDate={new Date().toISOString().slice(0, 10)}
+                    month={subDobMonth}
+                    onMonthChange={setSubDobMonth}
+                  />
+                )}
+              </div>
+
+              {/* Bio */}
+              <textarea
+                value={editingSubProfile.bio || ''}
+                onChange={e => setEditingSubProfile(p => p ? { ...p, bio: e.target.value } : p)}
+                placeholder="A little about them (optional)"
+                rows={2}
+                className="w-full px-3.5 py-3 border border-white/60 rounded-2xl text-sm bg-white/60 focus:ring-2 focus:ring-emerald-500 focus:bg-white/80 resize-none mb-3 placeholder:text-gray-400 transition-colors"
+              />
+
+              {/* Visibility toggle */}
+              <div className="flex items-center justify-between bg-white/50 rounded-2xl px-4 py-3 mb-5 border border-white/60">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Visible to connections</p>
+                  <p className="text-xs text-gray-400">Hide to keep this profile private</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingSubProfile(p => p ? { ...p, is_visible: !p.is_visible } : p)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${editingSubProfile.is_visible ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                >
+                  <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${editingSubProfile.is_visible ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2">
+                {editingSubProfile.id && (
+                  <button onClick={() => { deleteSubProfile(editingSubProfile.id!); setEditingSubProfile(null); }} className="px-4 py-2.5 bg-red-50/80 text-red-600 rounded-2xl text-sm font-semibold hover:bg-red-100 border border-red-100">
+                    Remove
+                  </button>
+                )}
+                <button
+                  onClick={saveSubProfile}
+                  disabled={savingSubProfile || !editingSubProfile.name.trim()}
+                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
+                >
+                  {savingSubProfile ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-profile avatar crop modal */}
+      {subProfileCropSrc && typeof document !== 'undefined' && (
+        <div className="fixed inset-0 z-[60]">
+          <ImageCropModal
+            imageSrc={subProfileCropSrc}
+            circular={true}
+            title="Crop photo"
+            onConfirm={blob => {
+              setSubProfileCropSrc(null);
+              const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+              setSubProfileAvatarFile(file);
+              setSubProfileAvatarPreview(URL.createObjectURL(blob));
+            }}
+            onCancel={() => setSubProfileCropSrc(null)}
+          />
         </div>
       )}
     </div>

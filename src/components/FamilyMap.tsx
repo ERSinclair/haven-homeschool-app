@@ -7,7 +7,7 @@ import { toast } from '@/lib/toast';
 
 // Block Mapbox telemetry
 if (typeof window !== 'undefined') {
-  const originalFetch = window.fetch;
+  const originalFetch = window.fetch.bind(window);
   window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
     const url = typeof input === 'string' ? input : input.toString();
     if (
@@ -18,7 +18,7 @@ if (typeof window !== 'undefined') {
     ) {
       return Promise.resolve(new Response('{}', { status: 200 }));
     }
-    return originalFetch.call(this, input, init);
+    return originalFetch(input, init);
   };
 }
 

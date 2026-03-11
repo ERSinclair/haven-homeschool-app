@@ -20,6 +20,7 @@ import { loadSearchRadius } from '@/lib/preferences';
 import ReportBlockModal from '@/components/ReportBlockModal';
 import { DiscoverPageSkeleton } from '@/components/SkeletonLoader';
 import { getCached, setCached } from '@/lib/pageCache';
+import { sendFamilyLinkRequest, RELATIONSHIPS, type RelationshipValue } from '@/lib/familyLinks';
 
 type Family = {
   id: string;
@@ -146,6 +147,13 @@ function EnhancedDiscoverPage() {
   const [isLoading, setIsLoading] = useState(() => !getCached<Family[]>('discover:families'));
   const [selectedFamily, setSelectedFamily] = useState<Family | null>(null);
   const [reportBlockTarget, setReportBlockTarget] = useState<{ id: string; name: string; mode: 'report' | 'block' } | null>(null);
+  const [familyLinkModal, setFamilyLinkModal] = useState<{ id: string; name: string } | null>(null);
+  const [familyLinkRelationship, setFamilyLinkRelationship] = useState<RelationshipValue>('partner');
+  const [familyLinkOtherLabel, setFamilyLinkOtherLabel] = useState('');
+  const [sendingFamilyLink, setSendingFamilyLink] = useState(false);
+  const [familyLinkStatuses, setFamilyLinkStatuses] = useState<Map<string, { status: string; isRequester: boolean; linkId?: string }>>(new Map());
+  type SubProfile = { id: string; name: string; type: string; dob?: string; avatar_url?: string; is_visible: boolean; bio?: string };
+  const [detailSubProfiles, setDetailSubProfiles] = useState<SubProfile[]>([]);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   
   // Selection and hiding system
@@ -762,6 +770,52 @@ function EnhancedDiscoverPage() {
   const [selectedFamilyDetails, setSelectedFamilyDetails] = useState<Family | null>(null);
 
 
+  // Check family link status for a given profile
+  const checkFamilyLinkStatus = async (profileId: string) => {
+    const session = getStoredSession();
+    if (!session) return;
+    const _url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const _key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const res = await fetch(
+      `${_url}/rest/v1/family_links?or=(and(requester_id.eq.${session.user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${session.user.id}))&select=id,status,requester_id&limit=1`,
+      { headers: { 'apikey': _key!, 'Authorization': `Bearer ${session.access_token}` } }
+    );
+    if (res.ok) {
+      const links = await res.json();
+      if (links?.length > 0) {
+        setFamilyLinkStatuses(prev => new Map(prev).set(profileId, {
+          status: links[0].status,
+          isRequester: links[0].requester_id === session.user.id,
+          linkId: links[0].id,
+        }));
+      }
+    }
+  };
+
+  const cancelFamilyLinkRequest = async (profileId: string) => {
+    const session = getStoredSession();
+    if (!session) return;
+    const entry = familyLinkStatuses.get(profileId);
+    if (!entry?.linkId) return;
+    const _url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const _key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    await fetch(`${_url}/rest/v1/family_links?id=eq.${entry.linkId}`, {
+      method: 'DELETE',
+      headers: { 'apikey': _key!, 'Authorization': `Bearer ${session.access_token}` },
+    });
+    setFamilyLinkStatuses(prev => { const m = new Map(prev); m.delete(profileId); return m; });
+    toast('Family request cancelled');
+  };
+
+  const getFamilyButtonState = (familyId: string) => {
+    const entry = familyLinkStatuses.get(familyId);
+    if (!entry) return { text: 'Family', disabled: false, style: 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 active:scale-[0.98]' };
+    if (entry.status === 'accepted') return { text: 'Linked', disabled: true, style: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+    if (entry.status === 'pending' && entry.isRequester) return { text: 'Requested', disabled: false, style: 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-red-50 hover:text-red-500 hover:border-red-200 active:scale-[0.98]' };
+    if (entry.status === 'pending' && !entry.isRequester) return { text: 'Accept', disabled: false, style: 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 active:scale-[0.98]' };
+    return { text: 'Family', disabled: false, style: 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 active:scale-[0.98]' };
+  };
+
   // Helper function to get connection button state
   const getConnectionButtonState = (familyId: string) => {
     const connection = connectionRequests.get(familyId);
@@ -793,6 +847,24 @@ function EnhancedDiscoverPage() {
     const name = family.display_name || family.family_name.split(' ')[0] || family.family_name;
     const [, month, day] = family.dob.split('-');
     const noteDate = `${new Date().getFullYear()}-${month}-${day}`;
+    const birthdayTitle = `${name}'s birthday`;
+
+    // Check if already added
+    const existingRes = await fetch(
+      `${_supabaseUrl}/rest/v1/calendar_notes?profile_id=eq.${session.user.id}&note_type=eq.birthday&title=eq.${encodeURIComponent(birthdayTitle)}&select=id&limit=1`,
+      { headers: { 'apikey': _supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+    );
+    if (existingRes.ok) {
+      const existing = await existingRes.json();
+      if (existing && existing.length > 0) {
+        toast(`${name}'s birthday is already on your calendar`, 'info');
+        return;
+      }
+    }
+
+    // Confirm before adding
+    if (!window.confirm(`Add ${name}'s birthday to your calendar? It will repeat every year.`)) return;
+
     await fetch(`${_supabaseUrl}/rest/v1/calendar_notes`, {
       method: 'POST',
       headers: {
@@ -804,7 +876,7 @@ function EnhancedDiscoverPage() {
       body: JSON.stringify({
         profile_id: session.user.id,
         note_date: noteDate,
-        title: `${name}'s birthday`,
+        title: birthdayTitle,
         content: '',
         recurrence_rule: 'yearly',
         note_type: 'birthday',
@@ -996,6 +1068,25 @@ function EnhancedDiscoverPage() {
       }
     }
   }, []);
+
+  // Load detail modal data when profile opens
+  useEffect(() => {
+    if (!selectedFamilyDetails?.id) return;
+    checkFamilyLinkStatus(selectedFamilyDetails.id);
+    // Load sub-profiles if connected
+    const isConnected = connectionRequests.get(selectedFamilyDetails.id)?.status === 'accepted';
+    if (isConnected) {
+      const session = getStoredSession();
+      if (!session) return;
+      const _url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const _key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      fetch(`${_url}/rest/v1/sub_profiles?parent_profile_id=eq.${selectedFamilyDetails.id}&is_visible=eq.true&order=created_at.asc`, {
+        headers: { 'apikey': _key!, 'Authorization': `Bearer ${session.access_token}` },
+      }).then(r => r.ok ? r.json() : []).then(setDetailSubProfiles).catch(() => setDetailSubProfiles([]));
+    } else {
+      setDetailSubProfiles([]);
+    }
+  }, [selectedFamilyDetails?.id]);
 
   // Load user's circles for invitations
   const loadUserCircles = async () => {
@@ -1620,17 +1711,6 @@ function EnhancedDiscoverPage() {
                           </span>
                         </div>
                       )}
-                      {/* Approach chips */}
-                      {(!family.user_type || family.user_type === 'family') && family.homeschool_approaches && family.homeschool_approaches.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {family.homeschool_approaches.slice(0, 2).map((a: string, i: number) => (
-                            <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full border border-gray-200">{a.startsWith('Other: ') ? a.replace('Other: ', '') : a}</span>
-                          ))}
-                          {family.homeschool_approaches.length > 2 && (
-                            <span className="text-xs text-gray-400">+{family.homeschool_approaches.length - 2}</span>
-                          )}
-                        </div>
-                      )}
                       {/* Teacher subjects */}
                       {family.user_type === 'teacher' && (
                         <div className="flex flex-wrap gap-1">
@@ -2010,25 +2090,6 @@ function EnhancedDiscoverPage() {
                 );
               })()}
             </div>
-              {selectedFamilyDetails.show_birthday && selectedFamilyDetails.dob && (() => {
-                const [, mm, dd] = selectedFamilyDetails.dob!.split('-');
-                const today = new Date();
-                const isToday = parseInt(mm) === today.getMonth() + 1 && parseInt(dd) === today.getDate();
-                const formatted = new Date(`2000-${mm}-${dd}T12:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'long' });
-                return (
-                  <div className={`flex items-center gap-1.5 text-sm mt-1 ${isToday ? 'text-pink-500 font-semibold' : 'text-gray-400'}`}>
-                    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 -1 24 25" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M8 6 C5.5 5 5.5 1 8 -0.5 C10.5 1 10.5 5 8 6Z" fill="currentColor" stroke="none" />
-                      <rect x="7" y="6" width="2" height="4" rx="0.5" />
-                      <path d="M16 6 C13.5 5 13.5 1 16 -0.5 C18.5 1 18.5 5 16 6Z" fill="currentColor" stroke="none" />
-                      <rect x="15" y="6" width="2" height="4" rx="0.5" />
-                      <rect x="2" y="10" width="20" height="12" rx="2" />
-                      <path d="M2 13 Q5.5 11 9 13 Q12 15 15 13 Q18.5 11 22 13" strokeWidth={1.4} />
-                    </svg>
-                    <span>{formatted}{isToday ? ' — Today!' : ''}</span>
-                  </div>
-                );
-              })()}
             </div>
 
             <div className="px-6 pb-6 space-y-5">
@@ -2040,9 +2101,34 @@ function EnhancedDiscoverPage() {
                   <div className="flex flex-wrap gap-2">
                     {[...selectedFamilyDetails.kids_ages].sort((a, b) => a - b).map((age, index) => (
                       <div key={index} className="bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
-                        <span className="text-emerald-700 font-semibold text-sm">{age} yrs</span>
+                        <span className="text-emerald-700 font-semibold text-sm">{age === 0 ? 'Under 1' : age}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Family members (sub-profiles — connections only) */}
+              {detailSubProfiles.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Family Members</p>
+                  <div className="flex gap-3 flex-wrap">
+                    {detailSubProfiles.map(sp => {
+                      const age = sp.dob ? Math.floor((Date.now() - new Date(sp.dob).getTime()) / 3.15576e10) : null;
+                      return (
+                        <div key={sp.id} className="flex flex-col items-center gap-1">
+                          {sp.avatar_url ? (
+                            <img src={sp.avatar_url} alt={sp.name} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" />
+                          ) : (
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-bold border-2 border-white shadow-sm ${sp.type === 'child' ? 'bg-emerald-100 text-emerald-700' : sp.type === 'partner' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {sp.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <p className="text-xs font-semibold text-gray-700 text-center leading-tight max-w-[48px] truncate">{sp.name}</p>
+                          {age !== null && age >= 0 && age <= 18 && <p className="text-[10px] text-gray-400 -mt-0.5">{age === 0 ? 'Under 1' : age}</p>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2053,7 +2139,7 @@ function EnhancedDiscoverPage() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Approach</p>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedFamilyDetails.homeschool_approaches.map((a: string, i: number) => (
-                      <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100">{a.startsWith('Other: ') ? a.replace('Other: ', '') : a}</span>
+                      <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-100">{a.startsWith('Other: ') ? a.replace('Other: ', '') : a}</span>
                     ))}
                   </div>
                 </div>
@@ -2136,7 +2222,7 @@ function EnhancedDiscoverPage() {
               </button>
               <button
                 onClick={() => { setSelectedFamily(selectedFamilyDetails); setSelectedFamilyDetails(null); }}
-                className="flex-1 py-2.5 bg-white text-emerald-700 border border-emerald-200 rounded-xl font-semibold hover:bg-emerald-50 active:scale-[0.98] transition-all text-sm"
+                className="flex-1 py-2.5 bg-white text-gray-600 border border-gray-200 rounded-xl font-semibold hover:bg-gray-50 active:scale-[0.98] transition-all text-sm"
               >
                 Message
               </button>
@@ -2146,7 +2232,21 @@ function EnhancedDiscoverPage() {
               >
                 Profile
               </button>
-              {selectedFamilyDetails.show_birthday && selectedFamilyDetails.dob && (
+              <button
+                onClick={() => {
+                  const entry = familyLinkStatuses.get(selectedFamilyDetails.id);
+                  if (entry?.status === 'pending' && entry.isRequester) {
+                    cancelFamilyLinkRequest(selectedFamilyDetails.id);
+                  } else if (!getFamilyButtonState(selectedFamilyDetails.id).disabled) {
+                    setFamilyLinkModal({ id: selectedFamilyDetails.id, name: selectedFamilyDetails.display_name || selectedFamilyDetails.family_name?.split(' ')[0] || 'them' });
+                  }
+                }}
+                disabled={getFamilyButtonState(selectedFamilyDetails.id).disabled}
+                className={`flex-1 py-2.5 rounded-xl font-semibold transition-all text-sm ${getFamilyButtonState(selectedFamilyDetails.id).style}`}
+              >
+                {getFamilyButtonState(selectedFamilyDetails.id).text}
+              </button>
+              {selectedFamilyDetails.show_birthday && selectedFamilyDetails.dob && connectionRequests.get(selectedFamilyDetails.id)?.status === 'accepted' && (
                 <button
                   onClick={() => addBirthdayToCalendar(selectedFamilyDetails)}
                   className="py-2.5 px-3 bg-white text-pink-500 border border-pink-200 rounded-xl hover:bg-pink-50 active:scale-[0.98] transition-all"
@@ -2266,6 +2366,79 @@ function EnhancedDiscoverPage() {
 
       {/* Modal removed - now using inline text input */}
       
+      {/* Family Link Modal */}
+      {familyLinkModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white/90 backdrop-blur-md rounded-2xl max-w-sm w-full p-6 shadow-xl border border-white/60">
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Link as family</h3>
+            <p className="text-sm text-gray-500 mb-4">How are you and {familyLinkModal.name} related?</p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {RELATIONSHIPS.map(r => (
+                <button
+                  key={r.value}
+                  onClick={() => { setFamilyLinkRelationship(r.value); if (r.value !== 'other') setFamilyLinkOtherLabel(''); }}
+                  className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all ${
+                    familyLinkRelationship === r.value
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-400'
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {familyLinkRelationship === 'other' && (
+              <input
+                type="text"
+                value={familyLinkOtherLabel}
+                onChange={e => setFamilyLinkOtherLabel(e.target.value)}
+                placeholder="Describe the relationship (e.g. Godparent)"
+                maxLength={60}
+                className="w-full px-3.5 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent mb-4"
+                autoFocus
+              />
+            )}
+            <div className="flex gap-2 mt-1">
+              <button
+                onClick={() => { setFamilyLinkModal(null); setFamilyLinkOtherLabel(''); }}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 active:scale-[0.98] transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={sendingFamilyLink || (familyLinkRelationship === 'other' && !familyLinkOtherLabel.trim())}
+                onClick={async () => {
+                  if (!familyLinkModal) return;
+                  setSendingFamilyLink(true);
+                  const myName = profile?.name || 'Someone';
+                  const result = await sendFamilyLinkRequest(
+                    familyLinkModal.id,
+                    familyLinkRelationship,
+                    myName,
+                    familyLinkRelationship === 'other' ? familyLinkOtherLabel.trim() : undefined,
+                  );
+                  setSendingFamilyLink(false);
+                  setFamilyLinkModal(null);
+                  setFamilyLinkOtherLabel('');
+                  if (result.alreadyExists) {
+                    toast('Already linked with this person', 'info');
+                    setFamilyLinkStatuses(prev => new Map(prev).set(familyLinkModal!.id, { status: 'pending', isRequester: true }));
+                  } else if (result.ok) {
+                    toast('Family link request sent', 'success');
+                    setFamilyLinkStatuses(prev => new Map(prev).set(familyLinkModal!.id, { status: 'pending', isRequester: true }));
+                  } else {
+                    toast('Failed to send request', 'error');
+                  }
+                }}
+                className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold text-sm hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                {sendingFamilyLink ? 'Sending...' : 'Send request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bottom spacing for mobile nav */}
       <div className="h-20"></div>
     </div>

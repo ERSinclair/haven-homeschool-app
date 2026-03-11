@@ -9,7 +9,9 @@ export type NotifType =
   | 'circle_invite'
   | 'event_rsvp'
   | 'message'
-  | 'circle_update';
+  | 'circle_update'
+  | 'family_link_request'
+  | 'family_link_accepted';
 
 export interface CreateNotifParams {
   userId: string;       // recipient

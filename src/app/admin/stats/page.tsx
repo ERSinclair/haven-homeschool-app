@@ -22,6 +22,7 @@ export default function AdminStatsPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [insights, setInsights] = useState<{ context: string; term: string; count: number }[]>([]);
   const [otherApproaches, setOtherApproaches] = useState<{ name: string; description: string }[]>([]);
+  const [otherRelLabels, setOtherRelLabels] = useState<{ label: string; count: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,6 +62,28 @@ export default function AdminStatsPage() {
             }
           }
           setOtherApproaches(others);
+        }
+      } catch { /* ignore */ }
+
+      // Load "Other" sub-profile relationship labels
+      try {
+        const session3 = JSON.parse(sessionStorage.getItem('supabase-session') || localStorage.getItem('sb-auth-token') || '{}');
+        const res3 = await fetch(
+          `${supabaseUrl}/rest/v1/sub_profiles?type=eq.other&relationship_label=not.is.null&select=relationship_label`,
+          { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session3.access_token}` } }
+        );
+        if (res3.ok) {
+          const rows: { relationship_label: string }[] = await res3.json();
+          const freq: Record<string, number> = {};
+          for (const r of rows) {
+            const key = r.relationship_label.trim().toLowerCase();
+            if (key) freq[key] = (freq[key] || 0) + 1;
+          }
+          setOtherRelLabels(
+            Object.entries(freq)
+              .map(([label, count]) => ({ label, count }))
+              .sort((a, b) => b.count - a.count)
+          );
         }
       } catch { /* ignore */ }
 
@@ -168,6 +191,32 @@ export default function AdminStatsPage() {
                     <tr key={i} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-gray-500">{row.name}</td>
                       <td className="px-4 py-3 font-medium text-gray-900">{row.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+
+        {/* Sub-profile "Other" relationship labels */}
+        <Section title="Sub-profile — 'Other' relationship labels">
+          {otherRelLabels.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">No custom relationship labels yet.</p>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                  <tr>
+                    <th className="text-left px-4 py-3">Label entered</th>
+                    <th className="text-right px-4 py-3">Count</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {otherRelLabels.map((row, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900 capitalize">{row.label}</td>
+                      <td className="px-4 py-3 text-right font-bold text-emerald-600">{row.count}</td>
                     </tr>
                   ))}
                 </tbody>
