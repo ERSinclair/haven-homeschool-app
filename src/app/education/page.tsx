@@ -136,7 +136,7 @@ export default function EducationPage() {
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Educational Resources</h3>
                 <p className="text-gray-600 mb-6">
-                  Discover curated educational materials, curricula, and learning tools for homeschooling families.
+                  Discover curated educational materials, curricula, and learning tools for families.
                 </p>
                 <div className="text-sm text-gray-500">
                   Coming soon - Connect with educational resources in your area

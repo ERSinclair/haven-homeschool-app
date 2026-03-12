@@ -296,6 +296,8 @@ export default function AdminDashboard() {
             { href: '/admin/stats',       label: 'Statistics',  desc: 'Users & content data' },
             { href: '/admin/analytics',   label: 'Analytics',   desc: 'Growth & engagement' },
             { href: '/admin/feedback', label: 'Reports', desc: 'Feedback & bug reports' },
+            { href: '/admin/board',    label: 'Board',   desc: 'Community posts & Other log' },
+            { href: '/admin/prompts',  label: 'Prompts', desc: 'Weekly thread prompt bank' },
             
           ].map(({ href, label, desc }) => (
             <Link key={href} href={href}

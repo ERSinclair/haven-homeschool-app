@@ -322,7 +322,7 @@ const STORAGE_KEY = 'sb-auth-token';
                   <div className="space-y-2">
                     {[
                       { value: 'considering', label: 'Community', icon: '' },
-                      { value: 'new', label: 'Homeschool', icon: '' },
+                      { value: 'new', label: 'Home education', icon: '' },
                       { value: 'experienced', label: 'Extracurricular', icon: '' },
                       { value: 'connecting', label: 'Just Checking It Out', icon: '' },
                       { value: 'other', label: 'Other', icon: '' }

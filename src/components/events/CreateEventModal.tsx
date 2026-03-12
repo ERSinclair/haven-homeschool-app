@@ -307,7 +307,7 @@ export default function CreateEventModal({
                 const minute = Math.round(parseInt(mStr || '0', 10) / 5) * 5 % 60;
                 const [showPicker, setShowPicker] = useState(false);
 
-                const hours = [12,1,2,3,4,5,6,7,8,9,10,11];
+                const hours = [1,2,3,4,5,6,7,8,9,10,11,12];
                 const minutes = [0,5,10,15,20,25,30,35,40,45,50,55];
                 const formatted = `${hour12}:${String(minute).padStart(2,'0')} ${isPM ? 'PM' : 'AM'}`;
 

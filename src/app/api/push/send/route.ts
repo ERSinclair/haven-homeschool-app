@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
+import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+// Service role bypasses RLS — required to read any user's push subscriptions
+const supabaseAdmin = () => createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,23 +30,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing recipientId or title' }, { status: 400 });
     }
 
-    // Fetch all push subscriptions for the recipient
-    const subsRes = await fetch(
-      `${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${recipientId}&select=subscription`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': authHeader,
-        },
-      }
-    );
+    // Fetch all push subscriptions for the recipient using service role (bypasses RLS)
+    const { data: rows, error: subError } = await supabaseAdmin()
+      .from('push_subscriptions')
+      .select('subscription')
+      .eq('user_id', recipientId);
 
-    if (!subsRes.ok) {
+    if (subError) {
+      console.error('[push/send] Failed to fetch subscriptions:', subError);
       return NextResponse.json({ sent: 0 });
     }
 
-    const rows = await subsRes.json();
-    if (!Array.isArray(rows) || rows.length === 0) {
+    if (!rows || rows.length === 0) {
       return NextResponse.json({ sent: 0 });
     }
 

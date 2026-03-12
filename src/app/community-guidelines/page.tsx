@@ -16,7 +16,7 @@ export default function CommunityGuidelinesPage() {
           <p className="text-xs text-gray-400">Last updated: February 2026</p>
 
           <p className="text-sm leading-relaxed text-gray-600">
-            Haven exists because homeschool families deserve a safe, welcoming place to find their people. These guidelines exist to keep it that way. They&apos;re not exhaustive — they&apos;re the spirit of what we&apos;re building together.
+            Haven exists because families deserve a safe, welcoming place to find their people. These guidelines exist to keep it that way. They&apos;re not exhaustive — they&apos;re the spirit of what we&apos;re building together.
           </p>
 
           <section>
@@ -29,7 +29,7 @@ export default function CommunityGuidelinesPage() {
           <section>
             <h2 className="text-base font-bold text-gray-900 mb-2">Be respectful</h2>
             <p className="text-sm leading-relaxed mb-2">
-              Homeschool families are wonderfully diverse — different approaches, beliefs, backgrounds, and reasons for choosing this path. That diversity is a feature, not a problem.
+              Families are wonderfully diverse — different approaches, beliefs, backgrounds, and reasons for choosing this path. That diversity is a feature, not a problem.
             </p>
             <ul className="text-sm leading-relaxed space-y-1 list-disc pl-4">
               <li>Disagree without being unkind</li>
@@ -52,7 +52,7 @@ export default function CommunityGuidelinesPage() {
           <section>
             <h2 className="text-base font-bold text-gray-900 mb-2">No spam or unsolicited promotion</h2>
             <p className="text-sm leading-relaxed mb-2">
-              Teachers, tutors, and homeschool businesses are welcome on Haven — that&apos;s what the Business account type is for. But spamming families with unsolicited messages or flooding circles with promotions is not okay.
+              Teachers, tutors, and education businesses are welcome on Haven — that&apos;s what the Business account type is for. But spamming families with unsolicited messages or flooding circles with promotions is not okay.
             </p>
             <ul className="text-sm leading-relaxed space-y-1 list-disc pl-4">
               <li>Don&apos;t send unsolicited commercial messages to families you haven&apos;t connected with</li>

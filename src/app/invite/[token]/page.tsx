@@ -111,7 +111,7 @@ export default function InvitePage() {
           <strong>{inviterName}</strong> invited you to join the {typeLabel}
         </p>
         <p className="text-emerald-700 font-semibold text-lg mb-6">"{invite?.target_name}"</p>
-        <p className="text-gray-500 text-sm mb-8">Haven is a community app for homeschool families. Create a free account to join.</p>
+        <p className="text-gray-500 text-sm mb-8">Haven is a community app for families. Create a free account to join.</p>
         <button
           onClick={handleAccept}
           className="w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold text-base mb-3"

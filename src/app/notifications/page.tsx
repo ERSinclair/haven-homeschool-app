@@ -8,6 +8,7 @@ import { markAllNotificationsRead } from '@/lib/notifications';
 import { enablePushNotifications, getNotificationPermission } from '@/lib/push';
 import { toast } from '@/lib/toast';
 import AppHeader from '@/components/AppHeader';
+import ProfileCardModal from '@/components/ProfileCardModal';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { NotificationsPageSkeleton } from '@/components/SkeletonLoader';
 import { getCached, setCached, clearCached } from '@/lib/pageCache';
@@ -113,6 +114,7 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>(() => getCached<Notification[]>('notifications:list') ?? []);
   const [loading, setLoading] = useState(() => !getCached<Notification[]>('notifications:list'));
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null);
   const [processing, setProcessing] = useState<Set<string>>(new Set());
   const [pushPermission, setPushPermission] = useState<string>('default');
   const [enablingPush, setEnablingPush] = useState(false);
@@ -402,15 +404,15 @@ export default function NotificationsPage() {
                         return (
                           <div key={notif.id} className={`bg-white rounded-2xl p-4 border shadow-sm ${!notif.read ? 'border-emerald-200' : 'border-gray-100'}`}>
                             <div className="flex items-start gap-3 mb-3">
-                              <Link href={`/discover?profile=${notif.actor_id}`} onClick={() => !notif.read && markRead(notif.id)}>
+                              <button onClick={() => { if (!notif.read) markRead(notif.id); setProfileCardUserId(notif.actor_id ?? null); }}>
                                 <ActorAvatar actor={notif.actor} type={notif.type} />
-                              </Link>
+                              </button>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between gap-2">
                                   <p className="font-semibold text-gray-900 text-sm">
-                                    <Link href={`/discover?profile=${notif.actor_id}`} className="hover:underline" onClick={() => !notif.read && markRead(notif.id)}>
+                                    <button onClick={() => { setProfileCardUserId(notif.actor_id ?? null); }} className="hover:underline font-semibold">
                                       {actorName}
-                                    </Link>
+                                    </button>
                                     {' '}wants to connect
                                   </p>
                                   <span className="text-xs text-gray-400 flex-shrink-0">{formatTime(notif.created_at)}</span>
@@ -512,6 +514,13 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
+      {profileCardUserId && (
+        <ProfileCardModal
+          userId={profileCardUserId}
+          onClose={() => setProfileCardUserId(null)}
+          currentUserId={getStoredSession()?.user?.id}
+        />
+      )}
     </ProtectedRoute>
   );
 }

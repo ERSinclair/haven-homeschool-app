@@ -32,8 +32,8 @@ const dmSerif = DM_Serif_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Haven - Find Your Homeschool Community",
-  description: "Connect with local homeschool families. Find your village, build community, plan meetups.",
+  title: "Haven - Find Your Home education Community",
+  description: "Connect with local families. Find your village, build community, plan meetups.",
   icons: {
     icon: '/favicon.svg',
     apple: '/apple-touch-icon.png',

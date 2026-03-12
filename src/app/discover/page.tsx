@@ -9,6 +9,7 @@ import { getStoredSession } from '@/lib/session';
 import { getAvatarColor, statusColors, statusLabels, statusIcons, getUserTypeBadge } from '@/lib/colors';
 import { checkProfileCompletion, getResumeSignupUrl } from '@/lib/profileCompletion';
 import FamilyMap from '@/components/FamilyMap';
+import ConfirmModal from '@/components/ConfirmModal';
 import AvatarUpload from '@/components/AvatarUpload';
 import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -142,9 +143,9 @@ function getLocationCoords(locationName: string): { lat: number; lng: number } |
 function EnhancedDiscoverPage() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [families, setFamilies] = useState<Family[]>(() => getCached<Family[]>('discover:families') || []);
+  const [families, setFamilies] = useState<Family[]>([]);
   const [filteredFamilies, setFilteredFamilies] = useState<Family[]>([]);
-  const [isLoading, setIsLoading] = useState(() => !getCached<Family[]>('discover:families'));
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedFamily, setSelectedFamily] = useState<Family | null>(null);
   const [reportBlockTarget, setReportBlockTarget] = useState<{ id: string; name: string; mode: 'report' | 'block' } | null>(null);
 
@@ -170,8 +171,9 @@ function EnhancedDiscoverPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [activeSection, setActiveSection] = useState<Section>('families');
   const [maxDistance, setMaxDistance] = useState(15);
-  const [ageRange, setAgeRange] = useState({ min: 1, max: 10 });
+  const [ageRange, setAgeRange] = useState({ min: 0, max: 18 });
   const [activeTab, setActiveTab] = useState<'all' | 'family' | 'playgroup' | 'teacher' | 'business'>('all');
+  const [birthdayConfirm, setBirthdayConfirm] = useState<{ name: string; onConfirm: () => void } | null>(null);
   const [familyStatusFilter, setFamilyStatusFilter] = useState<string>('all');
   const [familyCustomFilter, setFamilyCustomFilter] = useState<string>('');
   const [approachFilter, setApproachFilter] = useState<string>('all');
@@ -185,30 +187,41 @@ function EnhancedDiscoverPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
-  const [dismissedBanner, setDismissedBanner] = useState(() =>
-    typeof window !== 'undefined' && sessionStorage.getItem('haven-nearby-banner-dismissed') === 'true'
-  );
+  const [dismissedBanner, setDismissedBanner] = useState(false);
   const [locationMissing, setLocationMissing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  // Radius search - with localStorage persistence for testing
-  const [searchRadius] = useState(() => loadSearchRadius());
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(() => {
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      const stored = localStorage.getItem('haven-user-location');
-      return stored ? JSON.parse(stored) : null;
-    }
-    return null;
-  });
+  // Radius search
+  const [searchRadius, setSearchRadius] = useState(50);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
+  const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(null);
   
   const router = useRouter();
   const searchParams = useSearchParams();
 
 
 
-// Auto-open profile from ?profile= query param (e.g. from notification links)
+// Hydrate client-only state from cache/localStorage after mount (avoids SSR hydration mismatch)
+  useEffect(() => {
+    const cachedFamilies = getCached<Family[]>('discover:families');
+    if (cachedFamilies?.length) { setFamilies(cachedFamilies); setIsLoading(false); }
+
+    const cachedConns = getCached<[string, {status: string, isRequester: boolean}][]>('discover:connections');
+    if (cachedConns) setConnectionRequests(new Map(cachedConns));
+
+    if (sessionStorage.getItem('haven-nearby-banner-dismissed') === 'true') setDismissedBanner(true);
+
+    setSearchRadius(loadSearchRadius());
+    setBrowseLocation(loadBrowseLocation());
+
+    if (process.env.NODE_ENV === 'development') {
+      const stored = localStorage.getItem('haven-user-location');
+      if (stored) { try { setUserLocation(JSON.parse(stored)); } catch {} }
+    }
+  }, []);
+
+  // Auto-open profile from ?profile= query param (e.g. from notification links)
   useEffect(() => {
     const profileId = searchParams.get('profile');
     if (!profileId) return;
@@ -344,12 +357,6 @@ function EnhancedDiscoverPage() {
             if (!resolvable) setLocationMissing(true);
           }
 
-          // Set age range based on kids
-          if (profileData.kids_ages?.length > 0) {
-            const minAge = Math.max(0, Math.min(...profileData.kids_ages) - 2);
-            const maxAge = Math.min(18, Math.max(...profileData.kids_ages) + 2);
-            setAgeRange({ min: minAge, max: maxAge });
-          }
           
           // Auto-load user location from profile for radius search
           if (profileData.location_name && !userLocation) {
@@ -473,8 +480,8 @@ function EnhancedDiscoverPage() {
         const familyCoords = (family.location_lat && family.location_lng)
           ? { lat: family.location_lat, lng: family.location_lng }
           : getLocationCoords(family.location_name);
-        // If coords are unknown, exclude from radius results
-        if (!familyCoords) return false;
+        // If coords can't be resolved, show them — don't silently hide real users
+        if (!familyCoords) return true;
         const distance = calculateDistance(
           activeLocation.lat,
           activeLocation.lng,
@@ -490,11 +497,13 @@ function EnhancedDiscoverPage() {
       );
     }
 
-    // Age range filter
+    // Age range filter — only applies to families and playgroups, not teachers/businesses
     if (profile?.kids_ages && Array.isArray(profile.kids_ages) && profile.kids_ages.length > 0) {
-      filtered = filtered.filter(family =>
-        family.kids_ages?.some(age => age >= ageRange.min && age <= ageRange.max)
-      );
+      filtered = filtered.filter(family => {
+        const type = family.user_type || 'family';
+        if (type === 'teacher' || type === 'business' || type === 'facility') return true;
+        return family.kids_ages?.some(age => age >= ageRange.min && age <= ageRange.max);
+      });
     }
 
     // Account type tab filter
@@ -547,7 +556,7 @@ function EnhancedDiscoverPage() {
       }
     } // end family status sub-filter
 
-    // Homeschool approach filter (only when Families tab is active)
+    // Home education approach filter (only when Families tab is active)
     if ((activeTab === 'all' || activeTab === 'family') && approachFilter !== 'all') {
       filtered = filtered.filter(family => {
         const approaches = family.homeschool_approaches || [];
@@ -612,9 +621,11 @@ function EnhancedDiscoverPage() {
     // Business type sub-filter
     if (activeTab === 'business' && businessTypeFilter !== 'all') {
       const typeMap: Record<string, string[]> = {
-        'playspace':  ['play space', 'playspace', 'indoor play', 'playground', 'play centre'],
-        'learning':   ['learning space', 'learning centre', 'tutoring', 'education centre'],
-        'resources':  ['resource', 'curriculum', 'supply', 'books', 'materials'],
+        'curriculum': ['curriculum', 'resource', 'books', 'materials', 'educational', 'education'],
+        'supplies':   ['supplies', 'supply', 'stationery', 'equipment', 'craft'],
+        'classes':    ['classes', 'programs', 'group', 'lessons', 'activities'],
+        'venue':      ['venue', 'space', 'hire', 'facility', 'hall', 'studio'],
+        'therapy':    ['therapy', 'support', 'counselling', 'speech', 'occupational', 'psychology'],
       };
       filtered = filtered.filter(family => {
         const text = ((family.services || '') + ' ' + (family.bio || '')).toLowerCase();
@@ -813,10 +824,10 @@ function EnhancedDiscoverPage() {
       }
     }
 
-    // Confirm before adding
-    if (!window.confirm(`Add ${name}'s birthday to your calendar? It will repeat every year.`)) return;
-
-    await fetch(`${_supabaseUrl}/rest/v1/calendar_notes`, {
+    // Confirm before adding — use Haven modal
+    setBirthdayConfirm({ name, onConfirm: async () => {
+      setBirthdayConfirm(null);
+      await fetch(`${_supabaseUrl}/rest/v1/calendar_notes`, {
       method: 'POST',
       headers: {
         'apikey': _supabaseKey!,
@@ -834,6 +845,7 @@ function EnhancedDiscoverPage() {
       }),
     });
     toast(`${name}'s birthday added to your calendar`, 'success');
+    }});
   };
 
   const sendConnectionRequest = async (familyId: string) => {
@@ -1007,6 +1019,7 @@ function EnhancedDiscoverPage() {
           }
         });
         
+        setCached('discover:connections', [...connectionMap.entries()]);
         setConnectionRequests(connectionMap);
       }
     } catch (error) {
@@ -1227,36 +1240,34 @@ function EnhancedDiscoverPage() {
         )}
 
         {/* Search bar */}
-        <div className="relative mb-2">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-          </svg>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search families, locations..."
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-        </div>
-
-        {/* Filter toggle button */}
-        <div className="flex justify-start mb-2">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="relative flex-1">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search families, locations..."
+              className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
           <button
             onClick={() => setShowFilters(v => !v)}
-            className="text-xs font-semibold text-gray-500 hover:text-emerald-600 transition-colors"
+            className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 whitespace-nowrap"
           >
-            {showFilters ? '− Filters' : '+ Filters'}
+            {showFilters ? '- Filter' : '+ Filter'}
           </button>
         </div>
 
@@ -1456,11 +1467,13 @@ function EnhancedDiscoverPage() {
           <>
             <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
               {([
-                { value: 'all',       label: 'All' },
-                { value: 'playspace', label: 'Play' },
-                { value: 'learning',  label: 'Learning' },
-                { value: 'resources', label: 'Resources' },
-                { value: 'other',     label: 'Other' },
+                { value: 'all',        label: 'All' },
+                { value: 'curriculum', label: 'Curriculum' },
+                { value: 'supplies',   label: 'Supplies' },
+                { value: 'classes',    label: 'Classes' },
+                { value: 'venue',      label: 'Venue' },
+                { value: 'therapy',    label: 'Therapy' },
+                { value: 'other',      label: 'Other' },
               ] as const).map(chip => (
                 <button
                   key={chip.value}
@@ -1575,7 +1588,7 @@ function EnhancedDiscoverPage() {
                 </div>
               ) : activeTab === 'business' ? (
                 <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">No businesses nearby yet</p>
-                  <p className="text-sm text-gray-500 mb-4">Homeschool-friendly businesses will appear here as Haven grows in your area.</p>
+                  <p className="text-sm text-gray-500 mb-4">Home education-friendly businesses will appear here as Haven grows in your area.</p>
                   <button
                     onClick={handleShare}
                     className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all"
@@ -1672,7 +1685,7 @@ function EnhancedDiscoverPage() {
                         <div className="flex flex-wrap gap-1">
                           {family.subjects && family.subjects.length > 0
                             ? family.subjects.slice(0, 3).map((s, i) => (
-                                <span key={i} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-100">{s}</span>
+                                <span key={i} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-xs rounded-full border border-emerald-100">{s}</span>
                               ))
                             : <span className="text-xs text-gray-400">No subjects listed</span>
                           }
@@ -2095,7 +2108,7 @@ function EnhancedDiscoverPage() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Approach</p>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedFamilyDetails.homeschool_approaches.map((a: string, i: number) => (
-                      <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-100">{a.startsWith('Other: ') ? a.replace('Other: ', '') : a}</span>
+                      <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100">{a.startsWith('Other: ') ? a.replace('Other: ', '') : a}</span>
                     ))}
                   </div>
                 </div>
@@ -2129,7 +2142,7 @@ function EnhancedDiscoverPage() {
                       <h4 className="font-semibold text-gray-900 mb-2">Subjects</h4>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedFamilyDetails.subjects.map((s, i) => (
-                          <span key={i} className="px-2.5 py-1 bg-blue-100 text-blue-700 text-sm rounded-full">{s}</span>
+                          <span key={i} className="px-2.5 py-1 bg-emerald-100 text-emerald-700 text-sm rounded-full">{s}</span>
                         ))}
                       </div>
                     </div>
@@ -2139,7 +2152,7 @@ function EnhancedDiscoverPage() {
                       <h4 className="font-semibold text-gray-900 mb-2">Age Groups</h4>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedFamilyDetails.age_groups_taught.map((ag, i) => (
-                          <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-600 text-sm rounded-full border border-blue-200">{ag}</span>
+                          <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-sm rounded-full border border-emerald-100">{ag}</span>
                         ))}
                       </div>
                     </div>
@@ -2313,6 +2326,14 @@ function EnhancedDiscoverPage() {
       <div className="h-20"></div>
     </div>
     </div>
+    {birthdayConfirm && (
+      <ConfirmModal
+        message={`Add ${birthdayConfirm.name}'s birthday to your calendar? It will repeat every year.`}
+        confirmLabel="Add to calendar"
+        onConfirm={birthdayConfirm.onConfirm}
+        onCancel={() => setBirthdayConfirm(null)}
+      />
+    )}
     </ProtectedRoute>
   );
 }

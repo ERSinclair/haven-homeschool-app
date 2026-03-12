@@ -225,7 +225,7 @@ export default function PublicProfilePage() {
               </div>
             )}
 
-            {/* Homeschool approaches */}
+            {/* Home education approaches */}
             {subProfiles.length > 0 && (
               <div className="flex items-center gap-2 mt-3 flex-wrap">
                 <span className="text-xs text-gray-500 font-medium">Family:</span>
@@ -287,7 +287,7 @@ export default function PublicProfilePage() {
               </button>
             )}
             <p className="text-center text-xs text-gray-400">
-              {getStoredSession()?.user ? '' : 'Join Haven to connect with homeschool families near you'}
+              {getStoredSession()?.user ? '' : 'Join Haven to connect with families near you'}
             </p>
           </div>
         ) : (
@@ -301,7 +301,7 @@ export default function PublicProfilePage() {
         {/* Haven branding footer — only for logged-out visitors */}
         {!getStoredSession()?.user && (
           <div className="text-center mt-8 space-y-1">
-            <p className="text-xs text-gray-400">Find homeschool families near you</p>
+            <p className="text-xs text-gray-400">Find families near you</p>
             <Link href="/signup" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700">
               Join Haven — it's free
             </Link>

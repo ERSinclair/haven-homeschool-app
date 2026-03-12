@@ -93,7 +93,7 @@ export default function FamilyPage() {
       setLinks(prev => prev.map(l => l.id === link.id ? { ...l, status: 'accepted' } : l));
       // Notify requester
       const name = (await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=family_name,display_name`, { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }).then(r => r.json()).then(d => d[0]))?.display_name || 'Someone';
-      createNotification({ userId: link.requester_id, actorId: session.user.id, type: 'family_link_accepted', title: `${name} accepted your family link`, body: 'You are now linked as family on Haven', link: '/family', referenceId: link.id, accessToken: session.access_token });
+      createNotification({ userId: link.requester_id, actorId: session.user.id, type: 'family_link_accepted', title: `${name} accepted your family link`, body: 'You are now linked as family on Haven', link: '/profile', referenceId: link.id, accessToken: session.access_token });
       toast('Family link accepted', 'success');
     } catch { toast('Failed', 'error'); }
     finally { setUpdatingId(null); }
@@ -113,7 +113,7 @@ export default function FamilyPage() {
   };
 
   const removeLink = async (linkId: string) => {
-    if (!window.confirm('Remove this family link?')) return;
+    if (!true) return;
     const session = getStoredSession();
     if (!session) return;
     setUpdatingId(linkId);

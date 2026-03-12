@@ -1,7 +1,7 @@
 'use client';
 import { toast } from '@/lib/toast';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
@@ -10,6 +10,7 @@ import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { ConnectionsPageSkeleton } from '@/components/SkeletonLoader';
 import InviteToHaven from '@/components/InviteToHaven';
+import ProfileCardModal from '@/components/ProfileCardModal';
 import { getCached, setCached } from '@/lib/pageCache';
 
 type Connection = {
@@ -19,6 +20,8 @@ type Connection = {
     family_name: string;
     display_name: string;
     location_name: string;
+    location_lat?: number;
+    location_lng?: number;
     avatar_url?: string;
     kids_ages?: number[];
     dob?: string;
@@ -40,7 +43,7 @@ export default function ConnectionsPage() {
   const [sentFamilyLinks, setSentFamilyLinks] = useState<FamilyLinkReq[]>([]);
   const [loading, setLoading] = useState(() => !getCached<Connection[]>('connections:list'));
   const [autoSwitched, setAutoSwitched] = useState(false);
-  const [activeTab, setActiveTab] = useState<'connections' | 'requests' | 'sent'>(() => {
+  const [activeTab, setActiveTab] = useState<'connections' | 'requests' | 'sent' | 'map'>(() => {
     if (typeof window !== 'undefined') {
       const p = new URLSearchParams(window.location.search).get('tab');
       if (p === 'pending' || p === 'requests') return 'requests';
@@ -65,6 +68,7 @@ export default function ConnectionsPage() {
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null);
   const [successMessageText, setSuccessMessageText] = useState('');
   
   const router = useRouter();
@@ -282,7 +286,7 @@ export default function ConnectionsPage() {
 
       // Load accepted connections
       const connectionsResponse = await fetch(
-        `${supabaseUrl}/rest/v1/connections?status=eq.accepted&or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&select=*,requester:profiles!connections_requester_id_fkey(id,family_name,display_name,location_name,avatar_url,kids_ages),receiver:profiles!connections_receiver_id_fkey(id,family_name,display_name,location_name,avatar_url,kids_ages)`,
+        `${supabaseUrl}/rest/v1/connections?status=eq.accepted&or=(requester_id.eq.${session.user.id},receiver_id.eq.${session.user.id})&select=*,requester:profiles!connections_requester_id_fkey(id,family_name,display_name,location_name,location_lat,location_lng,avatar_url,kids_ages),receiver:profiles!connections_receiver_id_fkey(id,family_name,display_name,location_name,location_lat,location_lng,avatar_url,kids_ages)`,
         {
           headers: {
             'apikey': supabaseKey!,
@@ -293,7 +297,7 @@ export default function ConnectionsPage() {
 
       // Load pending connection requests (where current user is the receiver)
       const requestsResponse = await fetch(
-        `${supabaseUrl}/rest/v1/connections?status=eq.pending&receiver_id=eq.${session.user.id}&select=*,requester:profiles!connections_requester_id_fkey(id,family_name,display_name,location_name,avatar_url,kids_ages)`,
+        `${supabaseUrl}/rest/v1/connections?status=eq.pending&receiver_id=eq.${session.user.id}&select=*,requester:profiles!connections_requester_id_fkey(id,family_name,display_name,location_name,location_lat,location_lng,avatar_url,kids_ages)`,
         {
           headers: {
             'apikey': supabaseKey!,
@@ -304,7 +308,7 @@ export default function ConnectionsPage() {
 
       // Load sent connection requests (where current user is the requester)
       const sentResponse = await fetch(
-        `${supabaseUrl}/rest/v1/connections?status=eq.pending&requester_id=eq.${session.user.id}&select=*,receiver:profiles!connections_receiver_id_fkey(id,family_name,display_name,location_name,avatar_url,kids_ages)`,
+        `${supabaseUrl}/rest/v1/connections?status=eq.pending&requester_id=eq.${session.user.id}&select=*,receiver:profiles!connections_receiver_id_fkey(id,family_name,display_name,location_name,location_lat,location_lng,avatar_url,kids_ages)`,
         {
           headers: {
             'apikey': supabaseKey!,
@@ -586,6 +590,14 @@ export default function ConnectionsPage() {
             }`}
           >
             Sent ({filteredSentRequests.length + sentFamilyLinks.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('map')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'map' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Map
           </button>
         </div>
 
@@ -1022,9 +1034,7 @@ export default function ConnectionsPage() {
                   Message
                 </button>
                 <button
-                  onClick={() => {
-                    window.location.href = `/profile?user=${selectedProfile.user.id}`;
-                  }}
+                  onClick={() => { setProfileCardUserId(selectedProfile.user.id); setSelectedProfile(null); }}
                   className="flex-1 px-2 py-1.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors text-sm"
                 >
                   Profile
@@ -1062,37 +1072,16 @@ export default function ConnectionsPage() {
 
       {/* Haven-themed Delete Confirmation Modal */}
       {showDeleteModal && connectionToDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-red-600">!</span>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Remove Connection?</h3>
-              <p className="text-gray-600 mb-6">
-                Are you sure you want to remove your connection with{' '}
-                <span className="font-medium text-emerald-600">
-                  {connectionToDelete.user.family_name || connectionToDelete.user.display_name}
-                </span>?
-                {' '}This action cannot be undone.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setConnectionToDelete(null);
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteConnection}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700"
-                >
-                  Remove
-                </button>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-md" onClick={() => { setShowDeleteModal(false); setConnectionToDelete(null); }} />
+          <div className="relative w-full max-w-xs rounded-3xl shadow-2xl border border-white/40 px-5 py-6" style={{ background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(32px) saturate(1.6)', WebkitBackdropFilter: 'blur(32px) saturate(1.6)' }}>
+            <p className="text-sm font-medium text-gray-800 text-center mb-1 leading-relaxed">
+              Remove connection with <span className="font-semibold">{connectionToDelete.user.family_name || connectionToDelete.user.display_name}</span>?
+            </p>
+            <p className="text-xs text-gray-400 text-center mb-5">This cannot be undone.</p>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowDeleteModal(false); setConnectionToDelete(null); }} className="flex-1 py-2.5 bg-white/60 text-gray-600 rounded-2xl font-semibold text-sm border border-white/60 hover:bg-white/80 transition-colors">Cancel</button>
+              <button onClick={handleDeleteConnection} className="flex-1 py-2.5 bg-red-500 text-white rounded-2xl font-semibold text-sm hover:bg-red-600 transition-colors">Remove</button>
             </div>
           </div>
         </div>
@@ -1208,7 +1197,153 @@ export default function ConnectionsPage() {
         <InviteToHaven />
       </div>
 
+        {activeTab === 'map' && (
+          <ConnectionsMap connections={connections} />
+        )}
+
+      {profileCardUserId && (
+        <ProfileCardModal
+          userId={profileCardUserId}
+          onClose={() => setProfileCardUserId(null)}
+          currentUserId={getStoredSession()?.user?.id}
+        />
+      )}
     </div>
     </ProtectedRoute>
+  );
+}
+
+// Map component for connections — matches Discover map style
+function ConnectionsMap({ connections }: { connections: Connection[] }) {
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const userMarkerRef = useRef<any>(null);
+
+  const mapped = connections.filter(c => c.user.location_lat && c.user.location_lng);
+
+  useEffect(() => {
+    if (!mapContainer.current || mapRef.current) return;
+    import('mapbox-gl').then(({ default: mapboxgl }) => {
+      if (!mapContainer.current) return;
+      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+      if (!token) return;
+
+      // Block Mapbox telemetry
+      if (typeof window !== 'undefined' && !(window as any).__mapboxFetchPatched) {
+        (window as any).__mapboxFetchPatched = true;
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
+          const url = typeof input === 'string' ? input : input.toString();
+          if (url.includes('events.mapbox.com') || url.includes('/events/v2') || url.includes('mapbox-turnstile')) {
+            return Promise.resolve(new Response('{}', { status: 200 }));
+          }
+          return originalFetch(input, init);
+        };
+      }
+
+      mapboxgl.accessToken = token;
+
+      const lngs = mapped.map(c => c.user.location_lng!);
+      const lats = mapped.map(c => c.user.location_lat!);
+      const centerLng = lngs.length > 0 ? lngs.reduce((a, b) => a + b, 0) / lngs.length : 144.33;
+      const centerLat = lats.length > 0 ? lats.reduce((a, b) => a + b, 0) / lats.length : -38.33;
+
+      const map = new mapboxgl.Map({
+        container: mapContainer.current!,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [centerLng, centerLat],
+        zoom: mapped.length > 0 ? 9 : 8,
+      });
+
+      mapRef.current = map;
+
+      // Zoom controls (top-right, matches Discover)
+      map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+      // Locate me button
+      const geolocate = new mapboxgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: false,
+        showAccuracyCircle: false,
+      });
+      map.addControl(geolocate, 'top-right');
+
+      map.on('load', () => {
+        // User location marker (shown when geolocate fires)
+        geolocate.on('geolocate', (e: any) => {
+          const { longitude, latitude } = e.coords;
+          if (userMarkerRef.current) userMarkerRef.current.remove();
+          const el = document.createElement('div');
+          el.style.cssText = 'width:14px;height:14px;background:#10b981;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);';
+          el.title = 'Your location';
+          userMarkerRef.current = new mapboxgl.Marker({ element: el })
+            .setLngLat([longitude, latitude])
+            .addTo(map);
+        });
+
+        // Connection pins
+        mapped.forEach(conn => {
+          const el = document.createElement('div');
+          el.style.cssText = `
+            width:40px;height:40px;border-radius:50%;overflow:hidden;
+            border:3px solid #10b981;cursor:pointer;
+            box-shadow:0 2px 8px rgba(0,0,0,0.25);background:#d1fae5;
+          `;
+          if (conn.user.avatar_url) {
+            el.style.backgroundImage = `url(${conn.user.avatar_url})`;
+            el.style.backgroundSize = 'cover';
+            el.style.backgroundPosition = 'center';
+          } else {
+            el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#065f46;">${(conn.user.display_name || conn.user.family_name || '?').charAt(0)}</div>`;
+          }
+
+          const popup = new mapboxgl.Popup({ offset: 24, closeButton: false })
+            .setHTML(`
+              <div style="padding:4px 2px;">
+                <p style="font-weight:600;font-size:13px;margin:0 0 2px;">${conn.user.display_name || conn.user.family_name}</p>
+                <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">${conn.user.location_name}</p>
+                <button onclick="window.location.href='/messages?open=${conn.user.id}'" style="background:#10b981;color:white;border:none;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">Message</button>
+              </div>
+            `);
+
+          new mapboxgl.Marker({ element: el })
+            .setLngLat([conn.user.location_lng!, conn.user.location_lat!])
+            .setPopup(popup)
+            .addTo(map);
+        });
+      });
+    });
+
+    return () => {
+      userMarkerRef.current?.remove();
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  if (mapped.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 bg-emerald-50 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+          <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </div>
+        <h3 className="text-base font-semibold text-gray-800 mb-1">No location data yet</h3>
+        <p className="text-sm text-gray-500 max-w-xs mx-auto">Once your connections set their location, they'll show up here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        ref={mapContainer}
+        className="w-full rounded-2xl overflow-hidden border border-gray-200"
+        style={{ height: '65vh' }}
+      />
+      <p className="text-xs text-gray-400 text-center mt-2">{mapped.length} of {connections.length} connections have a location set</p>
+    </div>
   );
 }

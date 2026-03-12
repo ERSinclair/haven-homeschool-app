@@ -184,6 +184,38 @@ function MessagesContent() {
         if (openId) {
           setSelectedId(openId);
         }
+
+        // ?user=<id> — open or create conversation with that user
+        const openUserId = searchParams.get('user');
+        if (openUserId) {
+          const session2 = getStoredSession();
+          if (session2) {
+            // Look for existing conversation
+            const convRes = await fetch(
+              `${supabaseUrl}/rest/v1/conversations?or=(and(participant_1.eq.${session2.user.id},participant_2.eq.${openUserId}),and(participant_1.eq.${openUserId},participant_2.eq.${session2.user.id}))&select=id&limit=1`,
+              { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session2.access_token}` } }
+            );
+            if (convRes.ok) {
+              const [existing] = await convRes.json();
+              if (existing) {
+                setSelectedId(existing.id);
+              } else {
+                // Create new conversation
+                const createRes = await fetch(`${supabaseUrl}/rest/v1/conversations`, {
+                  method: 'POST',
+                  headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session2.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+                  body: JSON.stringify({ participant_1: session2.user.id, participant_2: openUserId }),
+                });
+                if (createRes.ok) {
+                  const [newConvo] = await createRes.json();
+                  await reloadConversations();
+                  setSelectedId(newConvo.id);
+                }
+              }
+            }
+          }
+          router.replace('/messages');
+        }
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
           console.error('Error loading conversations:', err);
@@ -1423,19 +1455,21 @@ function MessagesContent() {
             {/* User Info (only show when not in selection mode) */}
             {!selectionMode && (
               <div className="flex items-center gap-3 mb-3 px-4">
-                  <AvatarUpload
-                    userId={selected.other_user.id}
-                    currentAvatarUrl={selected.other_user.avatar_url}
-                    name={selected.other_user.family_name || selected.other_user.display_name || 'Unknown'}
-                    size="sm"
-                    editable={false}
-                    viewable={true}
-                    showFamilySilhouette={true}
-                  />
-                  <div className="flex-1">
+                  <button onClick={() => selected.other_user.id !== 'saved' && setProfileCardUserId(selected.other_user.id)} className="flex-shrink-0">
+                    <AvatarUpload
+                      userId={selected.other_user.id}
+                      currentAvatarUrl={selected.other_user.avatar_url}
+                      name={selected.other_user.family_name || selected.other_user.display_name || 'Unknown'}
+                      size="sm"
+                      editable={false}
+                      viewable={false}
+                      showFamilySilhouette={true}
+                    />
+                  </button>
+                  <button onClick={() => selected.other_user.id !== 'saved' && setProfileCardUserId(selected.other_user.id)} className="flex-1 min-w-0 text-left">
                     <h2 className="font-semibold text-emerald-600">{selected.other_user.family_name || selected.other_user.display_name || 'Unknown'}</h2>
                     <p className="text-xs text-gray-500">{selected.other_user.location_name}</p>
-                  </div>
+                  </button>
                   
                   {/* Connect Button */}
                   <button

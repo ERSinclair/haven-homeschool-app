@@ -152,7 +152,21 @@ export default function AvatarUpload({
 
       setAvatarUrl(newAvatarUrl);
       onAvatarChange?.(newAvatarUrl);
-      
+
+      // Save old avatar to history (best effort — don't block on failure)
+      if (currentAvatarUrl && currentAvatarUrl !== newAvatarUrl) {
+        fetch(`${supabaseUrl}/rest/v1/avatar_history`, {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseKey!,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({ user_id: userId, avatar_url: currentAvatarUrl }),
+        }).catch(() => {});
+      }
+
     } catch (err) {
       setError('Something went wrong. Please try again.');
     } finally {

@@ -17,21 +17,32 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const TAGS: { value: string; label: string }[] = [
-  { value: 'all',     label: 'All' },
-  { value: 'local',   label: 'Local' },
-  { value: 'general', label: 'General' },
-  { value: 'other',   label: 'Other' },
+  { value: 'all',            label: 'All' },
+  { value: 'general',        label: 'General' },
+  { value: 'questions',      label: 'Questions' },
+  { value: 'resources',      label: 'Resources' },
+  { value: 'accomplishments', label: 'Accomplishments' },
+  { value: 'other',          label: 'Other' },
 ];
 
 const TAG_COLORS: Record<string, string> = {
-  local:   'bg-emerald-100 text-emerald-700',
-  general: 'bg-gray-100 text-gray-600',
-  other:   'bg-orange-100 text-orange-700',
+  general:        'bg-gray-100 text-gray-600',
+  questions:      'bg-purple-100 text-purple-700',
+  resources:      'bg-blue-100 text-blue-700',
+  accomplishments:'bg-amber-100 text-amber-700',
+  other:          'bg-orange-100 text-orange-700',
   // legacy tags still in DB
+  local:      'bg-emerald-100 text-emerald-700',
   question:   'bg-purple-100 text-purple-700',
   curriculum: 'bg-blue-100 text-blue-700',
   events:     'bg-amber-100 text-amber-700',
 };
+
+function parseOtherDescription(content: string): { description: string | null; body: string } {
+  const match = content.match(/^\[([^\]]+)\]\s*([\s\S]*)$/);
+  if (match) return { description: match[1], body: match[2] };
+  return { description: null, body: content };
+}
 
 type Post = {
   id: string;
@@ -67,7 +78,7 @@ export default function BoardPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [tag, setTag] = useState('local');
+  const [tag, setTag] = useState('general');
   const [otherDescription, setOtherDescription] = useState('');
   const [posting, setPosting] = useState(false);
   const [boardImageFile, setBoardImageFile] = useState<File | null>(null);
@@ -78,6 +89,8 @@ export default function BoardPage() {
   const [showBoardEmojiPicker, setShowBoardEmojiPicker] = useState(false);
   const [currentUserId, setCurrentUserId] = useState('');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [boardSearch, setBoardSearch] = useState('');
   const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
   const [searchRadius] = useState(() => loadSearchRadius());
 
@@ -187,7 +200,7 @@ export default function BoardPage() {
       if (res.ok) {
         setTitle('');
         setContent('');
-        setTag('local');
+        setTag('general');
         setOtherDescription('');
         setBoardImageFile(null);
         setBoardImagePreview(null);
@@ -221,12 +234,51 @@ export default function BoardPage() {
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white pb-24">
         <div className="max-w-md mx-auto px-4 pt-4">
           <AppHeader backHref="/profile" />
-          <div className="mb-5">
+          <div className="mb-2">
             <h1 className="text-2xl font-bold text-gray-900">Community Board</h1>
             <p className="text-emerald-600 text-sm mt-1">Ask questions, share tips, connect with local families</p>
           </div>
-          {/* Browse location */}
-          <BrowseLocation current={browseLocation} onChange={loc => { setBrowseLocation(loc); }} />
+
+          {/* Search + filter toggle */}
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              value={boardSearch}
+              onChange={e => setBoardSearch(e.target.value)}
+              placeholder="Search posts…"
+              className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
+            <button
+              onClick={() => setShowFilters(v => !v)}
+              className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 whitespace-nowrap"
+            >
+              {showFilters ? '- Filter' : '+ Filter'}
+            </button>
+          </div>
+
+          {/* Collapsible filter panel */}
+          {showFilters && (
+            <>
+              {/* Category bar */}
+              <div className="flex mb-3 bg-white rounded-xl p-0.5 border border-gray-200 overflow-x-auto scrollbar-hide">
+                {TAGS.map(t => (
+                  <button
+                    key={t.value}
+                    onClick={() => setActiveTag(t.value)}
+                    className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${
+                      activeTag === t.value
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {t.value === 'accomplishments' ? '🏆' : t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Browse location */}
+              <BrowseLocation current={browseLocation} onChange={loc => { setBrowseLocation(loc); }} alwaysOpen />
+            </>
+          )}
 
           {/* Create post button */}
           <button
@@ -288,6 +340,33 @@ export default function BoardPage() {
                   </svg>
                 </button>
               </div>
+              {/* Tag selector */}
+              <div className="flex flex-wrap gap-2">
+                {TAGS.filter(t => t.value !== 'all').map(t => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setTag(t.value)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                      tag === t.value
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-300'
+                    }`}
+                  >
+                    {t.value === 'accomplishments' ? '🏆 ' + t.label : t.label}
+                  </button>
+                ))}
+              </div>
+              {/* Other: custom description */}
+              {tag === 'other' && (
+                <input
+                  value={otherDescription}
+                  onChange={e => setOtherDescription(e.target.value)}
+                  placeholder="What's this about? (e.g. Humour, Rant, Recommendation...)"
+                  maxLength={40}
+                  className="w-full px-3 py-2 border border-orange-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-400 bg-orange-50"
+                />
+              )}
               {/* Image attachment */}
               <div className="flex items-center gap-2">
                 <button
@@ -336,14 +415,22 @@ export default function BoardPage() {
           {/* Posts list */}
           {(() => {
             const activeLocation = browseLocation ?? userLocation;
-            const visiblePosts = activeLocation
-              ? posts.filter(p => {
+            const q = boardSearch.trim().toLowerCase();
+            const visiblePosts = posts
+              .filter(p => {
+                if (q) {
+                  const inTitle = (p.title || '').toLowerCase().includes(q);
+                  const inContent = (p.content || '').toLowerCase().includes(q);
+                  const inAuthor = (p.author?.family_name || p.author?.display_name || '').toLowerCase().includes(q);
+                  if (!inTitle && !inContent && !inAuthor) return false;
+                }
+                if (activeLocation) {
                   const lat = p.author?.location_lat;
                   const lng = p.author?.location_lng;
-                  if (!lat || !lng) return true; // show posts from users without coords yet
-                  return distanceKm(activeLocation.lat, activeLocation.lng, lat, lng) <= searchRadius;
-                })
-              : posts;
+                  if (lat && lng && distanceKm(activeLocation.lat, activeLocation.lng, lat, lng) > searchRadius) return false;
+                }
+                return true;
+              });
 
             return loading ? (
             <div className="flex justify-center py-12">
@@ -356,8 +443,11 @@ export default function BoardPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {visiblePosts.map(post => (
-                <div key={post.id} className="bg-white rounded-2xl shadow-sm p-4">
+              {visiblePosts.map(post => {
+                const isAccomplishment = post.tag === 'accomplishments';
+                const { description: otherDesc, body: postBody } = parseOtherDescription(post.content);
+                return (
+                <div key={post.id} className={`bg-white rounded-2xl shadow-sm p-4 ${isAccomplishment ? 'border-l-4 border-amber-400' : ''}`}>
                   {/* Author row */}
                   <div className="flex items-center gap-3 mb-3">
                     <AvatarUpload
@@ -374,14 +464,22 @@ export default function BoardPage() {
                       </p>
                       <p className="text-xs text-gray-400">{timeAgo(post.created_at)}</p>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TAG_COLORS[post.tag] || TAG_COLORS.general}`}>
-                      {post.tag.charAt(0).toUpperCase() + post.tag.slice(1)}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isAccomplishment && <span className="text-base">🏆</span>}
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TAG_COLORS[post.tag] || TAG_COLORS.general}`}>
+                        {post.tag === 'accomplishments' ? 'Accomplishment' : post.tag.charAt(0).toUpperCase() + post.tag.slice(1)}
+                      </span>
+                      {post.tag === 'other' && otherDesc && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-600 border border-orange-200">
+                          {otherDesc}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Post content */}
                   <h3 className="font-semibold text-gray-900 text-sm mb-1">{post.title}</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">{post.content}</p>
+                  <p className="text-sm text-gray-600 leading-relaxed">{postBody}</p>
                   {post.image_url && (
                     <img
                       src={post.image_url}
@@ -411,7 +509,8 @@ export default function BoardPage() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           );
           })()}

@@ -178,9 +178,9 @@ export default function ProfileCardModal({ userId, onClose, onMessage, currentUs
                   </div>
                 </div>
               )}
-              {profile.homeschool_approaches && profile.homeschool_approaches.length > 0 && (
+              {profile.homeschool_approaches && profile.homeschool_approaches.length > 0 && profile.user_type !== 'business' && profile.user_type !== 'playgroup' && (
                 <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Approach</p>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Education approach</p>
                   <div className="flex flex-wrap gap-1.5">
                     {profile.homeschool_approaches.map((a, i) => (
                       <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100">{a}</span>

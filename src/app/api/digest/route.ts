@@ -17,10 +17,23 @@ export async function GET(req: NextRequest) {
 
   const supabase = supabaseAdmin();
 
-  const { data: users } = await supabase
+  // Fetch all profiles (including those without email in profiles table)
+  const { data: allProfiles } = await supabase
     .from('profiles')
-    .select('id, email, family_name, display_name, notification_prefs')
-    .not('email', 'is', null);
+    .select('id, email, family_name, display_name, notification_prefs');
+
+  // For profiles missing email, backfill from auth.users
+  let users = allProfiles ?? [];
+  const missingEmail = users.filter(u => !u.email).map(u => u.id);
+  if (missingEmail.length > 0) {
+    const { data: authList } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    if (authList?.users) {
+      const authEmailMap: Record<string, string> = {};
+      for (const au of authList.users) { if (au.email) authEmailMap[au.id] = au.email; }
+      users = users.map(u => (!u.email && authEmailMap[u.id]) ? { ...u, email: authEmailMap[u.id] } : u);
+    }
+  }
+  users = users.filter(u => u.email);
 
   if (!users?.length) return NextResponse.json({ ok: true, sent: 0 });
 
@@ -53,7 +66,7 @@ export async function GET(req: NextRequest) {
     const name = user.family_name || user.display_name || 'there';
 
     if (resend) {
-      await resend.emails.send({
+      const result = await resend.emails.send({
         from: FROM,
         to: user.email,
         subject: `Your Haven update`,
@@ -73,6 +86,12 @@ export async function GET(req: NextRequest) {
           </div>
         `,
       });
+      if (result.error) {
+        console.error(`[digest] Failed to send to ${user.email}:`, result.error);
+        continue;
+      }
+    } else {
+      console.warn('[digest] RESEND_API_KEY not set — skipping email send');
     }
 
     await supabase

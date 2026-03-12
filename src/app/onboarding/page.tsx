@@ -229,7 +229,7 @@ export default function OnboardingPage() {
                   <textarea
                     value={bio}
                     onChange={e => setBio(e.target.value.slice(0, 300))}
-                    placeholder="Where you're based, what you love, why you're homeschooling..."
+                    placeholder="Where you're based, what you love, why you're home education..."
                     rows={4}
                     maxLength={300}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm resize-none"
@@ -327,7 +327,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* ── Step 4: Homeschool approach ── */}
+          {/* ── Step 4: Home education approach ── */}
           {step === 4 && (
             <div className="space-y-6">
               <div>

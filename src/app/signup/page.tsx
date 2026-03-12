@@ -72,6 +72,9 @@ function SignupPageInner() {
 
   // Business-specific
   const [businessContact, setBusinessContact] = useState('');
+  // Shared contact fields for business / teacher / playgroup
+  const [contactFields, setContactFields] = useState({ phone: '', email: '', website: '', address: '', instagram: '', facebook: '' });
+  const setContact = (key: keyof typeof contactFields, val: string) => setContactFields(prev => ({ ...prev, [key]: val }));
   const [businessContacts, setBusinessContacts] = useState<{ type: string; value: string }[]>([{ type: 'website', value: '' }]);
   // Playgroup-specific
   const [playgroupAges, setPlaygroupAges] = useState<string[]>([]);
@@ -382,11 +385,12 @@ function SignupPageInner() {
         subjects: teacherSubjects.length > 0 ? teacherSubjects : null,
         age_groups_taught: teacherAgeGroups.length > 0 ? teacherAgeGroups : null,
         services: null, // businesses use bio for services during signup
-        contact_info: userType === 'playgroup'
-          ? [playgroupPhone.trim(), playgroupEmail.trim()].filter(Boolean).join(' | ') || null
-          : userType === 'business'
-            ? businessContacts.filter(c => c.value.trim()).map(c => `${c.type}: ${c.value.trim()}`).join(' | ') || null
-            : businessContact.trim() || null,
+        contact_info: ['business', 'teacher', 'playgroup'].includes(userType)
+          ? Object.entries(contactFields)
+              .filter(([, v]) => v.trim())
+              .map(([k, v]) => `${k}: ${v.trim()}`)
+              .join(' | ') || null
+          : null,
         dob: (userType === 'family' || userType === 'teacher') && dob ? dob : null,
         show_birthday: (userType === 'family' || userType === 'teacher') ? showBirthday : false,
         created_at: new Date().toISOString(),
@@ -594,7 +598,6 @@ function SignupPageInner() {
       if (userType === 'family') return 'Kids';
       if (userType === 'playgroup') return 'Ages';
       if (userType === 'teacher') return 'Kids';
-      if (userType === 'business') return 'Services';
       return 'Finish';
     }
     if (stepNum === 4) {
@@ -607,12 +610,15 @@ function SignupPageInner() {
     return '';
   };
 
-  const steps = [
-    { num: 1, label: getStepLabel(1) },
-    { num: 2, label: getStepLabel(2) },
-    { num: 3, label: getStepLabel(3) },
-    { num: 4, label: getStepLabel(4) },
-  ];
+  // Business skips step 3 — only 3 steps total
+  const steps = userType === 'business'
+    ? [{ num: 1, label: 'Account' }, { num: 2, label: 'About you' }, { num: 4, label: 'Details' }]
+    : [
+        { num: 1, label: getStepLabel(1) },
+        { num: 2, label: getStepLabel(2) },
+        { num: 3, label: getStepLabel(3) },
+        { num: 4, label: getStepLabel(4) },
+      ];
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
@@ -824,6 +830,7 @@ function SignupPageInner() {
                     <input
                       type="text"
                       value={firstName}
+                        autoCapitalize="words"
                       onChange={(e) => setFirstName(e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase())}
                       className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                       placeholder="first name"
@@ -833,6 +840,7 @@ function SignupPageInner() {
                     <input
                       type="text"
                       value={lastName}
+                        autoCapitalize="words"
                       onChange={(e) => setLastName(e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase())}
                       className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                       placeholder="last name"
@@ -844,6 +852,7 @@ function SignupPageInner() {
                     <input
                       type="text"
                       value={username}
+                        autoCapitalize="words"
                       onChange={(e) => {
                         const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
                         setUsername(value);
@@ -889,6 +898,7 @@ function SignupPageInner() {
                     <input
                       type="text"
                       value={location.split(',')[0]?.trim() || ''}
+                        autoCapitalize="words"
                       onChange={(e) => {
                         const town = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase();
                         const state = location.split(',')[1]?.trim() || 'VIC';
@@ -1012,6 +1022,7 @@ function SignupPageInner() {
                               type="text"
                               placeholder="Please describe..."
                               value={description}
+                        autoCapitalize="words"
                               onChange={(e) => {
                                 const newDescriptions = [...customDescriptions];
                                 newDescriptions[index] = e.target.value;
@@ -1070,6 +1081,7 @@ function SignupPageInner() {
                 <input
                   type="text"
                   value={firstName}
+                        autoCapitalize="words"
                   onChange={(e) => setFirstName(e.target.value)}
                   className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                   placeholder="e.g. Little Explorers Playgroup"
@@ -1082,6 +1094,7 @@ function SignupPageInner() {
                   <input
                     type="text"
                     value={username}
+                        autoCapitalize="none"
                     onChange={(e) => {
                       const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
                       setUsername(value);
@@ -1106,6 +1119,7 @@ function SignupPageInner() {
                   <input
                     type="text"
                     value={location.split(',')[0]?.trim() || ''}
+                        autoCapitalize="words"
                     onChange={(e) => {
                       const town = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase();
                       const state = location.split(',')[1]?.trim() || 'VIC';
@@ -1139,20 +1153,24 @@ function SignupPageInner() {
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contact (optional)</p>
                 <div className="space-y-2">
-                  <input
-                    type="tel"
-                    value={playgroupPhone}
-                    onChange={e => setPlaygroupPhone(e.target.value)}
-                    placeholder="Phone number"
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                  />
-                  <input
-                    type="email"
-                    value={playgroupEmail}
-                    onChange={e => setPlaygroupEmail(e.target.value)}
-                    placeholder="Email address"
-                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                  />
+                  {[
+                    { key: 'phone', label: 'Phone', type: 'tel', placeholder: '04xx xxx xxx', autoCap: 'none' },
+                    { key: 'email', label: 'Email', type: 'email', placeholder: 'hello@example.com', autoCap: 'none' },
+                    { key: 'website', label: 'Website', type: 'url', placeholder: 'https://…', autoCap: 'none' },
+                    { key: 'address', label: 'Address', type: 'text', placeholder: 'Street address or suburb', autoCap: 'words' },
+                  ].map(f => (
+                    <div key={f.key} className="flex items-center gap-2">
+                      <span className="w-20 text-xs font-medium text-gray-500 flex-shrink-0">{f.label}</span>
+                      <input
+                        type={f.type}
+                        value={contactFields[f.key as keyof typeof contactFields]}
+                        onChange={e => setContact(f.key as keyof typeof contactFields, e.target.value)}
+                        placeholder={f.placeholder}
+                        autoCapitalize={(f as any).autoCap || 'words'}
+                        className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1176,6 +1194,7 @@ function SignupPageInner() {
                       type="text"
                       placeholder="First name"
                       value={firstName}
+                        autoCapitalize="words"
                       onChange={(e) => setFirstName(e.target.value)}
                       className="w-full p-3 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400"
                     />
@@ -1185,6 +1204,7 @@ function SignupPageInner() {
                       type="text"
                       placeholder="Last name"
                       value={lastName}
+                        autoCapitalize="none"
                       onChange={(e) => setLastName(e.target.value)}
                       className="w-full p-3 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400"
                     />
@@ -1197,6 +1217,7 @@ function SignupPageInner() {
                       type="text"
                       placeholder="Username"
                       value={username}
+                        autoCapitalize="words"
                       onChange={(e) => {
                         setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''));
                         setUsernameAvailable(null);
@@ -1235,6 +1256,7 @@ function SignupPageInner() {
                     <input
                       type="text"
                       value={location.split(',')[0]?.trim() || ''}
+                        autoCapitalize="words"
                       onChange={(e) => {
                         const town = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase();
                         const state = location.split(',')[1]?.trim() || 'VIC';
@@ -1289,10 +1311,11 @@ function SignupPageInner() {
                   <label className="block text-sm font-medium text-gray-700 mb-3">Services offered</label>
                   <div className="space-y-2">
                     {[
-                      { value: 'group-lessons', label: 'Group Lessons', icon: '' },
-                      { value: 'tutoring', label: 'Tutoring', icon: '' },
-                      { value: 'sport', label: 'Sport', icon: '' },
-                      { value: 'music', label: 'Music', icon: '' },
+                      { value: 'curriculum', label: 'Curriculum & Resources', icon: '' },
+                      { value: 'supplies', label: 'Supplies & Materials', icon: '' },
+                      { value: 'classes', label: 'Classes & Programs', icon: '' },
+                      { value: 'venue', label: 'Venue / Space Hire', icon: '' },
+                      { value: 'therapy', label: 'Therapy & Support', icon: '' },
                       { value: 'other', label: 'Other', icon: '' }
                     ].map((opt) => (
                       <label 
@@ -1339,6 +1362,7 @@ function SignupPageInner() {
                               type="text"
                               placeholder="Please describe..."
                               value={description}
+                        autoCapitalize="words"
                               onChange={(e) => {
                                 const newDescriptions = [...customDescriptions];
                                 newDescriptions[index] = e.target.value;
@@ -1416,6 +1440,7 @@ function SignupPageInner() {
                       type="text"
                       placeholder="First name"
                       value={firstName}
+                        autoCapitalize="words"
                       onChange={(e) => setFirstName(e.target.value)}
                       className="w-full p-3 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400"
                     />
@@ -1425,6 +1450,7 @@ function SignupPageInner() {
                       type="text"
                       placeholder="Last name"
                       value={lastName}
+                        autoCapitalize="words"
                       onChange={(e) => setLastName(e.target.value)}
                       className="w-full p-3 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400"
                     />
@@ -1438,6 +1464,7 @@ function SignupPageInner() {
                     type="text"
                     placeholder="Enter your business name..."
                     value={businessName}
+                        autoCapitalize="words"
                     onChange={(e) => setBusinessName(e.target.value)}
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                   />
@@ -1449,6 +1476,7 @@ function SignupPageInner() {
                       type="text"
                       placeholder="Username"
                       value={username}
+                        autoCapitalize="words"
                       onChange={(e) => {
                         setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''));
                         setUsernameAvailable(null);
@@ -1487,6 +1515,7 @@ function SignupPageInner() {
                     <input
                       type="text"
                       value={location.split(',')[0]?.trim() || ''}
+                        autoCapitalize="words"
                       onChange={(e) => {
                         const town = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase();
                         const state = location.split(',')[1]?.trim() || 'VIC';
@@ -1541,10 +1570,11 @@ function SignupPageInner() {
                   <label className="block text-sm font-medium text-gray-700 mb-3">What we offer</label>
                   <div className="space-y-2">
                     {[
-                      { value: 'group-learning', label: 'Group Learning Space', icon: '' },
-                      { value: 'play-space', label: 'Play Space', icon: '' },
-                      { value: 'event-space', label: 'Event Space', icon: '' },
-                      { value: 'resources', label: 'Resources', icon: '' },
+                      { value: 'curriculum', label: 'Curriculum & Resources', icon: '' },
+                      { value: 'supplies', label: 'Supplies & Materials', icon: '' },
+                      { value: 'classes', label: 'Classes & Programs', icon: '' },
+                      { value: 'venue', label: 'Venue / Space Hire', icon: '' },
+                      { value: 'therapy', label: 'Therapy & Support', icon: '' },
                       { value: 'other', label: 'Other', icon: '' }
                     ].map((opt) => (
                       <label 
@@ -1591,6 +1621,7 @@ function SignupPageInner() {
                               type="text"
                               placeholder="Please describe..."
                               value={description}
+                        autoCapitalize="words"
                               onChange={(e) => {
                                 const newDescriptions = [...customDescriptions];
                                 newDescriptions[index] = e.target.value;
@@ -1629,7 +1660,7 @@ function SignupPageInner() {
                 
                 <div>
                   <button
-                    onClick={() => setStep(3)}
+                    onClick={() => setStep(4)}
                     disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim()))}
                     className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                   >
@@ -1697,6 +1728,7 @@ function SignupPageInner() {
                             type="text"
                             placeholder="Please describe..."
                             value={description}
+                        autoCapitalize="words"
                             onChange={(e) => {
                               const newDescriptions = [...relationshipCustomDescriptions];
                               newDescriptions[index] = e.target.value;
@@ -1841,7 +1873,7 @@ function SignupPageInner() {
                 {/* Tell us about your family */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">Tell us about your family</label>
-                  <textarea
+                  <textarea autoCapitalize="sentences"
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
@@ -1885,7 +1917,7 @@ function SignupPageInner() {
               <div className="space-y-6 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">Tell families about your playgroup</label>
-                  <textarea
+                  <textarea autoCapitalize="sentences"
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
@@ -1967,6 +1999,7 @@ function SignupPageInner() {
                         <input
                           type="text"
                           value={child.age}
+                        autoCapitalize="words"
                           onChange={(e) => updateChildAge(child.id, e.target.value)}
                           className="w-28 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                           placeholder="Age (0-18)"
@@ -2012,7 +2045,7 @@ function SignupPageInner() {
                 {/* About Me */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">About Me</label>
-                  <textarea
+                  <textarea autoCapitalize="sentences"
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
@@ -2076,7 +2109,7 @@ function SignupPageInner() {
                 {/* What I Have To Offer */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">What I have to offer</label>
-                  <textarea
+                  <textarea autoCapitalize="sentences"
                     value={customDescriptions.filter(desc => desc.trim()).join('\n\n')}
                     onChange={(e) => {
                       const lines = e.target.value.split('\n\n').filter(line => line.trim());
@@ -2086,6 +2119,31 @@ function SignupPageInner() {
                     rows={4}
                     placeholder="Qualifications, experience, teaching style, what makes you unique…"
                   />
+                </div>
+              </div>
+
+              {/* Contact info */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Contact info <span className="text-gray-400 font-normal">(all optional)</span></label>
+                <div className="space-y-2">
+                  {[
+                    { key: 'phone', label: 'Phone', type: 'tel', placeholder: '04xx xxx xxx', autoCap: 'none' },
+                    { key: 'email', label: 'Email', type: 'email', placeholder: 'you@example.com', autoCap: 'none' },
+                    { key: 'website', label: 'Website', type: 'url', placeholder: 'https://…', autoCap: 'none' },
+                    { key: 'instagram', label: 'Instagram', type: 'text', placeholder: '@handle', autoCap: 'none' },
+                  ].map(f => (
+                    <div key={f.key} className="flex items-center gap-2">
+                      <span className="w-20 text-xs font-medium text-gray-500 flex-shrink-0">{f.label}</span>
+                      <input
+                        type={f.type}
+                        value={contactFields[f.key as keyof typeof contactFields]}
+                        onChange={e => setContact(f.key as keyof typeof contactFields, e.target.value)}
+                        placeholder={f.placeholder}
+                        autoCapitalize={(f as any).autoCap || 'words'}
+                        className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -2108,58 +2166,10 @@ function SignupPageInner() {
               </div>
               <button
                   onClick={handleSaveProfile}
-                  disabled={loading || !bio.trim() || !customDescriptions.some(desc => desc.trim()) || !acceptedTerms}
+                  disabled={loading || !bio.trim() || !acceptedTerms}
                   className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {loading ? 'Creating your account...' : 'Create Account & Finish'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Business Details - Businesses */}
-          {step === 3 && userType === 'business' && (
-            <div>
-              <div className="space-y-4 mb-6">
-                {children.map((child, index) => (
-                  <div key={child.id} className="flex items-center gap-3">
-                    <input
-                      type="text"
-                      value={child.age}
-                      onChange={(e) => updateServiceDescription(child.id, e.target.value)}
-                      className="flex-1 min-w-0 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      placeholder={`Service or product ${index + 1}`}
-                    />
-                    {children.length > 1 && (
-                      <button
-                        onClick={() => removeChild(child.id)}
-                        className="text-red-400 hover:text-red-600 p-2 flex-shrink-0"
-                        type="button"
-                        title="Remove"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
-                
-                <button
-                  onClick={addChild}
-                  className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 font-medium"
-                  type="button"
-                >
-                  <span className="text-xl">+</span>
-                  Add another service/product
-                </button>
-              </div>
-
-              <div>
-                <button
-                  onClick={() => setStep(4)}
-                  disabled={children.some(c => !c.age.trim())}
-                  className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
-                >
-                  Continue
                 </button>
               </div>
             </div>
@@ -2172,60 +2182,41 @@ function SignupPageInner() {
                 {/* Tell us about your business */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">Tell us about your business</label>
-                  <textarea
+                  <textarea autoCapitalize="sentences"
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
                     rows={5}
-                    placeholder="What you offer, who you serve, what makes you unique for homeschool families…"
+                    placeholder="What you offer, who you serve, and what makes you a great fit for young families…"
                   />
                 </div>
 
                 {/* Contact info */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Contact info</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Contact info <span className="text-gray-400 font-normal">(all optional)</span></label>
                   <div className="space-y-2">
-                    {businessContacts.map((contact, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
-                        <select
-                          value={contact.type}
-                          onChange={e => setBusinessContacts(prev => prev.map((c, i) => i === idx ? { ...c, type: e.target.value } : c))}
-                          className="w-32 p-3 border border-white/40 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white/60 backdrop-blur-md appearance-none text-sm flex-shrink-0"
-                        >
-                          <option value="website">Website</option>
-                          <option value="phone">Phone</option>
-                          <option value="email">Email</option>
-                          <option value="instagram">Instagram</option>
-                          <option value="facebook">Facebook</option>
-                          <option value="other">Other</option>
-                        </select>
+                    {[
+                      { key: 'phone', label: 'Phone', type: 'tel', placeholder: '04xx xxx xxx', autoCap: 'none' },
+                      { key: 'email', label: 'Email', type: 'email', placeholder: 'hello@yourbusiness.com', autoCap: 'none' },
+                      { key: 'website', label: 'Website', type: 'url', placeholder: 'https://…', autoCap: 'none' },
+                      { key: 'address', label: 'Address', type: 'text', placeholder: 'Street address or suburb', autoCap: 'words' },
+                      { key: 'instagram', label: 'Instagram', type: 'text', placeholder: '@handle', autoCap: 'none' },
+                      { key: 'facebook', label: 'Facebook', type: 'text', placeholder: 'facebook.com/yourpage', autoCap: 'none' },
+                    ].map(f => (
+                      <div key={f.key} className="flex items-center gap-2">
+                        <span className="w-20 text-xs font-medium text-gray-500 flex-shrink-0">{f.label}</span>
                         <input
-                          value={contact.value}
-                          onChange={e => setBusinessContacts(prev => prev.map((c, i) => i === idx ? { ...c, value: e.target.value } : c))}
-                          placeholder={contact.type === 'website' ? 'https://…' : contact.type === 'phone' ? '04xx xxx xxx' : contact.type === 'email' ? 'you@example.com' : contact.type === 'instagram' ? '@handle' : ''}
+                          type={f.type}
+                          value={contactFields[f.key as keyof typeof contactFields]}
+                          onChange={e => setContact(f.key as keyof typeof contactFields, e.target.value)}
+                          placeholder={f.placeholder}
+                          autoCapitalize={(f as any).autoCap || 'words'}
                           className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-sm"
                         />
-                        {businessContacts.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => setBusinessContacts(prev => prev.filter((_, i) => i !== idx))}
-                            className="text-gray-400 hover:text-red-500 p-1 transition-colors"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                          </button>
-                        )}
                       </div>
                     ))}
-                    <button
-                      type="button"
-                      onClick={() => setBusinessContacts(prev => [...prev, { type: 'website', value: '' }])}
-                      className="text-emerald-600 hover:text-emerald-700 text-sm font-medium flex items-center gap-1 mt-1"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
-                      Add another
-                    </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">Optional — you can update this any time in your profile</p>
+                  <p className="text-xs text-gray-500 mt-2">You can update these any time in your profile</p>
                 </div>
               </div>
 

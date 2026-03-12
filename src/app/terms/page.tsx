@@ -22,7 +22,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-base font-bold text-gray-900 mb-2">What Haven is</h2>
             <p className="text-sm leading-relaxed">
-              Haven is a community platform for homeschooling families. It helps families find each other locally, organise events, and build support networks. It is operated from Australia.
+              Haven is a community platform for families. It helps families find each other locally, organise events, and build support networks. It is operated from Australia.
             </p>
           </section>
 
@@ -30,7 +30,7 @@ export default function TermsPage() {
             <h2 className="text-base font-bold text-gray-900 mb-2">Who can use Haven</h2>
             <ul className="text-sm leading-relaxed space-y-1 list-disc pl-4">
               <li>You must be 18 or older to create an account.</li>
-              <li>Haven is for parents, guardians, teachers, and homeschool-related businesses. Children do not create accounts.</li>
+              <li>Haven is for parents, guardians, teachers, and education-related businesses. Children do not create accounts.</li>
               <li>You must provide accurate information when signing up. Fake profiles are not allowed.</li>
               <li>One account per person. Don&apos;t create multiple accounts to get around a ban.</li>
             </ul>

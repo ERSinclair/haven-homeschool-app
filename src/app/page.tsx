@@ -169,7 +169,7 @@ export default function Home() {
                 Finding other families nearby shouldn&apos;t be hard. But it is. And if your kids aren&apos;t in school yet, or you&apos;re new to an area, there&apos;s no obvious way in.
               </p>
               <p className="text-gray-600 leading-relaxed mb-4">
-                We were also planning to homeschool, which made it worse — that community is out there, but it&apos;s scattered and hard to find.
+                We were also planning to home education, which made it worse — that community is out there, but it&apos;s scattered and hard to find.
               </p>
               <p className="text-gray-600 leading-relaxed">
                 Haven is our answer to all of it. Whether you&apos;re a family looking to connect, a playgroup searching for members, a teacher offering classes in sport, arts or music, or a business that works with kids — this is the place. Built by parents, for everyone who believes kids thrive when they grow up with real community around them.

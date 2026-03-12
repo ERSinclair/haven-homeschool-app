@@ -1,14 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
 import { getStoredSession } from '@/lib/session';
+
+// Suggested pricing by account type (AUD)
+const PRICING: Record<string, { monthly: number; annual: number; label: string }> = {
+  family:    { monthly: 5,  annual: 50,  label: 'Family' },
+  teacher:   { monthly: 10, annual: 99,  label: 'Teacher' },
+  playgroup: { monthly: 12, annual: 119, label: 'Playgroup' },
+  business:  { monthly: 20, annual: 199, label: 'Business' },
+};
 
 export default function SupportPage() {
   const router = useRouter();
   const [selectedTier, setSelectedTier] = useState<'monthly' | 'annual' | 'donor'>('monthly');
   const [donationAmount, setDonationAmount] = useState('10');
+  const [userType, setUserType] = useState<string>('family');
+
+  useEffect(() => {
+    const session = getStoredSession();
+    if (!session?.user?.id) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=user_type`, {
+      headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+    }).then(r => r.json()).then(rows => {
+      const t = rows[0]?.user_type;
+      if (t && PRICING[t]) setUserType(t);
+    }).catch(() => {});
+  }, []);
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -36,6 +58,11 @@ export default function SupportPage() {
     setLoading(true);
     setError('');
 
+    const pricing = PRICING[userType] || PRICING.family;
+    const resolvedAmount = selectedTier === 'monthly' ? pricing.monthly
+      : selectedTier === 'annual' ? pricing.annual
+      : parseFloat(donationAmount);
+
     try {
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',
@@ -43,8 +70,8 @@ export default function SupportPage() {
         body: JSON.stringify({
           userId: session.user.id,
           displayName: displayName.trim(),
-          tier: selectedTier,
-          donationAmount: selectedTier === 'donor' ? parseFloat(donationAmount) : undefined,
+          tier: 'donor',
+          donationAmount: resolvedAmount,
         }),
       });
 
@@ -76,90 +103,92 @@ export default function SupportPage() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Support Haven</h1>
           <p className="text-gray-500 text-sm leading-relaxed">
-            Haven is free for every family. If it's been valuable to you, consider supporting it — you'll help keep it running and growing for everyone.
+            If it's valuable to you, consider supporting it — you'll help keep it alive & growing.
           </p>
         </div>
 
         {/* Tier selector */}
-        <div className="space-y-3 mb-6">
-          <button
-            onClick={() => setSelectedTier('monthly')}
-            className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
-              selectedTier === 'monthly'
-                ? 'border-emerald-500 bg-emerald-50'
-                : 'border-gray-200 bg-white'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-gray-900">Monthly Supporter</div>
-                <div className="text-sm text-gray-500 mt-0.5">Cancel any time</div>
-              </div>
-              <div className="text-right">
-                <div className="font-bold text-gray-900 text-lg">$5</div>
-                <div className="text-xs text-gray-400">/ month</div>
-              </div>
-            </div>
-          </button>
+        {(() => {
+          const pricing = PRICING[userType] || PRICING.family;
+          return (
+            <div className="space-y-3 mb-6">
+              {userType !== 'family' && (
+                <p className="text-xs text-center text-gray-400 -mb-1">Suggested contribution for a {pricing.label} account</p>
+              )}
+              <button
+                onClick={() => setSelectedTier('monthly')}
+                className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
+                  selectedTier === 'monthly' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900">Monthly Supporter</div>
+                    <div className="text-sm text-gray-500 mt-0.5">Give whatever feels right</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-gray-900 text-lg">${pricing.monthly}</div>
+                    <div className="text-xs text-gray-400">/ month</div>
+                  </div>
+                </div>
+              </button>
 
-          <button
-            onClick={() => setSelectedTier('annual')}
-            className={`w-full p-4 rounded-2xl border-2 text-left transition-all relative ${
-              selectedTier === 'annual'
-                ? 'border-emerald-500 bg-emerald-50'
-                : 'border-gray-200 bg-white'
-            }`}
-          >
-            <div className="absolute -top-2.5 right-4">
-              <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">2 MONTHS FREE</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-gray-900">Annual Supporter</div>
-                <div className="text-sm text-gray-500 mt-0.5">Best value</div>
-              </div>
-              <div className="text-right">
-                <div className="font-bold text-gray-900 text-lg">$50</div>
-                <div className="text-xs text-gray-400">/ year</div>
-              </div>
-            </div>
-          </button>
+              <button
+                onClick={() => setSelectedTier('annual')}
+                className={`w-full p-4 rounded-2xl border-2 text-left transition-all relative ${
+                  selectedTier === 'annual' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 bg-white'
+                }`}
+              >
+                <div className="absolute -top-2.5 right-4">
+                  <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">2 MONTHS FREE</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900">Annual Supporter</div>
+                    <div className="text-sm text-gray-500 mt-0.5">Best value</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-gray-900 text-lg">${pricing.annual}</div>
+                    <div className="text-xs text-gray-400">/ year</div>
+                  </div>
+                </div>
+              </button>
 
-          <button
-            onClick={() => setSelectedTier('donor')}
-            className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
-              selectedTier === 'donor'
-                ? 'border-emerald-500 bg-emerald-50'
-                : 'border-gray-200 bg-white'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-gray-900">One-off Donation</div>
-                <div className="text-sm text-gray-500 mt-0.5">Give whatever feels right</div>
-              </div>
-              <div className="text-right">
-                <div className="font-bold text-gray-900 text-lg">Any</div>
-                <div className="text-xs text-gray-400">amount</div>
-              </div>
+              <button
+                onClick={() => setSelectedTier('donor')}
+                className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
+                  selectedTier === 'donor' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900">One-off Donation</div>
+                    <div className="text-sm text-gray-500 mt-0.5">Give whatever feels right</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-gray-900 text-lg">Any</div>
+                    <div className="text-xs text-gray-400">amount</div>
+                  </div>
+                </div>
+                {selectedTier === 'donor' && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-gray-500 font-medium">$</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={donationAmount}
+                      onChange={e => setDonationAmount(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      placeholder="10"
+                    />
+                    <span className="text-gray-400 text-sm">AUD</span>
+                  </div>
+                )}
+              </button>
             </div>
-            {selectedTier === 'donor' && (
-              <div className="mt-3 flex items-center gap-2">
-                <span className="text-gray-500 font-medium">$</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={donationAmount}
-                  onChange={e => setDonationAmount(e.target.value)}
-                  onClick={e => e.stopPropagation()}
-                  className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                  placeholder="10"
-                />
-                <span className="text-gray-400 text-sm">AUD</span>
-              </div>
-            )}
-          </button>
-        </div>
+          );
+        })()}
 
         {/* Display name for wall */}
         <div className="mb-6">

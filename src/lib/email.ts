@@ -97,7 +97,7 @@ export async function sendExternalInviteEmail(
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
         <h2 style="color:#059669;margin-bottom:8px">You've been invited!</h2>
-        <p style="color:#374151"><strong>${fromName}</strong> has invited you to join the ${typeLabel} <strong>${targetName}</strong> on Haven — a community app for homeschool families.</p>
+        <p style="color:#374151"><strong>${fromName}</strong> has invited you to join the ${typeLabel} <strong>${targetName}</strong> on Haven — a community app for families.</p>
         <a href="${joinUrl}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#059669;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">
           Create account to join
         </a>

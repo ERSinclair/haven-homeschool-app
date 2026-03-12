@@ -48,11 +48,11 @@ export async function POST(req: NextRequest) {
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
           <h2 style="color:#059669;margin-bottom:8px">You're invited to Haven</h2>
-          <p style="color:#374151"><strong>${inviterName}</strong> thinks you'd love Haven — a community app for homeschool families to find each other, organise events, and connect locally.</p>
+          <p style="color:#374151"><strong>${inviterName}</strong> thinks you'd love Haven — a community app for families to find each other, organise events, and connect locally.</p>
           <a href="${BASE_URL}/signup" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#059669;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">
             Create your free account
           </a>
-          <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your homeschool community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
+          <p style="color:#9ca3af;font-size:12px;margin-top:24px">Haven · Find your community · <a href="${BASE_URL}" style="color:#9ca3af">familyhaven.app</a></p>
         </div>
       `,
     });

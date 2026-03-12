@@ -217,7 +217,7 @@ export default function WelcomePage() {
           <p className="text-gray-500 text-sm leading-relaxed max-w-[260px]">
             {isFromSignup
               ? profileData?.user_type === 'teacher'
-                ? 'Your profile is live. Homeschool families can find you now.'
+                ? 'Your profile is live. Families can find you now.'
                 : profileData?.user_type === 'business'
                 ? 'Your listing is live. Local families can discover you.'
                 : "You're part of the community. Let's find your people."

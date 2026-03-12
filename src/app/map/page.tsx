@@ -6,6 +6,7 @@ import { getStoredSession } from '@/lib/session';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AppHeader from '@/components/AppHeader';
 import FamilyMap from '@/components/FamilyMap';
+import ProfileCardModal from '@/components/ProfileCardModal';
 
 type Family = {
   id: string;
@@ -32,6 +33,7 @@ export default function MapPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedFamily, setSelectedFamily] = useState<Family | null>(null);
+  const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -135,13 +137,20 @@ export default function MapPage() {
               )}
 
               <button
-                onClick={() => router.push(`/profile?user=${selectedFamily.id}`)}
+                onClick={() => { setProfileCardUserId(selectedFamily.id); setSelectedFamily(null); }}
                 className="w-full py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors"
               >
-                View Full Profile
+                View Profile
               </button>
             </div>
           </div>
+        )}
+        {profileCardUserId && (
+          <ProfileCardModal
+            userId={profileCardUserId}
+            onClose={() => setProfileCardUserId(null)}
+            currentUserId={getStoredSession()?.user?.id}
+          />
         )}
       </div>
     </ProtectedRoute>

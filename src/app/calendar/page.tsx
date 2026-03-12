@@ -306,6 +306,7 @@ function CalendarContent() {
   const [savingQuick, setSavingQuick] = useState(false);
   const [movingNote, setMovingNote] = useState<CalNote | null>(null);
   const [moveTargetDate, setMoveTargetDate] = useState('');
+  const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
 
   const loadCalendarData = useCallback(async () => {
     const session = getStoredSession();
@@ -673,7 +674,7 @@ function CalendarContent() {
       if (editingNote) {
         // Update existing note
         const recurrencePayload = {
-          title: noteTitle.trim() || null,
+          title: noteContent.trim().split('\n')[0].slice(0, 80) || null,
           content: noteContent.trim(),
           recurrence_rule: noteRecurrence === 'none' ? null : noteRecurrence,
           recurrence_end_date: noteRecurrence !== 'none' && noteRecurrenceEnd ? noteRecurrenceEnd : null,
@@ -721,7 +722,7 @@ function CalendarContent() {
         const recurrencePayload = {
           profile_id: userId,
           note_date: selectedDate,
-          title: noteTitle.trim() || null,
+          title: noteContent.trim().split('\n')[0].slice(0, 80) || null,
           content: noteContent.trim(),
           recurrence_rule: isBirthday ? 'yearly' : (noteRecurrence === 'none' ? null : noteRecurrence),
           recurrence_end_date: noteRecurrence !== 'none' && noteRecurrenceEnd ? noteRecurrenceEnd : null,
@@ -777,7 +778,7 @@ function CalendarContent() {
               user_id: session.user.id,
               type: 'note',
               target_id: session.user.id, // placeholder — note id not needed for routing
-              target_title: noteTitle.trim() || noteContent.trim().slice(0, 40),
+              target_title: noteContent.trim().split('\n')[0].slice(0, 40),
               remind_at: remindAt.toISOString(),
               delivery: noteReminder.delivery,
             }),
@@ -1340,13 +1341,6 @@ function CalendarContent() {
                           </button>
                         ))}
                       </div>
-                      <input
-                        type="text"
-                        value={noteTitle}
-                        onChange={e => setNoteTitle(e.target.value)}
-                        placeholder="Title (optional)"
-                        className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900 placeholder-gray-400 text-sm"
-                      />
                       <textarea
                         value={noteContent}
                         onChange={e => setNoteContent(e.target.value)}
@@ -1362,7 +1356,7 @@ function CalendarContent() {
                         const isPM = hour24 >= 12;
                         const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
                         const minute = Math.round(parseInt(mStr || '0', 10) / 5) * 5 % 60;
-                        const hours = [12,1,2,3,4,5,6,7,8,9,10,11];
+                        const hours = [1,2,3,4,5,6,7,8,9,10,11,12];
                         const minutes = [0,5,10,15,20,25,30,35,40,45,50,55];
                         const formatted = noteTime ? `${hour12}:${String(minute).padStart(2,'0')} ${isPM ? 'PM' : 'AM'}` : 'No time';
                         const setHour = (h12: number) => {
@@ -1579,12 +1573,20 @@ function CalendarContent() {
                                 Move
                               </button>
                             )}
-                            <button
-                              onClick={() => item.noteId && deleteNote(item.noteId)}
-                              className="text-red-400 hover:text-red-600 text-xs font-medium"
-                            >
-                              Delete
-                            </button>
+                            {pendingDeleteNoteId === item.noteId ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-gray-500">Delete?</span>
+                                <button onClick={() => { deleteNote(item.noteId!); setPendingDeleteNoteId(null); }} className="text-red-500 hover:text-red-700 text-xs font-semibold">Yes</button>
+                                <button onClick={() => setPendingDeleteNoteId(null)} className="text-gray-400 hover:text-gray-600 text-xs font-medium">No</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => item.noteId && setPendingDeleteNoteId(item.noteId)}
+                                className="text-red-400 hover:text-red-600 text-xs font-medium"
+                              >
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

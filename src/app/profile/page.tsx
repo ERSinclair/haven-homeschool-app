@@ -40,11 +40,14 @@ type Profile = {
   is_verified: boolean;
   admin_level?: 'gold' | 'silver' | 'bronze' | null;
   user_type?: 'family' | 'teacher' | 'business' | string;
-  // Homeschool approach
+  // Home education approach
   homeschool_approaches?: string[];
   // Teacher-specific
   subjects?: string[];
   age_groups_taught?: string[];
+  // Skills Exchange
+  skills_offered?: string[];
+  skills_wanted?: string[];
   // Business-specific
   services?: string;
   contact_info?: string;
@@ -64,8 +67,8 @@ function ProfilePageInner() {
     setConfirmState({ message, onConfirm, ...opts });
 
   const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<Profile | null>(() => getCached<Profile>('profile:own') ?? null);
-  const [loading, setLoading] = useState(() => !getCached<Profile>('profile:own'));
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -77,13 +80,18 @@ function ProfilePageInner() {
     status: [] as string[],
   });
   const [customDescriptions, setCustomDescriptions] = useState<string[]>([]);
-  // Homeschool approach (families)
+  // Home education approach (families)
   const [homeschoolApproaches, setHomeschoolApproaches] = useState<string[]>([]);
   const [otherApproachText, setOtherApproachText] = useState('');
   // Teacher-specific fields
   const [subjects, setSubjects] = useState<string[]>([]);
   const [ageGroupsTaught, setAgeGroupsTaught] = useState<string[]>([]);
   const [subjectInput, setSubjectInput] = useState('');
+  // Skills Exchange
+  const [skillsOffered, setSkillsOffered] = useState<string[]>([]);
+  const [skillsWanted, setSkillsWanted] = useState<string[]>([]);
+  const [skillOfferedInput, setSkillOfferedInput] = useState('');
+  const [skillWantedInput, setSkillWantedInput] = useState('');
   // Business-specific fields
   const [services, setServices] = useState('');
   const [contactInfo, setContactInfo] = useState('');
@@ -99,6 +107,10 @@ function ProfilePageInner() {
   const [children, setChildren] = useState<{ id: number; age: string }[]>([{ id: 1, age: '' }]);
   const [selectedLocationCoords, setSelectedLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
+  // Avatar history
+  const [avatarHistory, setAvatarHistory] = useState<{ id: string; avatar_url: string; created_at: string }[]>([]);
+  const [avatarHistoryIndex, setAvatarHistoryIndex] = useState(0);
+  const [showAvatarHistory, setShowAvatarHistory] = useState(false);
 
   // ── Haven Family (linked accounts) ──────────────────────────────────────────
   type FamilyLink = {
@@ -141,6 +153,7 @@ function ProfilePageInner() {
   const [subProfileAvatarPreview, setSubProfileAvatarPreview] = useState<string | null>(null);
   const [subProfileCropSrc, setSubProfileCropSrc] = useState<string | null>(null);
   const [savingSubProfile, setSavingSubProfile] = useState(false);
+  const [confirmSubSave, setConfirmSubSave] = useState(false);
   const [showSubDobPicker, setShowSubDobPicker] = useState(false);
   const [subDobMonth, setSubDobMonth] = useState(() => {
     const d = new Date(); d.setFullYear(d.getFullYear() - 8);
@@ -153,12 +166,25 @@ function ProfilePageInner() {
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [isViewingOtherUser, setIsViewingOtherUser] = useState(false);
+  const [myUserType, setMyUserType] = useState<string>('family');
   const [reportBlockMode, setReportBlockMode] = useState<'report' | 'block' | null>(null);
   const [notifCount, setNotifCount] = useState(0);
   const [pendingConnections, setPendingConnections] = useState(0);
   const router = useRouter();
 
   // Load user and profile
+  // Apply cache immediately after mount (client-only, avoids SSR hydration mismatch)
+  useEffect(() => {
+    const cached = getCached<Profile>('profile:own');
+    if (cached) {
+      setProfile(cached);
+      setLoading(false);
+      setMyUserType(cached.user_type || 'family');
+      setSkillsOffered(cached.skills_offered || []);
+      setSkillsWanted(cached.skills_wanted || []);
+    }
+  }, []);
+
   useEffect(() => {
     const loadProfile = async () => {
       try {
@@ -215,6 +241,7 @@ function ProfilePageInner() {
           
           const cleanedProfile = { ...profileData, avatar_url: avatarUrl, status: cleanedStatus };
           setProfile(cleanedProfile);
+          if (!viewingOtherUser) setMyUserType(cleanedProfile.user_type || 'family');
           setCached('profile:own', cleanedProfile);
           // Handle edit data status properly
           const predefinedStatuses = ['considering', 'new', 'social', 'experienced', 'new_to_area', 'connecting', 'group-lessons', 'tutoring', 'sport', 'music', 'supplies'];
@@ -235,6 +262,8 @@ function ProfilePageInner() {
           setHomeschoolApproaches(rawApproaches.map((a: string) => a.startsWith('Other: ') ? 'Other' : a));
           setSubjects(profileData.subjects || []);
           setAgeGroupsTaught(profileData.age_groups_taught || []);
+          setSkillsOffered(profileData.skills_offered || []);
+          setSkillsWanted(profileData.skills_wanted || []);
           setServices(profileData.services || '');
           setContactInfo(profileData.contact_info || '');
           setDob(profileData.dob || '');
@@ -266,6 +295,17 @@ function ProfilePageInner() {
           );
           if (spRes.ok) setSubProfiles(await spRes.json());
         } catch { /* sub_profiles table may not exist yet */ }
+
+        // Load avatar history (own profile only)
+        if (!viewingOtherUser) {
+          try {
+            const ahRes = await fetch(
+              `${supabaseUrl}/rest/v1/avatar_history?user_id=eq.${session.user.id}&order=created_at.desc&limit=20`,
+              { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+            );
+            if (ahRes.ok) setAvatarHistory(await ahRes.json());
+          } catch { /* table may not exist yet */ }
+        }
 
         // Load family links (own profile) or link status (viewing other)
         try {
@@ -594,6 +634,8 @@ function ProfilePageInner() {
               : null,
             subjects: subjects.length > 0 ? subjects : null,
             age_groups_taught: ageGroupsTaught.length > 0 ? ageGroupsTaught : null,
+            skills_offered: skillsOffered.length > 0 ? skillsOffered : null,
+            skills_wanted: skillsWanted.length > 0 ? skillsWanted : null,
             services: services.trim() || null,
             contact_info: contactInfo.trim() || null,
             dob: dob.trim() || null,
@@ -646,6 +688,8 @@ function ProfilePageInner() {
           // Update coords if geocoding succeeded (clears the discoverability warning)
           ...(coords ? { location_lat: coords.lat, location_lng: coords.lng } : {}),
           ...(newBannerUrl ? { banner_url: newBannerUrl } : {}),
+          skills_offered: skillsOffered.length > 0 ? skillsOffered : undefined,
+          skills_wanted: skillsWanted.length > 0 ? skillsWanted : undefined,
         } : null);
         setIsEditing(false);
       }
@@ -710,11 +754,12 @@ function ProfilePageInner() {
 
   const getProfileCompleteness = () => {
     if (!profile) return { score: 0, missing: [] as string[] };
+    const isOrg = profile.user_type === 'business' || profile.user_type === 'playgroup';
     const checks = [
       { label: 'Profile photo',  done: !!profile.avatar_url },
       { label: 'Bio',            done: !!(profile.bio?.trim()) },
       { label: 'Suburb',         done: !!(profile.location_name?.trim()) },
-      { label: 'Kids ages',      done: !!(profile.kids_ages?.length > 0) },
+      ...(!isOrg ? [{ label: 'Kids ages', done: !!(profile.kids_ages?.length > 0) }] : []),
       { label: 'Status',         done: profileStatus.length > 0 },
     ];
     const done = checks.filter(c => c.done).length;
@@ -792,24 +837,38 @@ function ProfilePageInner() {
   };
 
   const getStatusInfo = (status: string): { label: string; color: string } | null => {
-    const statusMap: Record<string, string> = {
+    const statusMap: Record<string, { label: string; color: string }> = {
       // Family
-      'considering': 'Community',
-      'new': 'Home Education',
-      'social': 'Social Activities',
-      'experienced': 'Extracurricular',
-      'new_to_area': 'New to Area',
-      'other': 'Other',
-      // Business services
-      'group-lessons': 'Group Lessons',
-      'tutoring': 'Tutoring',
-      'sport': 'Sport',
-      'music': 'Music',
-      'supplies': 'Supplies',
+      'considering':  { label: 'Community',        color: 'bg-emerald-100 text-emerald-700' },
+      'new':          { label: 'Home Education',    color: 'bg-emerald-100 text-emerald-700' },
+      'social':       { label: 'Social Activities', color: 'bg-emerald-100 text-emerald-700' },
+      'experienced':  { label: 'Extracurricular',  color: 'bg-emerald-100 text-emerald-700' },
+      'new_to_area':  { label: 'New to Area',       color: 'bg-emerald-100 text-emerald-700' },
+      // Teacher
+      'tutoring':     { label: 'Tutoring',          color: 'bg-emerald-100 text-emerald-700' },
+      'group-lessons':{ label: 'Group Lessons',     color: 'bg-emerald-100 text-emerald-700' },
+      'online':       { label: 'Online',            color: 'bg-emerald-100 text-emerald-700' },
+      'in-home':      { label: 'In-Home',           color: 'bg-emerald-100 text-emerald-700' },
+      'curriculum':   { label: 'Curriculum Help',   color: 'bg-emerald-100 text-emerald-700' },
+      // Business
+      'supplies':     { label: 'Supplies & Materials',  color: 'bg-emerald-100 text-emerald-700' },
+      'classes':      { label: 'Classes & Programs',    color: 'bg-emerald-100 text-emerald-700' },
+      'venue':        { label: 'Venue / Space Hire',    color: 'bg-emerald-100 text-emerald-700' },
+      'therapy':      { label: 'Therapy & Support',     color: 'bg-emerald-100 text-emerald-700' },
+      // Playgroup
+      'open':         { label: 'Open to Join',     color: 'bg-purple-100 text-purple-700' },
+      'waitlist':     { label: 'Waitlist',         color: 'bg-purple-100 text-purple-700' },
+      'full':         { label: 'Currently Full',   color: 'bg-purple-100 text-purple-700' },
+      'educational':  { label: 'Educational Focus',color: 'bg-purple-100 text-purple-700' },
+      // Shared fallback
+      'other':        { label: 'Other',            color: 'bg-gray-100 text-gray-600' },
+      // Legacy values (keep rendering so old data doesn't silently disappear)
+      'sport':        { label: 'Sport',            color: 'bg-emerald-100 text-emerald-700' },
+      'music':        { label: 'Music',            color: 'bg-emerald-100 text-emerald-700' },
     };
-    const label = statusMap[status];
-    if (!label) return null; // unknown/old value — silently skip
-    return { label, color: 'bg-emerald-100 text-emerald-700' };
+    const info = statusMap[status];
+    if (!info) return null;
+    return info;
   };
 
 ""
@@ -904,15 +963,12 @@ function ProfilePageInner() {
             <Link href="/calendar" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Calendar
             </Link>
-            <Link href="/education" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
-              Education
+            <Link href="/exchange" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
+              Exchange
             </Link>
             <Link href="/board" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Board
             </Link>
-            <button onClick={() => document.getElementById('haven-family-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
-              Family
-            </button>
           </div>
         )}
 
@@ -1046,10 +1102,25 @@ function ProfilePageInner() {
                 viewable={!!profile?.avatar_url}
                 showFamilySilhouette={true}
                 onAvatarChange={(newUrl) => {
-                  
+                  // Archive old avatar into history state immediately
+                  if (profile?.avatar_url && newUrl && profile.avatar_url !== newUrl) {
+                    setAvatarHistory(prev => [
+                      { id: Date.now().toString(), avatar_url: profile.avatar_url!, created_at: new Date().toISOString() },
+                      ...prev,
+                    ]);
+                  }
                   setProfile(prev => prev ? { ...prev, avatar_url: newUrl || undefined } : prev);
                 }}
               />
+              {/* Avatar history button — own profile, at least one previous photo */}
+              {!isViewingOtherUser && avatarHistory.length > 0 && (
+                <button
+                  onClick={() => { setAvatarHistoryIndex(0); setShowAvatarHistory(true); }}
+                  className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-xs text-gray-400 whitespace-nowrap hover:text-emerald-600 transition-colors"
+                >
+                  {avatarHistory.length} previous {avatarHistory.length === 1 ? 'photo' : 'photos'}
+                </button>
+              )}
             </div>
             
             {isEditing ? (
@@ -1113,10 +1184,25 @@ function ProfilePageInner() {
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                   {(profile?.user_type === 'business' ? [
-                    { value: 'group-lessons', label: 'Group Lessons', icon: '' },
+                    { value: 'curriculum', label: 'Curriculum & Resources', icon: '' },
+                    { value: 'supplies', label: 'Supplies & Materials', icon: '' },
+                    { value: 'classes', label: 'Classes & Programs', icon: '' },
+                    { value: 'venue', label: 'Venue / Space Hire', icon: '' },
+                    { value: 'therapy', label: 'Therapy & Support', icon: '' },
+                    { value: 'other', label: 'Other', icon: '' },
+                  ] : profile?.user_type === 'teacher' ? [
                     { value: 'tutoring', label: 'Tutoring', icon: '' },
-                    { value: 'sport', label: 'Sport', icon: '' },
-                    { value: 'music', label: 'Music', icon: '' },
+                    { value: 'group-lessons', label: 'Group Lessons', icon: '' },
+                    { value: 'online', label: 'Online', icon: '' },
+                    { value: 'in-home', label: 'In-Home', icon: '' },
+                    { value: 'curriculum', label: 'Curriculum Help', icon: '' },
+                    { value: 'other', label: 'Other', icon: '' },
+                  ] : profile?.user_type === 'playgroup' ? [
+                    { value: 'open', label: 'Open to Join', icon: '' },
+                    { value: 'waitlist', label: 'Waitlist', icon: '' },
+                    { value: 'full', label: 'Currently Full', icon: '' },
+                    { value: 'social', label: 'Social Focus', icon: '' },
+                    { value: 'educational', label: 'Educational Focus', icon: '' },
                     { value: 'other', label: 'Other', icon: '' },
                   ] : [
                     { value: 'considering', label: 'Community', icon: '' },
@@ -1230,8 +1316,8 @@ function ProfilePageInner() {
             )}
           </div>
 
-          {/* Kids Ages */}
-          <div className="mb-6 text-center">
+          {/* Kids Ages — family and teacher only */}
+          <div className="mb-6 text-center" style={{ display: profile.user_type === 'business' || profile.user_type === 'playgroup' ? 'none' : undefined }}>
             {isEditing ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">Kids Ages</label>
@@ -1348,23 +1434,24 @@ function ProfilePageInner() {
 
           
 
-          {/* Homeschool approach (families) — only show in view mode if they have set one */}
-          {(!profile.user_type || profile.user_type === 'family') && (isEditing || homeschoolApproaches.length > 0) && (
+          {/* Home education approach — families only */}
+          {profile.user_type !== 'business' && profile.user_type !== 'playgroup' && profile.user_type !== 'teacher' && (isEditing || homeschoolApproaches.length > 0) && (
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Education approach</h3>
               {isEditing ? (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2 justify-center">
+                  <div className="grid grid-cols-2 gap-2">
                     {['Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Other'].map(approach => (
                       <button
                         key={approach}
+                        type="button"
                         onClick={() => setHomeschoolApproaches(prev =>
                           prev.includes(approach) ? prev.filter(a => a !== approach) : [...prev, approach]
                         )}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-colors ${
+                        className={`p-2 rounded-lg border-2 text-sm text-center transition-colors ${
                           homeschoolApproaches.includes(approach)
-                            ? 'bg-emerald-100 border-emerald-400 text-emerald-700'
-                            : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300'
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                            : 'border-gray-200 hover:border-gray-300'
                         }`}
                       >
                         {approach}
@@ -1480,7 +1567,7 @@ function ProfilePageInner() {
                   <textarea
                     value={services}
                     onChange={e => setServices(e.target.value)}
-                    placeholder="Describe what you offer to homeschool families…"
+                    placeholder="Describe what you offer to families…"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
                     rows={3}
                   />
@@ -1488,17 +1575,134 @@ function ProfilePageInner() {
                   <p className="text-sm text-gray-600 text-center">{services || 'No services listed yet.'}</p>
                 )}
               </div>
+              <ContactInfoSection contactInfo={contactInfo} setContactInfo={setContactInfo} isEditing={isEditing} />
+            </div>
+          )}
+
+          {/* Playgroup-specific fields */}
+          {profile.user_type === 'playgroup' && (
+            <div className="mb-6 space-y-4">
+              {/* Ages served */}
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Contact</h3>
-                {isEditing ? (
-                  <input
-                    value={contactInfo}
-                    onChange={e => setContactInfo(e.target.value)}
-                    placeholder="Website, phone, email…"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
-                  />
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Ages served</h3>
+                {profile.kids_ages && profile.kids_ages.length > 0 ? (
+                  <div className="flex gap-1.5 flex-wrap justify-center">
+                    {[...profile.kids_ages].sort((a, b) => a - b).map((age, i) => (
+                      <span key={i} className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-medium">{age === 0 ? 'Under 1' : `${age}`}</span>
+                    ))}
+                  </div>
                 ) : (
-                  <p className="text-sm text-gray-600 text-center">{contactInfo || 'No contact info listed yet.'}</p>
+                  <p className="text-sm text-gray-400 text-center">Not specified</p>
+                )}
+              </div>
+              <ContactInfoSection contactInfo={contactInfo} setContactInfo={setContactInfo} isEditing={isEditing} />
+            </div>
+          )}
+
+          {/* Skills Exchange — shown for all user types (own + other user view) */}
+          {(isEditing || skillsOffered.length > 0 || skillsWanted.length > 0 || (profile?.skills_offered?.length ?? 0) > 0 || (profile?.skills_wanted?.length ?? 0) > 0) && (
+            <div id="skills" className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex-1 h-px bg-gray-100" />
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Skills Exchange</span>
+                <div className="flex-1 h-px bg-gray-100" />
+              </div>
+
+              {/* Teaching */}
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">I can teach</h3>
+                {isEditing ? (
+                  <div>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {skillsOffered.map((s, i) => (
+                        <span key={i} className="flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
+                          {s}
+                          <button onClick={() => setSkillsOffered(prev => prev.filter((_, idx) => idx !== i))} className="text-emerald-500 hover:text-emerald-700 ml-0.5">×</button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={skillOfferedInput}
+                        onChange={e => setSkillOfferedInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && skillOfferedInput.trim()) {
+                            const val = skillOfferedInput.trim();
+                            if (!skillsOffered.includes(val)) setSkillsOffered(prev => [...prev, val]);
+                            setSkillOfferedInput('');
+                          }
+                        }}
+                        placeholder="e.g. piano, woodworking… press Enter"
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      />
+                      <button
+                        onClick={() => {
+                          const val = skillOfferedInput.trim();
+                          if (val && !skillsOffered.includes(val)) setSkillsOffered(prev => [...prev, val]);
+                          setSkillOfferedInput('');
+                        }}
+                        className="px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-medium"
+                      >Add</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {skillsOffered.length > 0
+                      ? skillsOffered.map((s, i) => (
+                          <span key={i} className="px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">{s}</span>
+                        ))
+                      : <p className="text-sm text-gray-400">Nothing listed yet.</p>
+                    }
+                  </div>
+                )}
+              </div>
+
+              {/* Wanting to learn */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">I want to learn</h3>
+                {isEditing ? (
+                  <div>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {skillsWanted.map((s, i) => (
+                        <span key={i} className="flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                          {s}
+                          <button onClick={() => setSkillsWanted(prev => prev.filter((_, idx) => idx !== i))} className="text-amber-500 hover:text-amber-700 ml-0.5">×</button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={skillWantedInput}
+                        onChange={e => setSkillWantedInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && skillWantedInput.trim()) {
+                            const val = skillWantedInput.trim();
+                            if (!skillsWanted.includes(val)) setSkillsWanted(prev => [...prev, val]);
+                            setSkillWantedInput('');
+                          }
+                        }}
+                        placeholder="e.g. Spanish, pottery… press Enter"
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      />
+                      <button
+                        onClick={() => {
+                          const val = skillWantedInput.trim();
+                          if (val && !skillsWanted.includes(val)) setSkillsWanted(prev => [...prev, val]);
+                          setSkillWantedInput('');
+                        }}
+                        className="px-3 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm font-medium"
+                      >Add</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {skillsWanted.length > 0
+                      ? skillsWanted.map((s, i) => (
+                          <span key={i} className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">{s}</span>
+                        ))
+                      : <p className="text-sm text-gray-400">Nothing listed yet.</p>
+                    }
+                  </div>
                 )}
               </div>
             </div>
@@ -1562,8 +1766,8 @@ function ProfilePageInner() {
             </div>
           )}
 
-          {/* ── Sub-profiles (Family Members) ── */}
-          {(!isViewingOtherUser || subProfiles.filter(s => s.is_visible).length > 0) && (
+          {/* ── Sub-profiles (Family Members) ── family and teacher only */}
+          {(profile.user_type !== 'business' && profile.user_type !== 'playgroup') && (!isViewingOtherUser || subProfiles.filter(s => s.is_visible).length > 0) && (
             <div className="border-t border-gray-100 pt-5 mt-2">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">Family Members</h3>
@@ -1584,7 +1788,7 @@ function ProfilePageInner() {
                     return (
                       <button
                         key={sp.id}
-                        onClick={() => !isViewingOtherUser ? setEditingSubProfile({ ...sp }) : null}
+                        onClick={() => { if (!isViewingOtherUser) { setEditingSubProfile({ ...sp }); if (sp.dob) setSubDobMonth(sp.dob.slice(0, 7)); } }}
                         className={`flex flex-col items-center gap-1 ${!isViewingOtherUser ? 'cursor-pointer' : 'cursor-default'}`}
                       >
                         <div className="relative">
@@ -1614,8 +1818,8 @@ function ProfilePageInner() {
           )}
         </div>
 
-        {/* ── Haven Family (linked accounts) ── */}
-        {!isViewingOtherUser && (
+        {/* ── Haven Family (linked accounts) ── family and teacher only */}
+        {!isViewingOtherUser && profile.user_type !== 'business' && profile.user_type !== 'playgroup' && (
           <div id="haven-family-section" className="bg-white border border-gray-100 rounded-2xl shadow-sm mb-4 overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-50">
               <h3 className="text-sm font-bold text-gray-800">Haven Family</h3>
@@ -1764,8 +1968,25 @@ function ProfilePageInner() {
           </div>
         )}
 
-        {/* Family link button — viewing another user */}
+        {/* Message button — viewing another user */}
         {isViewingOtherUser && profile && user && (
+          <div className="mb-3 px-1">
+            <Link
+              href={`/messages?user=${profile.id}`}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              Message
+            </Link>
+          </div>
+        )}
+
+        {/* Family link button — viewing another user (not for/to business/playgroup) */}
+        {isViewingOtherUser && profile && user
+          && profile.user_type !== 'business' && profile.user_type !== 'playgroup'
+          && myUserType !== 'business' && myUserType !== 'playgroup' && (
           <div className="mb-4 px-1">
             {viewedFamilyStatus?.status === 'accepted' ? (
               <div className="flex items-center justify-center gap-2 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-sm font-semibold text-emerald-700">
@@ -1816,7 +2037,7 @@ function ProfilePageInner() {
               <h3 className="font-bold text-base text-gray-900">Support Haven</h3>
             </div>
             <p className="text-gray-500 text-sm mb-4">
-              Haven is free for every family. If it's valuable to you, consider supporting it — you'll help keep it alive & growing.
+              If it's valuable to you, consider supporting it — you'll help keep it alive & growing.
             </p>
             <button
               onClick={() => router.push('/support')}
@@ -2006,7 +2227,7 @@ function ProfilePageInner() {
       {editingSubProfile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Frosted backdrop */}
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-md" onClick={() => { setEditingSubProfile(null); setSubProfileAvatarFile(null); setSubProfileAvatarPreview(null); setSubProfileCropSrc(null); }} />
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-md" onClick={() => { setEditingSubProfile(null); setSubProfileAvatarFile(null); setSubProfileAvatarPreview(null); setSubProfileCropSrc(null); setConfirmSubSave(false); }} />
 
           {/* Centred card */}
           <div className="relative w-full max-w-md rounded-3xl max-h-[92vh] overflow-y-auto shadow-2xl border border-white/40"
@@ -2015,7 +2236,7 @@ function ProfilePageInner() {
             <div className="px-5 pb-8 pt-5">
               <div className="flex items-center justify-end mb-2">
                 <button
-                  onClick={() => { setEditingSubProfile(null); setSubProfileAvatarFile(null); setSubProfileAvatarPreview(null); setSubProfileCropSrc(null); }}
+                  onClick={() => { setEditingSubProfile(null); setSubProfileAvatarFile(null); setSubProfileAvatarPreview(null); setSubProfileCropSrc(null); setConfirmSubSave(false); }}
                   className="w-8 h-8 flex items-center justify-center rounded-full bg-black/8 text-gray-500 hover:bg-black/12 transition-colors text-lg leading-none"
                 >&times;</button>
               </div>
@@ -2136,13 +2357,27 @@ function ProfilePageInner() {
                     Remove
                   </button>
                 )}
-                <button
-                  onClick={saveSubProfile}
-                  disabled={savingSubProfile || !editingSubProfile.name.trim()}
-                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
-                >
-                  {savingSubProfile ? 'Saving...' : 'Save'}
-                </button>
+                {!confirmSubSave ? (
+                  <button
+                    onClick={() => setConfirmSubSave(true)}
+                    disabled={!editingSubProfile.name.trim()}
+                    className="flex-1 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
+                  >
+                    Save
+                  </button>
+                ) : (
+                  <div className="flex-1 flex flex-col gap-2">
+                    <p className="text-sm text-gray-600 text-center">Save changes to this profile?</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => setConfirmSubSave(false)} className="flex-1 py-2 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600">Cancel</button>
+                      <button
+                        onClick={() => { setConfirmSubSave(false); saveSubProfile(); }}
+                        disabled={savingSubProfile}
+                        className="flex-1 py-2 bg-emerald-600 text-white rounded-2xl text-sm font-semibold disabled:opacity-50"
+                      >{savingSubProfile ? 'Saving...' : 'Confirm'}</button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2176,6 +2411,75 @@ function ProfilePageInner() {
           onCancel={() => setConfirmState(null)}
         />
       )}
+
+      {/* Avatar history lightbox */}
+      {showAvatarHistory && avatarHistory.length > 0 && (() => {
+        const h = avatarHistory[avatarHistoryIndex];
+        const restoreAvatar = () => {
+          const session = getStoredSession();
+          if (!session) return;
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+          const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+          if (profile?.avatar_url) {
+            fetch(`${supabaseUrl}/rest/v1/avatar_history`, {
+              method: 'POST',
+              headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+              body: JSON.stringify({ user_id: session.user.id, avatar_url: profile.avatar_url }),
+            }).catch(() => {});
+          }
+          fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}`, {
+            method: 'PATCH',
+            headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ avatar_url: h.avatar_url }),
+          }).then(r => {
+            if (r.ok) {
+              setProfile(prev => prev ? { ...prev, avatar_url: h.avatar_url } : prev);
+              setAvatarHistory(prev => prev.filter(x => x.id !== h.id));
+              setShowAvatarHistory(false);
+            }
+          }).catch(() => {});
+        };
+        return (
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90">
+            {/* Close */}
+            <button onClick={() => setShowAvatarHistory(false)} className="absolute top-5 right-5 text-white/70 hover:text-white text-3xl leading-none">&times;</button>
+
+            {/* Counter */}
+            <p className="absolute top-5 left-1/2 -translate-x-1/2 text-white/60 text-sm">{avatarHistoryIndex + 1} / {avatarHistory.length}</p>
+
+            {/* Photo */}
+            <div className="relative flex items-center justify-center w-full px-16">
+              <img src={h.avatar_url} alt="Previous photo" className="w-64 h-64 rounded-full object-cover ring-4 ring-white/20 shadow-2xl" />
+            </div>
+
+            {/* Prev / Next */}
+            {avatarHistoryIndex > 0 && (
+              <button
+                onClick={() => setAvatarHistoryIndex(i => i - 1)}
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              </button>
+            )}
+            {avatarHistoryIndex < avatarHistory.length - 1 && (
+              <button
+                onClick={() => setAvatarHistoryIndex(i => i + 1)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              </button>
+            )}
+
+            {/* Restore button */}
+            <button
+              onClick={restoreAvatar}
+              className="absolute bottom-10 left-1/2 -translate-x-1/2 px-6 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl shadow-lg"
+            >
+              Set as current photo
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Family link request modal */}
       {familyLinkTarget && (
@@ -2213,6 +2517,76 @@ function ProfilePageInner() {
       )}
     </div>
     </ProtectedRoute>
+  );
+}
+
+// Structured contact info display/edit — parses "key: value | key: value" format
+function ContactInfoSection({ contactInfo, setContactInfo, isEditing }: { contactInfo: string; setContactInfo: (v: string) => void; isEditing: boolean }) {
+  const CONTACT_FIELDS = [
+    { key: 'phone', label: 'Phone', type: 'tel', placeholder: '04xx xxx xxx' },
+    { key: 'email', label: 'Email', type: 'email', placeholder: 'hello@example.com' },
+    { key: 'website', label: 'Website', type: 'url', placeholder: 'https://…' },
+    { key: 'address', label: 'Address', type: 'text', placeholder: 'Street address or suburb' },
+    { key: 'instagram', label: 'Instagram', type: 'text', placeholder: '@handle' },
+    { key: 'facebook', label: 'Facebook', type: 'text', placeholder: 'facebook.com/yourpage' },
+  ];
+
+  // Parse pipe-delimited string into map
+  const parseContacts = (raw: string) => {
+    const map: Record<string, string> = {};
+    raw.split('|').forEach(part => {
+      const [k, ...rest] = part.split(':');
+      if (k && rest.length) map[k.trim().toLowerCase()] = rest.join(':').trim();
+    });
+    return map;
+  };
+
+  // Serialize map back to pipe-delimited string
+  const serializeContacts = (map: Record<string, string>) =>
+    CONTACT_FIELDS.filter(f => map[f.key]?.trim()).map(f => `${f.key}: ${map[f.key].trim()}`).join(' | ');
+
+  const parsed = parseContacts(contactInfo);
+
+  if (!isEditing) {
+    const entries = CONTACT_FIELDS.filter(f => parsed[f.key]);
+    if (entries.length === 0) return <p className="text-sm text-gray-400 text-center">No contact info listed yet.</p>;
+    return (
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Contact</h3>
+        <div className="space-y-1">
+          {entries.map(f => (
+            <div key={f.key} className="flex items-center gap-2 justify-center">
+              <span className="text-xs font-medium text-gray-400 w-16 text-right">{f.label}</span>
+              <span className="text-sm text-gray-700">{parsed[f.key]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-gray-700 mb-2 text-center">Contact <span className="text-gray-400 font-normal text-xs">(all optional)</span></h3>
+      <div className="space-y-2">
+        {CONTACT_FIELDS.map(f => (
+          <div key={f.key} className="flex items-center gap-2">
+            <span className="w-20 text-xs font-medium text-gray-500 flex-shrink-0">{f.label}</span>
+            <input
+              type={f.type}
+              value={parsed[f.key] || ''}
+              onChange={e => {
+                const updated = { ...parsed, [f.key]: e.target.value };
+                setContactInfo(serializeContacts(updated));
+              }}
+              placeholder={f.placeholder}
+              autoCapitalize={['address'].includes(f.key) ? 'words' : 'none'}
+              className="flex-1 p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

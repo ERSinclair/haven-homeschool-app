@@ -17,7 +17,7 @@ export default function PrivacyPage() {
 
           <section>
             <h2 className="text-base font-bold text-gray-900 mb-2">Who we are</h2>
-            <p className="text-sm leading-relaxed">Haven is a community app for homeschooling families. We help families find each other, organise events, and connect locally. Our website is <strong>familyhaven.app</strong>.</p>
+            <p className="text-sm leading-relaxed">Haven is a community app for families. We help families find each other, organise events, and connect locally. Our website is <strong>familyhaven.app</strong>.</p>
           </section>
 
           <section>
@@ -25,7 +25,7 @@ export default function PrivacyPage() {
             <ul className="text-sm leading-relaxed space-y-1 list-disc pl-4">
               <li><strong>Account info:</strong> your name, email address, and profile details you choose to share</li>
               <li><strong>Location:</strong> your suburb or approximate area (never your exact address)</li>
-              <li><strong>Family info:</strong> children&apos;s ages (no names) and your homeschool style</li>
+              <li><strong>Family info:</strong> children&apos;s ages (no names) and your education style</li>
               <li><strong>Content:</strong> posts, messages, and event details you create in the app</li>
               <li><strong>Usage data:</strong> standard app logs and error reports to keep Haven running well</li>
             </ul>
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
 
           <section>
             <h2 className="text-base font-bold text-gray-900 mb-2">Who can see your profile</h2>
-            <p className="text-sm leading-relaxed">Other Haven members can see your family name, profile photo, suburb (not exact location), children&apos;s ages, and homeschool style. Your exact coordinates are never shown — only used to calculate distance. You can control your visibility in Settings.</p>
+            <p className="text-sm leading-relaxed">Other Haven members can see your family name, profile photo, suburb (not exact location), children&apos;s ages, and education style. Your exact coordinates are never shown — only used to calculate distance. You can control your visibility in Settings.</p>
           </section>
 
           <section>
