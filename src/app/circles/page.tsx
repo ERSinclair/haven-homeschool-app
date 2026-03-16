@@ -106,6 +106,8 @@ export default function CirclesPage() {
 
   // Main tabs
   const [mainTab, setMainTab] = useState<'my' | 'discover'>('my');
+  const [showMore, setShowMore] = useState(false);
+  const [myCircleSearch, setMyCircleSearch] = useState('');
 
   // Circle invitations inline
   const [showCircleInvitations, setShowCircleInvitations] = useState(false);
@@ -120,6 +122,7 @@ export default function CirclesPage() {
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverLoaded, setDiscoverLoaded] = useState(false);
   const [discoverSearch, setDiscoverSearch] = useState('');
+  const [showCircleFilters, setShowCircleFilters] = useState(false);
   const [discoverBrowseLocation, setDiscoverBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
   const [discoverUserLocation, setDiscoverUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [discoverUserId, setDiscoverUserId] = useState<string | null>(null);
@@ -189,8 +192,11 @@ export default function CirclesPage() {
     }
   };
 
-  const privateCircles = circles.filter(c => !c.is_public);
-  const publicCircles = circles.filter(c => c.is_public);
+  const filteredMyCircles = myCircleSearch.trim()
+    ? circles.filter(c => c.name?.toLowerCase().includes(myCircleSearch.toLowerCase()) || c.description?.toLowerCase().includes(myCircleSearch.toLowerCase()))
+    : circles;
+  const privateCircles = filteredMyCircles.filter(c => !c.is_public);
+  const publicCircles = filteredMyCircles.filter(c => c.is_public);
   const [shownPrivate, setShownPrivate] = useState(4);
   const [shownPublic, setShownPublic] = useState(4);
   const visiblePrivate = privateCircles.slice(0, shownPrivate);
@@ -517,7 +523,7 @@ export default function CirclesPage() {
     <ProtectedRoute>
       <div className="min-h-screen bg-transparent">
         <div className="max-w-md mx-auto px-4 pb-8 pt-2">
-          <AppHeader />
+          <AppHeader title="Circles" />
 
           {/* Tab bar */}
             <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
@@ -544,21 +550,62 @@ export default function CirclesPage() {
           {/* My Circles tab */}
           {mainTab === 'my' && (
             <>
-              {/* My Circles / Invitations sub-nav */}
-              <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+              {/* Search bar + More button */}
+              <div className="flex items-center gap-2 mb-3">
+                <div className="relative flex-1">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={myCircleSearch}
+                    onChange={e => setMyCircleSearch(e.target.value)}
+                    placeholder="Search my circles..."
+                    className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
                 <button
-                  onClick={() => setShowCircleInvitations(false)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${!showCircleInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  onClick={() => { setShowMore(v => !v); setShowCircleInvitations(false); }}
+                  className={`relative flex items-center gap-1 px-3 py-2 border rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${showMore ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-gray-200 text-gray-600'}`}
                 >
-                  My Circles
-                </button>
-                <button
-                  onClick={() => setShowCircleInvitations(true)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${showCircleInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  Invitations
+                  + More
+                  {circleInvitations.filter(i => i.status === 'pending').length > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                      {circleInvitations.filter(i => i.status === 'pending').length > 9 ? '9+' : circleInvitations.filter(i => i.status === 'pending').length}
+                    </span>
+                  )}
                 </button>
               </div>
+
+              {/* More panel — Invitations */}
+              {showMore && (
+                <div className="flex gap-1.5 mb-3">
+                  <button
+                    onClick={() => { setShowCircleInvitations(true); setShowMore(false); }}
+                    className="relative flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-200 text-gray-600 hover:text-gray-800 transition-all"
+                  >
+                    Invitations
+                    {circleInvitations.filter(i => i.status === 'pending').length > 0 && (
+                      <span className="min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                        {circleInvitations.filter(i => i.status === 'pending').length > 9 ? '9+' : circleInvitations.filter(i => i.status === 'pending').length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Back button when viewing invitations */}
+              {showCircleInvitations && (
+                <button
+                  onClick={() => setShowCircleInvitations(false)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 mb-3 hover:text-emerald-700"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back to My Circles
+                </button>
+              )}
 
               {/* Invitations inline view */}
               {showCircleInvitations && (
@@ -681,16 +728,25 @@ export default function CirclesPage() {
           {/* Discover tab */}
           {mainTab === 'discover' && (
             <>
-              <BrowseLocation current={discoverBrowseLocation} onChange={loc => setDiscoverBrowseLocation(loc)} alwaysOpen />
-              <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
                 <input
                   type="text"
                   value={discoverSearch}
                   onChange={e => setDiscoverSearch(e.target.value)}
                   placeholder="Search circles..."
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-sm"
+                  className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 />
+                <button
+                  onClick={() => setShowCircleFilters(v => !v)}
+                  className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 whitespace-nowrap"
+                >
+                  {showCircleFilters ? '- Filter' : '+ Filter'}
+                </button>
               </div>
+              {showCircleFilters && (
+                <BrowseLocation current={discoverBrowseLocation} onChange={loc => setDiscoverBrowseLocation(loc)} alwaysOpen />
+              )}
+
               {discoverLoading && (
                 <div className="flex justify-center py-12">
                   <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
@@ -728,7 +784,7 @@ export default function CirclesPage() {
                   <div className="space-y-3">
                     {filtered.map(circle => (
 
-                      <div key={circle.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-gray-200 transition-all">
+                      <div key={circle.id} onClick={() => circle.isMember && router.push(`/circles/${circle.id}`)} className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-gray-200 transition-all ${circle.isMember ? 'cursor-pointer active:scale-[0.99]' : ''}`}>
                         {circle.cover_image_url && (
                           <div className="relative h-20 w-full">
                             <img src={circle.cover_image_url} alt="" className="w-full h-full object-cover" />
@@ -754,9 +810,7 @@ export default function CirclesPage() {
                                       title="Hide"
                                     >Hide</button>
                                   )}
-                                  {circle.isMember ? (
-                                    <button onClick={() => router.push(`/circles/${circle.id}`)} className="px-3 py-1.5 text-xs font-medium text-emerald-600 border border-emerald-200 rounded-xl hover:bg-emerald-50">Open</button>
-                                  ) : (
+                                  {circle.isMember ? null : (
                                     <button onClick={() => joinCircle(circle.id)} disabled={circle.isJoining} className="px-4 py-2 text-xs font-semibold text-emerald-600 border border-emerald-200 rounded-xl hover:bg-emerald-50 disabled:opacity-50 transition-colors">
                                       {circle.isJoining ? 'Joining...' : 'Join'}
                                     </button>

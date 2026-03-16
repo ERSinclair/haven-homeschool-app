@@ -72,7 +72,7 @@ export default function AppHeader({
   return (
     <>
     <div className="fixed top-0 left-0 right-0 z-30 h-16 bg-white/10 backdrop-blur-lg border-b border-white/10">
-      <div className="max-w-md mx-auto h-full flex items-center justify-between px-4">
+      <div className="max-w-md mx-auto h-full flex items-center justify-between px-1">
       {/* Left */}
       <div className="w-20 flex items-center">
         {showBack ? (
@@ -99,20 +99,27 @@ export default function AppHeader({
         ) : null}
       </div>
 
-      {/* Centre — Haven wordmark */}
+      {/* Centre — Haven wordmark + page name */}
       <div className="absolute inset-x-0 flex justify-center items-center pointer-events-none">
-        <Link href="/discover" className="pointer-events-auto">
-          <span
-            className="font-bold text-emerald-600 text-3xl cursor-pointer hover:text-emerald-700 transition-colors"
-            style={{ fontFamily: 'var(--font-fredoka)' }}
-          >
-            Haven
-          </span>
-        </Link>
+        <div className="relative inline-block pointer-events-none">
+          <Link href="/discover" className="pointer-events-auto leading-none">
+            <span
+              className="font-bold text-emerald-600 text-3xl cursor-pointer hover:text-emerald-700 transition-colors"
+              style={{ fontFamily: 'var(--font-fredoka)' }}
+            >
+              Haven
+            </span>
+          </Link>
+          {title && (
+            <span className="absolute top-full right-0 translate-x-1/4 -mt-1 text-[10px] font-medium text-gray-400 tracking-widest uppercase whitespace-nowrap pointer-events-none">
+              {title}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Right — feed bell + custom slot */}
-      <div className="w-20 flex items-center justify-end gap-3 relative z-10">
+      <div className="w-20 flex items-center justify-end gap-3 relative z-10 pr-0">
         {right}
         {isExactMainNav && !isOnFeed && !hideBell && (
           <button

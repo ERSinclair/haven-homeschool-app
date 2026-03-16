@@ -1083,7 +1083,7 @@ function CalendarContent() {
                         <div className={`flex flex-col items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 ${
                           isToday ? 'bg-emerald-600' : isWeekend && !isPast ? 'bg-gray-100' : isPast ? 'bg-gray-100' : 'bg-gray-100'
                         }`}>
-                          <span className={`text-[10px] font-bold uppercase leading-none mb-0.5 ${isToday ? 'text-emerald-100' : 'text-gray-400'}`}>{dayName}</span>
+                          <span className={`text-xs font-bold uppercase leading-none mb-0.5 ${isToday ? 'text-emerald-100' : 'text-gray-400'}`}>{dayName}</span>
                           <span className={`text-base font-bold leading-none ${isToday ? 'text-white' : isPast ? 'text-gray-400' : 'text-gray-800'}`}>{dayNum}</span>
                         </div>
 
@@ -1102,7 +1102,7 @@ function CalendarContent() {
                                   <div key={item.id} className="flex items-center gap-2 min-w-0">
                                     <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
                                     {item.time && (
-                                      <span className="text-[10px] text-gray-400 font-medium flex-shrink-0 w-10">
+                                      <span className="text-xs text-gray-400 font-medium flex-shrink-0 w-10">
                                         {(() => {
                                           const [h, m] = item.time!.split(':').map(Number);
                                           const ampm = h >= 12 ? 'pm' : 'am';
@@ -1111,12 +1111,12 @@ function CalendarContent() {
                                         })()}
                                       </span>
                                     )}
-                                    <span className={`text-xs font-medium truncate ${isPast ? 'text-gray-400' : 'text-gray-700'}`}>{item.title}</span>
+                                    <span className={`text-sm font-medium truncate ${isPast ? 'text-gray-400' : 'text-gray-700'}`}>{item.title}</span>
                                   </div>
                                 );
                               })}
                               {wItems.length > 3 && (
-                                <p className="text-[10px] text-gray-400 pl-3.5">+{wItems.length - 3} more</p>
+                                <p className="text-xs text-gray-400 pl-3.5">+{wItems.length - 3} more</p>
                               )}
                             </div>
                           )}
@@ -1199,7 +1199,7 @@ function CalendarContent() {
             {/* Grid cells */}
             <div className="grid grid-cols-7">
               {cells.map((day, idx) => {
-                if (day === null) return <div key={`e${idx}`} className="h-[72px] border-b border-r border-gray-50 last:border-r-0" />;
+                if (day === null) return <div key={`e${idx}`} className="h-[84px] border-b border-r border-gray-50 last:border-r-0" />;
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const dayItems = itemsByDate[dateStr] || [];
                 const isToday = dateStr === todayStr;
@@ -1210,7 +1210,7 @@ function CalendarContent() {
                   <button
                     key={day}
                     onClick={() => { setSelectedDate(dateStr); cancelNote(); }}
-                    className={`h-[72px] flex flex-col items-start pt-1.5 px-0.5 pb-1 border-b border-r last:border-r-0 transition-colors overflow-hidden w-full ${
+                    className={`h-[84px] flex flex-col items-start pt-1.5 px-0.5 pb-1 border-b border-r last:border-r-0 transition-colors overflow-hidden w-full ${
                       isSelected ? 'bg-emerald-600 border-emerald-600' : isToday ? 'bg-emerald-50 border-gray-50' : isPast ? 'bg-gray-50/50 border-gray-50' : 'hover:bg-gray-50 border-gray-50'
                     }`}
                   >
@@ -1218,19 +1218,19 @@ function CalendarContent() {
                       isSelected ? 'text-white' : isToday ? 'text-emerald-700' : isPast ? 'text-gray-400' : 'text-gray-700'
                     }`}>{day}</span>
                     <div className="w-full space-y-px">
-                      {dayItems.slice(0, 3).map(item => (
+                      {dayItems.slice(0, 2).map(item => (
                         <div
                           key={item.id}
                           className={`w-full rounded-sm px-0.5 ${isSelected ? 'bg-white/25' : getItemBarColor(item)}`}
                         >
-                          <p className={`text-[8px] font-medium leading-tight truncate ${isSelected ? 'text-white' : ''}`}>
+                          <p className={`text-[10px] font-medium leading-tight truncate ${isSelected ? 'text-white' : ''}`}>
                             {item.title}
                           </p>
                         </div>
                       ))}
-                      {dayItems.length > 3 && (
-                        <p className={`text-[8px] leading-tight pl-0.5 ${isSelected ? 'text-white/70' : 'text-gray-400'}`}>
-                          +{dayItems.length - 3}
+                      {dayItems.length > 2 && (
+                        <p className={`text-[10px] leading-tight pl-0.5 ${isSelected ? 'text-white/70' : 'text-gray-400'}`}>
+                          +{dayItems.length - 2}
                         </p>
                       )}
                     </div>

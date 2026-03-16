@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { toast } from '@/lib/toast';
+import { distanceKm } from '@/lib/geocode';
 
 // Block Mapbox telemetry — guard against double-patching on re-renders
 if (typeof window !== 'undefined' && !(window as any).__mapboxFetchPatched) {
@@ -158,14 +159,7 @@ function randomiseCoords(lng: number, lat: number, familyId: string): [number, n
   return [lng + (distance * Math.sin(angle)) / kmPerLng, lat + (distance * Math.cos(angle)) / kmPerLat];
 }
 
-function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// calculateDistance removed — using distanceKm from @/lib/geocode
 
 function buildRadiusCircle(center: { lat: number; lng: number }, radiusKm: number, points = 64) {
   const kmPerLat = 110.574;
@@ -472,7 +466,7 @@ export default function FamilyMap({
       // Apply radius filter if active
       const validGeocoded = allGeocoded.filter(({ coords }) => {
         if (showRadius && userLocation && searchRadius) {
-          return calculateDistance(userLocation.lat, userLocation.lng, coords[1], coords[0]) <= searchRadius;
+          return distanceKm(userLocation.lat, userLocation.lng, coords[1], coords[0]) <= searchRadius;
         }
         return true;
       });

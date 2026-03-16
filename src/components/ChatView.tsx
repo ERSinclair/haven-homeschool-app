@@ -307,7 +307,7 @@ export default function ChatView({
 
       {/* ── Input bar ── */}
       <div
-        className="relative flex-shrink-0 bg-white/70 backdrop-blur-md border-t border-white/40 px-4 py-3"
+        className="relative flex-shrink-0 bg-white/70 backdrop-blur-md border-t border-white/40 px-0 py-2"
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
       >
         {/* Pending file preview */}
@@ -348,75 +348,22 @@ export default function ChatView({
           />
         )}
 
-        <div className="flex gap-2 items-end">
-          {/* Hidden image input — opens gallery */}
-          <input
-            id="chat-image-input"
-                    type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={e => {
-              const f = e.target.files?.[0];
-              if (!f) return;
-              setCropSrc(URL.createObjectURL(f));
-              e.target.value = '';
-            }}
+        <div className="flex gap-0 items-end" style={{gap: 0}}>
+          {/* Hidden inputs */}
+          <input id="chat-image-input" type="file" accept="image/*" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (!f) return; setCropSrc(URL.createObjectURL(f)); e.target.value = ''; }}
           />
-          {/* Hidden file input — docs/pdfs */}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,.pdf,.doc,.docx,.txt"
-            className="hidden"
-            onChange={e => {
-              const f = e.target.files?.[0];
-              if (!f) return;
-              if (f.type.startsWith('image/')) {
-                setCropSrc(URL.createObjectURL(f));
-              } else {
-                setPendingFile(f);
-              }
-              e.target.value = '';
-            }}
+          <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (!f) return; if (f.type.startsWith('image/')) { setCropSrc(URL.createObjectURL(f)); } else { setPendingFile(f); } e.target.value = ''; }}
           />
 
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={e => {
-              setText(e.target.value);
-              const el = e.target as HTMLTextAreaElement;
-              el.style.height = 'auto';
-              el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-            }}
-            onKeyDown={undefined}
-            placeholder={pendingFile ? 'Add a caption (optional)...' : placeholder}
-            rows={1}
-            maxLength={2000}
-            className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none overflow-hidden"
-            style={{ minHeight: '40px', maxHeight: '120px' }}
-          />
-
-          {/* Emoji button */}
-          <button
-            type="button"
-            onClick={() => setShowEmojiPicker(v => !v)}
-            className="p-2 text-gray-400 hover:text-emerald-600 flex-shrink-0 transition-colors"
-            title="Emoji"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </button>
-
-          {/* Paperclip — only rendered when onSendFile is provided */}
+          {/* Paperclip — outside left, flush */}
           {onSendFile && (
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
               disabled={uploadingFile}
-              className="p-2 text-gray-400 hover:text-emerald-600 disabled:opacity-40 flex-shrink-0 transition-colors"
+              className="flex items-end pb-4 justify-center pl-0 pr-0 text-gray-400 hover:text-emerald-600 disabled:opacity-40 flex-shrink-0 transition-colors"
               title="Attach file"
             >
               {uploadingFile ? (
@@ -429,11 +376,41 @@ export default function ChatView({
             </button>
           )}
 
+          {/* Textarea — emoji inside right */}
+          <div className="relative flex-1">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={e => {
+                setText(e.target.value);
+                const el = e.target as HTMLTextAreaElement;
+                el.style.height = 'auto';
+                el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+              }}
+              onKeyDown={undefined}
+              placeholder={pendingFile ? 'Add a caption (optional)...' : placeholder}
+              rows={1}
+              maxLength={2000}
+              className="w-full pl-2 pr-7 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none overflow-hidden"
+              style={{ minHeight: '40px', maxHeight: '120px' }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker(v => !v)}
+              className="absolute -right-3 top-1/2 -translate-y-[55%] text-gray-400 hover:text-emerald-600 transition-colors leading-none"
+              title="Emoji"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+          </div>
+
           {/* Send */}
           <button
             onClick={handleSend}
             disabled={(!text.trim() && !pendingFile) || sending || uploadingFile}
-            className="w-10 h-10 flex items-center justify-center flex-shrink-0 bg-emerald-600 text-white rounded-xl disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
+            className="ml-1.5 mb-1 w-10 h-10 flex items-center justify-center flex-shrink-0 bg-emerald-600 text-white rounded-xl disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
           >
             {sending ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

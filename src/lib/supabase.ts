@@ -20,7 +20,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 })
 
-// Type definitions - Clean Haven Schema (matches database exactly)
+// Type definitions - Haven Schema (keep in sync with DB migrations)
+export type UserType = 'family' | 'playgroup' | 'teacher' | 'business' | 'event' | 'facility' | 'other'
+export type AdminLevel = 'gold' | 'silver' | 'bronze' | null
+
 export type Profile = {
   id: string
   created_at: string
@@ -30,25 +33,56 @@ export type Profile = {
   display_name?: string
   username?: string
   avatar_url?: string
+  banner_url?: string
   bio?: string
   location_name?: string
   location_lat?: number
   location_lng?: number
   kids_ages: number[]
-  status: string
+  status: string | string[]
   contact_methods: string[]
   interests: string[]
+  homeschool_approaches?: string[]
+  // User type
+  user_type?: UserType
+  // Teacher-specific
+  subjects?: string[]
+  age_groups_taught?: string[]
+  // Business-specific
+  services?: string
+  contact_info?: string
+  // Skills Exchange
+  skills_offered?: string[]
+  skills_wanted?: string[]
+  // DOB / birthday
+  dob?: string
+  show_birthday?: boolean
+  // Admin / moderation
   is_admin: boolean
+  admin_level?: AdminLevel
   is_banned: boolean
   is_verified: boolean
   is_active: boolean
+  // Supporter
   is_supporter?: boolean
   supporter_since?: string
   supporter_tier?: string
   supporter_display_name?: string
   stripe_customer_id?: string
   stripe_subscription_id?: string
-  last_seen_at: string
+  // Notifications
+  notification_prefs?: {
+    push_messages?: boolean
+    push_connections?: boolean
+    push_events?: boolean
+    push_circles?: boolean
+    push_announcements?: boolean
+    email_digest?: boolean
+  }
+  last_digest_sent_at?: string
+  // Activity
+  last_seen_at?: string
+  last_active_at?: string
 }
 
 export type Conversation = {

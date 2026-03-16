@@ -53,6 +53,7 @@ export default function ConnectionsPage() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [showConnectPanel, setShowConnectPanel] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<Connection | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [connectionToDelete, setConnectionToDelete] = useState<Connection | null>(null);
@@ -543,7 +544,7 @@ export default function ConnectionsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-transparent">
       <div className="max-w-md mx-auto px-4 pt-2 pb-40">
-        <AppHeader />
+        <AppHeader title="Connections" />
 
         {/* Tab bar: Messages | Connections */}
         <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
@@ -560,46 +561,62 @@ export default function ConnectionsPage() {
 
 
 
-        {/* Tab Navigation */}
-        <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+        {/* Search + expand button */}
+        <div className="flex items-center gap-2 mb-2">
+          <input
+            type="text"
+            placeholder="Search connections..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+          />
           <button
-            onClick={() => setActiveTab('connections')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'connections' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
+            onClick={() => setShowConnectPanel(v => !v)}
+            className="relative flex items-center justify-center w-9 h-9 bg-white border border-gray-200 rounded-xl text-gray-600 hover:border-emerald-300 hover:text-emerald-600 transition-all font-bold text-lg flex-shrink-0"
           >
-            Connections ({filteredConnections.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('requests')}
-            className={`relative flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'requests' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Requests
-            {(pendingRequests.length + pendingFamilyLinks.length) > 0 && (
+            {showConnectPanel ? '×' : '+'}
+            {(pendingRequests.length + pendingFamilyLinks.length) > 0 && !showConnectPanel && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center border border-white leading-none">
                 {(pendingRequests.length + pendingFamilyLinks.length) > 9 ? '9+' : pendingRequests.length + pendingFamilyLinks.length}
               </span>
             )}
           </button>
-          <button
-            onClick={() => setActiveTab('sent')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'sent' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Sent ({filteredSentRequests.length + sentFamilyLinks.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('map')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'map' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Map
-          </button>
         </div>
+
+        {/* Collapsed tab panel */}
+        {showConnectPanel && (
+          <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
+            <button
+              onClick={() => { setActiveTab('connections'); setShowConnectPanel(false); }}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'connections' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Connections ({filteredConnections.length})
+            </button>
+            <button
+              onClick={() => { setActiveTab('requests'); setShowConnectPanel(false); }}
+              className={`relative flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'requests' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Requests
+              {(pendingRequests.length + pendingFamilyLinks.length) > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center border border-white leading-none">
+                  {(pendingRequests.length + pendingFamilyLinks.length) > 9 ? '9+' : pendingRequests.length + pendingFamilyLinks.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => { setActiveTab('sent'); setShowConnectPanel(false); }}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'sent' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Sent ({filteredSentRequests.length + sentFamilyLinks.length})
+            </button>
+            <button
+              onClick={() => { setActiveTab('map'); setShowConnectPanel(false); }}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'map' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Map
+            </button>
+          </div>
+        )}
 
         {/* Multi-select header */}
         {isMultiSelectMode && (
@@ -637,21 +654,6 @@ export default function ConnectionsPage() {
         {/* Connections Tab */}
         {activeTab === 'connections' && (
           <div className="space-y-4">
-            {/* Search */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                placeholder="Search connections..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-              />
-            </div>
             {filteredConnections.length === 0 ? (
               searchTerm ? (
                 <div className="text-center py-10 px-6">                  <p className="font-semibold text-gray-700 mb-1">No connections match &ldquo;{searchTerm}&rdquo;</p>
@@ -1294,17 +1296,32 @@ function ConnectionsMap({ connections }: { connections: Connection[] }) {
             el.style.backgroundSize = 'cover';
             el.style.backgroundPosition = 'center';
           } else {
-            el.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#065f46;">${(conn.user.display_name || conn.user.family_name || '?').charAt(0)}</div>`;
+            // Use textContent to avoid XSS from user-supplied name data
+            const inner = document.createElement('div');
+            inner.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#065f46;';
+            inner.textContent = (conn.user.display_name || conn.user.family_name || '?').charAt(0).toUpperCase();
+            el.appendChild(inner);
           }
 
+          // Build popup using DOM nodes to avoid XSS from user-supplied name/location data
+          const popupEl = document.createElement('div');
+          popupEl.style.cssText = 'padding:4px 2px;';
+          const nameEl = document.createElement('p');
+          nameEl.style.cssText = 'font-weight:600;font-size:13px;margin:0 0 2px;';
+          nameEl.textContent = conn.user.display_name || conn.user.family_name || '';
+          const locEl = document.createElement('p');
+          locEl.style.cssText = 'font-size:11px;color:#6b7280;margin:0 0 6px;';
+          locEl.textContent = conn.user.location_name || '';
+          const msgBtn = document.createElement('button');
+          msgBtn.style.cssText = 'background:#10b981;color:white;border:none;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;';
+          msgBtn.textContent = 'Message';
+          msgBtn.addEventListener('click', () => { window.location.href = `/messages?open=${conn.user.id}`; });
+          popupEl.appendChild(nameEl);
+          popupEl.appendChild(locEl);
+          popupEl.appendChild(msgBtn);
+
           const popup = new mapboxgl.Popup({ offset: 24, closeButton: false })
-            .setHTML(`
-              <div style="padding:4px 2px;">
-                <p style="font-weight:600;font-size:13px;margin:0 0 2px;">${conn.user.display_name || conn.user.family_name}</p>
-                <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">${conn.user.location_name}</p>
-                <button onclick="window.location.href='/messages?open=${conn.user.id}'" style="background:#10b981;color:white;border:none;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">Message</button>
-              </div>
-            `);
+            .setDOMContent(popupEl);
 
           new mapboxgl.Marker({ element: el })
             .setLngLat([conn.user.location_lng!, conn.user.location_lat!])

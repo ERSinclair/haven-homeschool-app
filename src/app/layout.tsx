@@ -32,7 +32,7 @@ const dmSerif = DM_Serif_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Haven - Find Your Home education Community",
+  title: "Haven - Find Your Community",
   description: "Connect with local families. Find your village, build community, plan meetups.",
   icons: {
     icon: '/favicon.svg',

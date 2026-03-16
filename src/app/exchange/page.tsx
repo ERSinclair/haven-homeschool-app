@@ -1,17 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import AppHeader from '@/components/AppHeader';
 import AvatarUpload from '@/components/AvatarUpload';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getStoredSessionAsync, getStoredSession } from '@/lib/session';
 import { toast } from '@/lib/toast';
+import { distanceKm } from '@/lib/geocode';
 
 type ExchangeTab = 'skills' | 'market';
 type SkillsFilter = 'all' | 'teaching' | 'learning';
 type MarketFilter = 'all' | 'sell' | 'swap' | 'free';
-type MarketCategory = 'all' | 'curriculum' | 'books' | 'clothing' | 'toys' | 'other';
+type MarketCategory = 'all' | 'curriculum' | 'books' | 'clothing' | 'toys' | 'spaces' | 'other';
 type MarketView = 'browse' | 'mine' | 'detail' | 'create' | 'edit';
 
 type SkillProfile = {
@@ -52,6 +54,7 @@ type Listing = {
 const CATEGORIES = [
   { value: 'all', label: 'All' },
   { value: 'curriculum', label: 'Curriculum' },
+  { value: 'spaces', label: 'Spaces' },
   { value: 'books', label: 'Books' },
   { value: 'clothing', label: 'Clothing' },
   { value: 'toys', label: 'Toys' },
@@ -65,16 +68,7 @@ const LISTING_TYPES = [
   { value: 'free', label: 'Free' },
 ];
 
-function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// calculateDistance removed — using distanceKm from @/lib/geocode
 
 function formatPrice(listing: Listing) {
   if (listing.listing_type === 'free') return 'Free';
@@ -293,13 +287,6 @@ function ListingDetail({
 
   return (
     <div>
-      <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 mb-4">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        Back
-      </button>
-
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60 shadow-sm p-4">
         {/* Type + Category badge */}
         <div className="flex items-center gap-2 mb-3">
@@ -373,8 +360,19 @@ function ListingDetail({
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-export default function ExchangePage() {
+function ExchangePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Pre-select category from URL param (e.g. ?category=spaces from Discover)
+  useEffect(() => {
+    const cat = searchParams.get('category');
+    if (cat && CATEGORIES.some(c => c.value === cat)) {
+      setMarketCategory(cat as MarketCategory);
+      setActiveTab('market');
+      setMarketView('create');
+    }
+  }, []);
   const [activeTab, setActiveTab] = useState<ExchangeTab>('market');
 
   // ── Skills state
@@ -580,8 +578,8 @@ export default function ExchangePage() {
     return true;
   }).sort((a, b) => {
     if (myProfile?.location_lat && myProfile?.location_lng) {
-      const aDist = (a.location_lat && a.location_lng) ? calculateDistance(myProfile.location_lat!, myProfile.location_lng!, a.location_lat, a.location_lng) : 9999;
-      const bDist = (b.location_lat && b.location_lng) ? calculateDistance(myProfile.location_lat!, myProfile.location_lng!, b.location_lat, b.location_lng) : 9999;
+      const aDist = (a.location_lat && a.location_lng) ? distanceKm(myProfile.location_lat!, myProfile.location_lng!, a.location_lat, a.location_lng) : 9999;
+      const bDist = (b.location_lat && b.location_lng) ? distanceKm(myProfile.location_lat!, myProfile.location_lng!, b.location_lat, b.location_lng) : 9999;
       return aDist - bDist;
     }
     return (a.family_name || '').localeCompare(b.family_name || '');
@@ -606,8 +604,9 @@ export default function ExchangePage() {
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white pb-24">
-        <div className="max-w-md mx-auto px-4 pt-4">
+        <div className="max-w-md mx-auto px-4 pt-2">
           <AppHeader
+            title="Exchange"
             backHref={activeTab !== 'market' || marketView === 'browse' ? '/profile' : undefined}
             onBack={activeTab === 'market' && marketView !== 'browse' ? () => {
               if (marketView === 'edit') { setEditingListing(null); setMarketView('mine'); }
@@ -615,12 +614,8 @@ export default function ExchangePage() {
             } : undefined}
           />
 
-          <div className="mb-5">
-            <h1 className="text-2xl font-bold text-gray-900">Exchange</h1>
-          </div>
-
           {/* Tab bar */}
-          <div className="flex gap-1 mb-5 bg-white rounded-xl p-1 border border-gray-200">
+          <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
             {([
               { value: 'market', label: 'Market' },
               { value: 'skills', label: 'Skills' },
@@ -1009,5 +1004,13 @@ export default function ExchangePage() {
         </div>
       </div>
     </ProtectedRoute>
+  );
+}
+
+export default function ExchangePage() {
+  return (
+    <Suspense>
+      <ExchangePageInner />
+    </Suspense>
   );
 }

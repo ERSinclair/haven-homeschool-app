@@ -14,6 +14,7 @@ import AppHeader from '@/components/AppHeader';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ChatView, { ChatMessage } from '@/components/ChatView';
 import ProfileCardModal from '@/components/ProfileCardModal';
+import ReportBlockModal from '@/components/ReportBlockModal';
 
 type Conversation = {
   id: string;
@@ -23,6 +24,7 @@ type Conversation = {
     display_name: string;
     avatar_url?: string;
     location_name: string;
+    last_active_at?: string;
   };
   last_message_text: string | null;
   last_message_at: string | null;
@@ -57,6 +59,8 @@ function MessagesContent() {
   const [isNewUser, setIsNewUser] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [reportBlockMode, setReportBlockMode] = useState<'report' | 'block' | null>(null);
+  const [avatarLightboxUrl, setAvatarLightboxUrl] = useState<string | null>(null);
   const [showDeleteMessageModal, setShowDeleteMessageModal] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -118,7 +122,7 @@ function MessagesContent() {
       );
       const uniqueIds = [...new Set(otherIds)].join(',');
       const profileRes = await fetch(
-        `${supabaseUrl}/rest/v1/profiles?id=in.(${uniqueIds})&select=id,family_name,display_name,avatar_url,location_name`,
+        `${supabaseUrl}/rest/v1/profiles?id=in.(${uniqueIds})&select=id,family_name,display_name,avatar_url,location_name,last_active_at`,
         { headers, signal }
       );
 
@@ -1362,16 +1366,46 @@ function MessagesContent() {
   };
 
   // Toggle contact selection
-  const toggleContactSelection = (contactId: string) => {
-    const newSelected = new Set(selectedContacts);
-    if (newSelected.has(contactId)) {
-      newSelected.delete(contactId);
-    } else {
-      // For now, only allow single selection (can be updated for group chats later)
-      newSelected.clear();
-      newSelected.add(contactId);
+  const toggleContactSelection = async (contactId: string) => {
+    const session = getStoredSession();
+    if (!session?.user) return;
+
+    // Find existing conversation
+    const existing = conversations.find(c => c.other_user.id === contactId);
+    if (existing) {
+      setShowNewMessageModal(false);
+      setSelectedContacts(new Set());
+      setContactSearchTerm('');
+      setNewMessageText('');
+      setSelectedId(existing.id);
+      return;
     }
-    setSelectedContacts(newSelected);
+
+    // Create new conversation, then open it
+    try {
+      const createRes = await fetch(`${supabaseUrl}/rest/v1/conversations`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey!,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({ participant_1: session.user.id, participant_2: contactId }),
+      });
+      if (createRes.ok) {
+        const [newConvo] = await createRes.json();
+        await reloadConversations();
+        setShowNewMessageModal(false);
+        setSelectedContacts(new Set());
+        setContactSearchTerm('');
+        setNewMessageText('');
+        setSelectedId(newConvo.id);
+      }
+    } catch (err) {
+      console.error('Error creating conversation:', err);
+      toast('Failed to open conversation. Please try again.', 'error');
+    }
   };
 
   // Filter connections by search term
@@ -1383,7 +1417,7 @@ function MessagesContent() {
 
   const savedMessagesConvoStub = {
     id: 'saved-messages',
-    other_user: { id: 'saved', family_name: 'Saved Messages', display_name: 'Saved Messages', avatar_url: null, location_name: '' },
+    other_user: { id: 'saved', family_name: 'Saved Messages', display_name: 'Saved Messages', avatar_url: null, location_name: '', last_active_at: undefined as string | undefined },
     last_message_text: 'Your saved messages appear here',
     last_message_at: new Date().toISOString(),
     unread: false
@@ -1391,6 +1425,21 @@ function MessagesContent() {
   const selected = selectedId === 'saved-messages'
     ? savedMessagesConvoStub
     : conversations.find(c => c.id === selectedId);
+
+  const isOnline = (lastActiveAt?: string) => {
+    if (!lastActiveAt) return false;
+    return Date.now() - new Date(lastActiveAt).getTime() < 15 * 60 * 1000;
+  };
+
+  const formatLastActive = (lastActiveAt?: string): string => {
+    if (!lastActiveAt) return 'offline';
+    const diffMs = Date.now() - new Date(lastActiveAt).getTime();
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffDays === 0) return 'today';
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return `${Math.floor(diffDays / 7)} weeks ago`;
+  };
 
   const formatTime = (dateStr: string | null) => {
     if (!dateStr) return '';
@@ -1421,7 +1470,45 @@ function MessagesContent() {
       <div className="fixed top-0 left-0 right-0 bg-transparent flex flex-col overflow-hidden" style={{ bottom: '72px' }}>
         <div className="flex-shrink-0 z-30 bg-white/90 backdrop-blur-sm border-b border-gray-100" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="max-w-md mx-auto">
-            <AppHeader onBack={() => setSelectedId(null)} />
+            <AppHeader
+              onBack={() => setSelectedId(null)}
+              hideBell
+              right={
+                <div className="relative">
+                  <button
+                    onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                    className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                    </svg>
+                  </button>
+                  {showOptionsMenu && (
+                    <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 min-w-[180px]">
+                      <button
+                        onClick={() => { setReportBlockMode('report'); setShowOptionsMenu(false); }}
+                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 text-sm"
+                      >
+                        Report
+                      </button>
+                      <button
+                        onClick={() => { setReportBlockMode('block'); setShowOptionsMenu(false); }}
+                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 text-sm"
+                      >
+                        Block
+                      </button>
+                      <div className="border-t border-gray-100 my-1" />
+                      <button
+                        onClick={() => { setShowDeleteModal(true); setShowOptionsMenu(false); }}
+                        className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 text-sm"
+                      >
+                        Delete conversation
+                      </button>
+                    </div>
+                  )}
+                </div>
+              }
+            />
 
             {/* Conversation Controls */}
             {selectionMode && (
@@ -1455,54 +1542,48 @@ function MessagesContent() {
             {/* User Info (only show when not in selection mode) */}
             {!selectionMode && (
               <div className="flex items-center gap-3 mb-3 px-4">
-                  <button onClick={() => selected.other_user.id !== 'saved' && setProfileCardUserId(selected.other_user.id)} className="flex-shrink-0">
-                    <AvatarUpload
-                      userId={selected.other_user.id}
-                      currentAvatarUrl={selected.other_user.avatar_url}
-                      name={selected.other_user.family_name || selected.other_user.display_name || 'Unknown'}
-                      size="sm"
-                      editable={false}
-                      viewable={false}
-                      showFamilySilhouette={true}
-                    />
-                  </button>
-                  <button onClick={() => selected.other_user.id !== 'saved' && setProfileCardUserId(selected.other_user.id)} className="flex-1 min-w-0 text-left">
-                    <h2 className="font-semibold text-emerald-600">{selected.other_user.family_name || selected.other_user.display_name || 'Unknown'}</h2>
-                    <p className="text-xs text-gray-500">{selected.other_user.location_name}</p>
-                  </button>
-                  
-                  {/* Connect Button */}
-                  <button
-                    onClick={() => sendConnectionRequest(selected.other_user.id)}
-                    disabled={getConnectionButtonState(selected.other_user.id).disabled}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors text-sm mr-2 ${getConnectionButtonState(selected.other_user.id).style}`}
-                  >
-                    {getConnectionButtonState(selected.other_user.id).text}
-                  </button>
-                  
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowOptionsMenu(!showOptionsMenu)}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full"
-                    >
-                      ...
-                    </button>
-                    {showOptionsMenu && (
-                      <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 min-w-[160px]">
-                        <button
-                          onClick={() => {
-                            setShowDeleteModal(true);
-                            setShowOptionsMenu(false);
-                          }}
-                          className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 text-sm"
-                        >
-                          Delete conversation
-                        </button>
-                      </div>
+                <button
+                  onClick={() => selected.other_user.avatar_url && setAvatarLightboxUrl(selected.other_user.avatar_url)}
+                  className="flex-shrink-0"
+                >
+                  <AvatarUpload
+                    userId={selected.other_user.id}
+                    currentAvatarUrl={selected.other_user.avatar_url}
+                    name={selected.other_user.family_name || selected.other_user.display_name || 'Unknown'}
+                    size="sm"
+                    editable={false}
+                    viewable={false}
+                    showFamilySilhouette={true}
+                  />
+                </button>
+                <button
+                  onClick={() => selected.other_user.id !== 'saved' && router.push(`/u/${selected.other_user.id}`)}
+                  className="flex-1 min-w-0 text-left"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <h2 className="font-semibold text-emerald-600 truncate">
+                      {selected.other_user.family_name || selected.other_user.display_name || 'Unknown'}
+                    </h2>
+                    {connectionRequests.get(selected.other_user.id)?.status === 'accepted' && (
+                      <span className="flex-shrink-0 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </span>
                     )}
                   </div>
-                </div>
-              )}
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {selected.other_user.location_name && (
+                      <span className="text-xs text-gray-500 truncate">{selected.other_user.location_name}</span>
+                    )}
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOnline(selected.other_user.last_active_at) ? 'bg-green-500' : 'bg-red-400'}`} />
+                    <span className="text-xs text-gray-400 flex-shrink-0">
+                      {isOnline(selected.other_user.last_active_at) ? 'Online' : formatLastActive(selected.other_user.last_active_at)}
+                    </span>
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1710,7 +1791,35 @@ function MessagesContent() {
           </div>
         )}
 
-      </div>
+      {/* Avatar lightbox */}
+      {avatarLightboxUrl && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-[99999] p-4"
+          onClick={() => setAvatarLightboxUrl(null)}
+        >
+          <img
+            src={(() => {
+              const url = avatarLightboxUrl.split('?')[0];
+              return `${url}?width=800&quality=90`;
+            })()}
+            alt="Avatar"
+            className="w-full aspect-square rounded-full object-cover shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
+
+      {/* Report/Block modal */}
+      {reportBlockMode && selected && selected.other_user.id !== 'saved' && (
+        <ReportBlockModal
+          targetId={selected.other_user.id}
+          targetName={selected.other_user.family_name || selected.other_user.display_name || 'this user'}
+          mode={reportBlockMode}
+          onClose={() => setReportBlockMode(null)}
+          onBlocked={() => { setReportBlockMode(null); setSelectedId(null); }}
+        />
+      )}
+    </div>
     );
   }
 
@@ -1718,7 +1827,7 @@ function MessagesContent() {
     <ProtectedRoute>
     <div className="min-h-screen bg-transparent pb-24">
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
-        <AppHeader />
+        <AppHeader title="Messages" />
 
         {/* Tab bar: Messages | Connections */}
         <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
@@ -1965,7 +2074,7 @@ function MessagesContent() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
-                    <h3 className={`font-semibold ${convo.unread ? 'text-emerald-600' : 'text-emerald-600'}`}>
+                    <h3 className={`font-semibold ${convo.unread ? 'text-gray-900' : 'text-emerald-600'}`}>
                       {convo.other_user.family_name || convo.other_user.display_name || 'Unknown'}
                     </h3>
                     <span className="text-xs text-gray-400">
@@ -2269,7 +2378,7 @@ function MessagesContent() {
           <div className="flex items-center gap-3 px-4 pt-12 pb-3 border-b border-gray-100">
             <button
               onClick={() => { setShowNewMessageModal(false); setSelectedContacts(new Set()); setContactSearchTerm(''); setNewMessageText(''); }}
-              className="text-gray-400 hover:text-gray-600 p-1"
+              className="text-gray-400 hover:text-gray-600 p-1 flex-shrink-0"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2281,28 +2390,12 @@ function MessagesContent() {
               value={contactSearchTerm}
               onChange={(e) => setContactSearchTerm(e.target.value)}
               onFocus={() => !availableConnections.length && loadAvailableConnections()}
-              className="flex-1 px-3 py-2 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="flex-1 px-4 py-2.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               autoFocus
             />
           </div>
 
-          {/* Selected contacts chips */}
-          {selectedContacts.size > 0 && (
-            <div className="px-4 py-2 border-b border-gray-100 flex flex-wrap gap-1.5">
-              {Array.from(selectedContacts).map(contactId => {
-                const contact = availableConnections.find(c => c.id === contactId);
-                if (!contact) return null;
-                return (
-                  <div key={contactId} className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full">
-                    <span className="text-xs font-medium text-emerald-700">{contact.family_name || contact.display_name}</span>
-                    <button onClick={() => toggleContactSelection(contactId)} className="text-emerald-400 hover:text-emerald-600 leading-none">×</button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Contacts list */}
+          {/* Contacts list — tap to open chat immediately */}
           <div className="flex-1 overflow-y-auto">
             {loadingConnections ? (
               <div className="flex justify-center py-12">
@@ -2324,9 +2417,7 @@ function MessagesContent() {
                   <button
                     key={connection.id}
                     onClick={() => toggleContactSelection(connection.id)}
-                    className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors ${
-                      selectedContacts.has(connection.id) ? 'bg-emerald-50' : 'hover:bg-gray-50'
-                    }`}
+                    className="w-full px-4 py-3 text-left flex items-center gap-3 transition-colors hover:bg-gray-50 active:bg-gray-100"
                   >
                     <AvatarUpload
                       userId={connection.id}
@@ -2341,37 +2432,13 @@ function MessagesContent() {
                       <p className="font-medium text-gray-900 text-sm">{connection.family_name || connection.display_name}</p>
                       <p className="text-xs text-gray-400 truncate">{connection.location_name}</p>
                     </div>
-                    {selectedContacts.has(connection.id) && (
-                      <div className="w-5 h-5 bg-emerald-600 rounded-full flex items-center justify-center flex-shrink-0">
-                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    )}
+                    <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
                   </button>
                 ))}
               </div>
             )}
-          </div>
-
-          {/* Compose area */}
-          <div className="border-t border-gray-100 px-4 py-3 flex gap-2 items-end">
-            <textarea
-              value={newMessageText}
-              onChange={(e) => setNewMessageText(e.target.value)}
-              placeholder="Write a message..."
-              className="flex-1 px-3 py-2 bg-gray-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-              rows={2}
-            />
-            <button
-              onClick={startNewConversation}
-              disabled={selectedContacts.size === 0 || !newMessageText.trim()}
-              className="w-9 h-9 bg-emerald-600 text-white rounded-full flex items-center justify-center hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400 flex-shrink-0 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </button>
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import { toast } from '@/lib/toast';
 
 import { useState, useEffect, useRef } from 'react';
 import { getCached, setCached } from '@/lib/pageCache';
+import { distanceKm } from '@/lib/geocode';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
@@ -133,6 +134,8 @@ export default function EventsPage() {
   const [searchRadius] = useState(() => loadSearchRadius());
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [browseLocation, setBrowseLocation] = useState<BrowseLocationState>(() => loadBrowseLocation());
+  const [eventSearch, setEventSearch] = useState('');
+  const [showEventFilters, setShowEventFilters] = useState(false);
   const [eventsViewMode, setEventsViewMode] = useState<'list' | 'calendar'>('list');
   const [hiddenEvents, setHiddenEvents] = useState<Set<string>>(new Set());
   const [showHiddenEventsModal, setShowHiddenEventsModal] = useState(false);
@@ -167,6 +170,8 @@ export default function EventsPage() {
   const [pastEventsSubTab, setPastEventsSubTab] = useState<'attended' | 'hosted'>('attended');
   const [showPastEvents, setShowPastEvents] = useState(false);
   const [showInvitations, setShowInvitations] = useState(false);
+  const [showMoreEvents, setShowMoreEvents] = useState(false);
+  const [myEventSearch, setMyEventSearch] = useState('');
   const [shownPastHosted, setShownPastHosted] = useState(4);
   const [shownPastAttended, setShownPastAttended] = useState(4);
   const [shownUpcomingHosted, setShownUpcomingHosted] = useState(4);
@@ -194,17 +199,7 @@ export default function EventsPage() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Helper function to calculate distance between two points
-  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
-    const R = 6371; // Earth's radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
+  // distanceKm imported from @/lib/geocode — used below as distanceKm(...)
 
   // Load user location from profile for radius filtering
   const loadUserLocation = async () => {
@@ -1318,8 +1313,12 @@ export default function EventsPage() {
     }
     const activeLocation = browseLocation ?? userLocation;
     if (activeLocation && e.latitude && e.longitude) {
-      const distance = calculateDistance(activeLocation.lat, activeLocation.lng, e.latitude, e.longitude);
+      const distance = distanceKm(activeLocation.lat, activeLocation.lng, e.latitude, e.longitude);
       if (distance > searchRadius) return false;
+    }
+    if (eventSearch.trim()) {
+      const q = eventSearch.trim().toLowerCase();
+      if (!(e.title?.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q) || e.location_name?.toLowerCase().includes(q))) return false;
     }
     return true;
   });
@@ -1842,7 +1841,7 @@ export default function EventsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-transparent">
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
-        <AppHeader />
+        <AppHeader title="Events" />
 
         {/* Main tabs — My Events | Discover */}
         <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
@@ -1874,10 +1873,28 @@ export default function EventsPage() {
           </div>
         )}
 
-        {/* Category filters removed — add back when user volume justifies it */}
-
-        {/* Browse location — discover only */}
-        {mainTab === 'discover' && <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} alwaysOpen />}
+        {/* Search + filter — discover only */}
+        {mainTab === 'discover' && (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                value={eventSearch}
+                onChange={e => setEventSearch(e.target.value)}
+                placeholder="Search events..."
+                className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              />
+              <button
+                onClick={() => setShowEventFilters(v => !v)}
+                className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 whitespace-nowrap"
+              >
+                {showEventFilters ? '- Filter' : '+ Filter'}
+              </button>
+            </div>
+            {showEventFilters && (
+              <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} alwaysOpen />
+            )}
+          </>
+        )}
 
         {/* Calendar view */}
         {eventsViewMode === 'calendar' && (
@@ -1901,8 +1918,11 @@ export default function EventsPage() {
           const allGoing = events.filter(e => e.user_rsvp && e.host_id !== userId)
             .sort((a, b) => a.event_date.localeCompare(b.event_date));
 
-          const upcomingHosted = allHosted.filter(e => e.event_date >= today);
-          const upcomingGoing = allGoing.filter(e => e.event_date >= today);
+          const searchFilter = (e: Event) => !myEventSearch.trim() ||
+            e.title?.toLowerCase().includes(myEventSearch.toLowerCase()) ||
+            e.location_name?.toLowerCase().includes(myEventSearch.toLowerCase());
+          const upcomingHosted = allHosted.filter(e => e.event_date >= today && searchFilter(e));
+          const upcomingGoing = allGoing.filter(e => e.event_date >= today && searchFilter(e));
           const pastHosted = allHosted.filter(e => e.event_date < today);
           const pastGoing = allGoing.filter(e => e.event_date < today);
           const allPast = [...pastHosted, ...pastGoing].sort((a, b) => b.event_date.localeCompare(a.event_date));
@@ -1952,35 +1972,73 @@ export default function EventsPage() {
 
           const hasUpcoming = upcomingHosted.length > 0 || upcomingGoing.length > 0;
 
+          const pendingInviteCount = invitations.filter(i => i.status === 'pending').length;
+
           return (
             <>
-              {/* Top navigation row: Events / Past Events / Invitations */}
-              <div className="flex gap-1 mb-4 bg-white rounded-xl p-1 border border-gray-200">
+              {/* Search bar + More button */}
+              <div className="flex items-center gap-2 mb-3">
+                <div className="relative flex-1">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={myEventSearch}
+                    onChange={e => setMyEventSearch(e.target.value)}
+                    placeholder="Search my events..."
+                    className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
                 <button
-                  onClick={() => { setShowPastEvents(false); setShowInvitations(false); }}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    !showPastEvents && !showInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
+                  onClick={() => { setShowMoreEvents(v => !v); setShowPastEvents(false); setShowInvitations(false); }}
+                  className={`relative flex items-center gap-1 px-3 py-2 border rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${showMoreEvents ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-gray-200 text-gray-600'}`}
                 >
-                  Events
-                </button>
-                <button
-                  onClick={() => { setShowPastEvents(true); setShowInvitations(false); }}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    showPastEvents && !showInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Past{allPast.length > 0 ? ` (${allPast.length})` : ''}
-                </button>
-                <button
-                  onClick={() => { setShowPastEvents(false); setShowInvitations(true); }}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    showInvitations ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Invitations
+                  + More
+                  {pendingInviteCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                      {pendingInviteCount > 9 ? '9+' : pendingInviteCount}
+                    </span>
+                  )}
                 </button>
               </div>
+
+              {/* More panel — Past + Invitations */}
+              {showMoreEvents && (
+                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+                  <button
+                    onClick={() => { setShowPastEvents(true); setShowInvitations(false); setShowMoreEvents(false); }}
+                    className="relative flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-200 text-gray-600 hover:text-gray-800 transition-all"
+                  >
+                    Past Events
+                    {allPast.length > 0 && <span className="text-gray-400">({allPast.length})</span>}
+                  </button>
+                  <button
+                    onClick={() => { setShowInvitations(true); setShowPastEvents(false); setShowMoreEvents(false); }}
+                    className="relative flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-200 text-gray-600 hover:text-gray-800 transition-all"
+                  >
+                    Invitations
+                    {pendingInviteCount > 0 && (
+                      <span className="min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                        {pendingInviteCount > 9 ? '9+' : pendingInviteCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Back button when in sub-view */}
+              {(showPastEvents || showInvitations) && (
+                <button
+                  onClick={() => { setShowPastEvents(false); setShowInvitations(false); }}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 mb-3 hover:text-emerald-700"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back to My Events
+                </button>
+              )}
 
               {/* Upcoming events view */}
               {!showPastEvents && !showInvitations && (
@@ -1993,7 +2051,7 @@ export default function EventsPage() {
                     if (daysAway > 14) return null;
                     const label = daysAway === 0 ? 'Today!' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway} days`;
                     return (
-                      <div className="bg-white border border-emerald-200 rounded-2xl p-4 mb-4 flex items-center gap-3 shadow-sm">
+                      <div onClick={() => setSelectedEvent(next)} className="bg-white border border-emerald-200 rounded-2xl p-4 mb-4 flex items-center gap-3 shadow-sm cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all active:scale-[0.99]">
                         <div className="flex-shrink-0 w-10 h-10 bg-emerald-50 rounded-lg flex flex-col items-center justify-center border border-emerald-100">
                           <span className="text-xs font-bold text-emerald-700 leading-none">{new Date(next.event_date + 'T12:00:00').toLocaleDateString('en-AU', { month: 'short' }).toUpperCase()}</span>
                           <span className="text-sm font-bold text-emerald-900 leading-tight">{new Date(next.event_date + 'T12:00:00').getDate()}</span>
@@ -2003,7 +2061,6 @@ export default function EventsPage() {
                           <p className="font-bold text-gray-900 truncate text-sm">{next.title}</p>
                           {next.location_name && <p className="text-xs text-gray-500 truncate">{next.location_name}</p>}
                         </div>
-                        <button onClick={() => setSelectedEvent(next)} className="text-xs font-semibold bg-emerald-600 text-white px-3 py-1.5 rounded-lg flex-shrink-0 hover:bg-emerald-700">View</button>
                       </div>
                     );
                   })()}
@@ -2254,7 +2311,7 @@ export default function EventsPage() {
                       {formatTime(event.event_time)}
                       {event.location_name ? ` · ${event.location_name}` : ' · Location TBA'}
                       {userLocation && event.latitude && event.longitude && (
-                        <span className="text-emerald-600 font-medium"> · {calculateDistance(userLocation.lat, userLocation.lng, event.latitude, event.longitude).toFixed(1)}km</span>
+                        <span className="text-emerald-600 font-medium"> · {distanceKm(userLocation.lat, userLocation.lng, event.latitude, event.longitude).toFixed(1)}km</span>
                       )}
                     </p>
                     {/* Category + host + count */}

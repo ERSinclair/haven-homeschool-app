@@ -134,6 +134,7 @@ function ProfilePageInner() {
   const [viewedConnStatus, setViewedConnStatus] = useState<{ status: string; isRequester: boolean; connId: string } | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
+  const [bannerCropSrc, setBannerCropSrc] = useState<string | null>(null);
 
   // Sub-profiles
   type SubProfile = {
@@ -645,18 +646,17 @@ function ProfilePageInner() {
         }
       );
 
-      // Upload banner if selected
+      // Upload banner if selected (bannerFile is always a cropped JPEG blob)
       let newBannerUrl: string | undefined;
       if (bannerFile && res.ok) {
-        const ext = bannerFile.name.split('.').pop() || 'jpg';
-        const path = `profile-banners/${user.id}/banner.${ext}`;
+        const path = `profile-banners/${user.id}/banner.jpg`;
         const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/event-files/${path}`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': bannerFile.type, 'x-upsert': 'true' },
+          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'image/jpeg', 'x-upsert': 'true' },
           body: bannerFile,
         });
         if (uploadRes.ok) {
-          newBannerUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}`;
+          newBannerUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${path}?t=${Date.now()}`;
           await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
             method: 'PATCH',
             headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
@@ -932,11 +932,12 @@ function ProfilePageInner() {
         {/* Header — pulled out of px-4 so it sits flush with the edge like other pages */}
         <div className="-mx-4">
           {isEditing ? (
-            <AppHeader onBack={() => setIsEditing(false)} />
+            <AppHeader title="Profile" onBack={() => setIsEditing(false)} />
           ) : isViewingOtherUser ? (
-            <AppHeader onBack={() => router.back()} />
+            <AppHeader title="Profile" onBack={() => router.back()} />
           ) : (
             <AppHeader
+              title="Profile"
               left={
                 <Link href="/settings" className="p-1 rounded-xl hover:bg-emerald-50 transition-colors -ml-1 mt-2">
                   <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -1080,10 +1081,11 @@ function ProfilePageInner() {
                   <input type="file" accept="image/*" className="sr-only" onChange={e => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    setBannerFile(file);
                     const reader = new FileReader();
-                    reader.onload = ev => setBannerPreview(ev.target?.result as string);
+                    reader.onload = ev => setBannerCropSrc(ev.target?.result as string);
                     reader.readAsDataURL(file);
+                    // Reset input so same file can be re-selected
+                    e.target.value = '';
                   }} />
                 </label>
               )}
@@ -1321,36 +1323,35 @@ function ProfilePageInner() {
             {isEditing ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">Kids Ages</label>
-                <div className="space-y-4">
-                  {children.map((child, index) => (
-                    <div key={child.id} className="flex items-center gap-3 justify-center">
-                      <label className="text-gray-700 font-medium min-w-[70px]">
-                        Child {index + 1}
-                      </label>
-                      <input
-                        type="text"
-                        value={child.age}
-                        onChange={(e) => updateChildAge(child.id, e.target.value)}
-                        className="w-28 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                        placeholder="Age (0-18)"
-                        maxLength={2}
-                      />
-                      {children.length > 1 && (
-                        <button
-                          onClick={() => removeChild(child.id)}
-                          className="text-emerald-600 hover:text-emerald-700 font-medium px-2"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                <div className="max-w-[200px] mx-auto">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    {children.map((child) => (
+                      <div key={child.id} className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={child.age}
+                          onChange={(e) => updateChildAge(child.id, e.target.value)}
+                          className="w-14 px-2 py-2 border border-gray-200 rounded-xl text-sm text-center focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                          placeholder="Age"
+                          maxLength={2}
+                        />
+                        {children.length > 1 && (
+                          <button
+                            onClick={() => havenConfirm('Remove this child?', () => removeChild(child.id), { confirmLabel: 'Remove', destructive: true })}
+                            className="text-red-400 hover:text-red-600 font-bold text-lg leading-none transition-colors"
+                          >
+                            −
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                   <div className="text-center">
                     <button
                       onClick={addChild}
-                      className="text-emerald-600 hover:text-emerald-700 font-medium"
+                      className="text-emerald-600 hover:text-emerald-700 font-medium text-sm"
                     >
-                      + Add another child
+                      + Add
                     </button>
                   </div>
                 </div>
@@ -2381,6 +2382,25 @@ function ProfilePageInner() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Banner crop modal */}
+      {bannerCropSrc && typeof document !== 'undefined' && (
+        <div className="fixed inset-0 z-[60]">
+          <ImageCropModal
+            imageSrc={bannerCropSrc}
+            aspect={3 / 1}
+            circular={false}
+            title="Position banner photo"
+            onConfirm={blob => {
+              setBannerCropSrc(null);
+              const file = new File([blob], 'banner.jpg', { type: 'image/jpeg' });
+              setBannerFile(file);
+              setBannerPreview(URL.createObjectURL(blob));
+            }}
+            onCancel={() => setBannerCropSrc(null)}
+          />
         </div>
       )}
 

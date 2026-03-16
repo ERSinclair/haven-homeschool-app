@@ -41,24 +41,27 @@ export default function BottomNav() {
       };
 
       try {
-        // Unread message conversations
-        const convRes = await fetch(
-          `${supabaseUrl}/rest/v1/conversations?or=(participant_1.eq.${session.user.id},participant_2.eq.${session.user.id})&select=last_message_by`,
-          { headers }
-        );
-        // Pending connection requests
-        const connRes = await fetch(
-          `${supabaseUrl}/rest/v1/connections?receiver_id=eq.${session.user.id}&status=eq.pending&select=id`,
-          { headers }
-        );
-        const pendingConns = connRes.ok ? (await connRes.json()).length : 0;
-        if (convRes.ok) {
-          const convs = await convRes.json();
-          const unreadMsgs = Array.isArray(convs)
-            ? convs.filter((c: any) => c.last_message_by && c.last_message_by !== session.user.id).length
-            : 0;
-          setMessagesBadge(unreadMsgs + pendingConns);
+        // Count messages sent by others that have not been read yet
+        // Uses read_at IS NULL — accurate even after conversations are opened
+        const [unreadMsgRes, connRes] = await Promise.all([
+          fetch(
+            `${supabaseUrl}/rest/v1/messages?sender_id=neq.${session.user.id}&read_at=is.null&select=conversation_id`,
+            { headers: { ...headers, 'Prefer': 'count=exact', 'Range': '0-0' } }
+          ),
+          fetch(
+            `${supabaseUrl}/rest/v1/connections?receiver_id=eq.${session.user.id}&status=eq.pending&select=id`,
+            { headers }
+          ),
+        ]);
+
+        // Count distinct unread conversations (not individual messages)
+        let unreadConvos = 0;
+        if (unreadMsgRes.ok) {
+          const msgs: { conversation_id: string }[] = await unreadMsgRes.json();
+          unreadConvos = new Set(msgs.map(m => m.conversation_id)).size;
         }
+        const pendingConns = connRes.ok ? (await connRes.json()).length : 0;
+        setMessagesBadge(unreadConvos + pendingConns);
 
         // Pending circle invitations
         const circleRes = await fetch(

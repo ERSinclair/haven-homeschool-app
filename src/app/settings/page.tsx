@@ -231,7 +231,7 @@ export default function SettingsPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-transparent">
       <div className="max-w-md mx-auto px-4 pt-2 pb-8">
-        <AppHeader onBack={() => router.back()} />
+        <AppHeader title="Settings" onBack={() => router.back()} />
       </div>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">

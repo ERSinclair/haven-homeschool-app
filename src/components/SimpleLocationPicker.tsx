@@ -151,7 +151,7 @@ export default function SimpleLocationPicker({
 
         {/* Help Text */}
         <div className="mt-2 text-xs text-gray-500">
-          Start typing your suburb and select from the suggestions (Surf Coast & Geelong area prioritized)
+          Start typing your suburb and select from the suggestions
         </div>
       </div>
     </div>

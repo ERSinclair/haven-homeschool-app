@@ -1,7 +1,7 @@
 'use client';
 import { toast } from '@/lib/toast';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -21,6 +21,7 @@ import { loadSearchRadius } from '@/lib/preferences';
 import ReportBlockModal from '@/components/ReportBlockModal';
 import { DiscoverPageSkeleton } from '@/components/SkeletonLoader';
 import { getCached, setCached } from '@/lib/pageCache';
+import { distanceKm, geocodeSuburb } from '@/lib/geocode';
 
 
 type Family = {
@@ -60,6 +61,8 @@ type Profile = {
   id: string;
   name: string;
   location_name: string;
+  location_lat?: number;
+  location_lng?: number;
   kids_ages: number[];
   status: string;
   bio?: string;
@@ -67,7 +70,6 @@ type Profile = {
 };
 
 type ViewMode = 'list' | 'map';
-type Section = 'families';
 
 type FilterOption = {
   value: string;
@@ -100,17 +102,7 @@ const formatLastActive = (lastActiveStr?: string): string => {
 };
 
 // Calculate distance between two coordinates in km
-function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Radius of the Earth in km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-}
+// calculateDistance removed — use distanceKm from @/lib/geocode
 
 // Get coordinates for common locations — returns null if unknown (do not guess)
 function getLocationCoords(locationName: string): { lat: number; lng: number } | null {
@@ -169,23 +161,30 @@ function EnhancedDiscoverPage() {
   
   // View and filtering
   const [viewMode, setViewMode] = useState<ViewMode>('list');
-  const [activeSection, setActiveSection] = useState<Section>('families');
+
   const [maxDistance, setMaxDistance] = useState(15);
   const [ageRange, setAgeRange] = useState({ min: 0, max: 18 });
-  const [activeTab, setActiveTab] = useState<'all' | 'family' | 'playgroup' | 'teacher' | 'business'>('all');
+  const [mainTab, setMainTab] = useState<'people' | 'activities' | 'business' | null>(null);
+  const [peopleSubFilter, setPeopleSubFilter] = useState<'family' | 'playgroup' | 'teacher' | null>(null);
+  const [activityPosts, setActivityPosts] = useState<any[]>([]);
+  const [activityTagFilter, setActivityTagFilter] = useState<string | null>(null);
+  const [activityPostsLoading, setActivityPostsLoading] = useState(false);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
   const [birthdayConfirm, setBirthdayConfirm] = useState<{ name: string; onConfirm: () => void } | null>(null);
-  const [familyStatusFilter, setFamilyStatusFilter] = useState<string>('all');
+  const [familyStatusFilter, setFamilyStatusFilter] = useState<string | null>(null);
   const [familyCustomFilter, setFamilyCustomFilter] = useState<string>('');
-  const [approachFilter, setApproachFilter] = useState<string>('all');
+  const [approachFilter, setApproachFilter] = useState<string | null>(null);
   const [teacherTypeFilter, setTeacherTypeFilter] = useState<'all' | 'extracurricular' | 'primary' | 'high' | 'other'>('all');
   const [teacherTypeCustom, setTeacherTypeCustom] = useState('');
   const [teacherSubFilter, setTeacherSubFilter] = useState<string>('all');
   const [teacherSubCustom, setTeacherSubCustom] = useState('');
-  const [businessTypeFilter, setBusinessTypeFilter] = useState<string>('all');
+  const [businessTypeFilter, setBusinessTypeFilter] = useState<string | null>(null);
+  const [businessSubFilter, setBusinessSubFilter] = useState<'business' | 'spaces' | null>(null);
+  const [spacesSubFilter, setSpacesSubFilter] = useState<'commercial' | 'private' | null>(null);
   const [businessCustomFilter, setBusinessCustomFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
+
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [dismissedBanner, setDismissedBanner] = useState(false);
   const [locationMissing, setLocationMissing] = useState(false);
@@ -229,12 +228,16 @@ function EnhancedDiscoverPage() {
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const session = getStoredSession();
     if (!session || !supabaseUrl || !supabaseKey) return;
-    fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${profileId}&select=*`, {
-      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` }
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data && data[0]) setSelectedFamilyDetails(data[0] as Family);
+    const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+    Promise.all([
+      fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${profileId}&select=*`, { headers: h }).then(r => r.json()),
+      fetch(`${supabaseUrl}/rest/v1/supporters?user_id=eq.${profileId}&select=is_founding`, { headers: h }).then(r => r.ok ? r.json() : []),
+    ])
+      .then(([profileData, supporterData]) => {
+        if (profileData && profileData[0]) {
+          const isFounding = Array.isArray(supporterData) && supporterData[0]?.is_founding === true;
+          setSelectedFamilyDetails({ ...profileData[0], is_founding_supporter: isFounding } as Family);
+        }
       })
       .catch(() => {});
   }, [searchParams]);
@@ -250,33 +253,29 @@ function EnhancedDiscoverPage() {
       return;
     }
 
-    // Simple coordinate mapping for common locations
-    const locationCoords: { [key: string]: [number, number] } = {
-      'Torquay': [-38.3305, 144.3256],
-      'Geelong': [-38.1499, 144.3580],
-      'Ocean Grove': [-38.2575, 144.5208],
-      'Surf Coast': [-38.3000, 144.2500],
-      'Anglesea': [-38.4089, 144.1856],
-      'Lorne': [-38.5433, 143.9781],
-    };
-    
-    const location = profile.location_name;
-    const coords = locationCoords[location] || locationCoords['Torquay']; // Default to Torquay
-    
+    // Use stored profile coordinates (set during onboarding/signup via geocoding)
+    // Fall back to geocoding if coords missing
+    let baseLat: number | null = profile.location_lat ?? null;
+    let baseLng: number | null = profile.location_lng ?? null;
+
+    if (!baseLat || !baseLng) {
+      // Try geocoding via Mapbox/Nominatim
+      const geocoded = await geocodeSuburb(profile.location_name);
+      if (geocoded) { baseLat = geocoded.lat; baseLng = geocoded.lng; }
+    }
+
+    if (!baseLat || !baseLng) {
+      setLocationError('Could not resolve your location — please update your profile');
+      return;
+    }
+
     // Add random offset within 3km for privacy
-    const randomOffset = () => {
-      const angle = Math.random() * 2 * Math.PI;
-      const radius = Math.random() * 3000; // 3km in meters
-      const latOffset = (radius * Math.cos(angle)) / 111320; // meters to degrees lat
-      const lngOffset = (radius * Math.sin(angle)) / (111320 * Math.cos(coords[0] * Math.PI / 180)); // meters to degrees lng
-      return { latOffset, lngOffset };
-    };
-    
-    const offset = randomOffset();
-    setUserLocation({ 
-      lat: coords[0] + offset.latOffset, 
-      lng: coords[1] + offset.lngOffset 
-    });
+    const angle = Math.random() * 2 * Math.PI;
+    const radius = Math.random() * 3000; // 3km in meters
+    const latOffset = (radius * Math.cos(angle)) / 111320;
+    const lngOffset = (radius * Math.sin(angle)) / (111320 * Math.cos(baseLat * Math.PI / 180));
+
+    setUserLocation({ lat: baseLat + latOffset, lng: baseLng + lngOffset });
   };
 
   // Load families and data
@@ -358,31 +357,23 @@ function EnhancedDiscoverPage() {
           }
 
           
-          // Auto-load user location from profile for radius search
-          if (profileData.location_name && !userLocation) {
-            const locationCoords: { [key: string]: [number, number] } = {
-              'Torquay': [-38.3305, 144.3256],
-              'Geelong': [-38.1499, 144.3580],
-              'Ocean Grove': [-38.2575, 144.5208],
-              'Surf Coast': [-38.3000, 144.2500],
-              'Anglesea': [-38.4089, 144.1856],
-              'Lorne': [-38.5433, 143.9781],
-            };
-            
-            const coords = locationCoords[profileData.location_name] || locationCoords['Torquay'];
-            const randomOffset = () => {
+          // Auto-load user location from stored coords (set during onboarding)
+          if (!userLocation) {
+            let baseLat = profileData.location_lat ?? null;
+            let baseLng = profileData.location_lng ?? null;
+            // Geocode if coords missing but location name present
+            if ((!baseLat || !baseLng) && profileData.location_name) {
+              const geocoded = await geocodeSuburb(profileData.location_name);
+              if (geocoded) { baseLat = geocoded.lat; baseLng = geocoded.lng; }
+            }
+            if (baseLat && baseLng) {
               const angle = Math.random() * 2 * Math.PI;
-              const radius = Math.random() * 3000; // 3km in meters
-              const latOffset = (radius * Math.cos(angle)) / 111320;
-              const lngOffset = (radius * Math.sin(angle)) / (111320 * Math.cos(coords[0] * Math.PI / 180));
-              return { latOffset, lngOffset };
-            };
-            
-            const offset = randomOffset();
-            setUserLocation({ 
-              lat: coords[0] + offset.latOffset, 
-              lng: coords[1] + offset.lngOffset 
-            });
+              const r = Math.random() * 3000;
+              setUserLocation({
+                lat: baseLat + (r * Math.cos(angle)) / 111320,
+                lng: baseLng + (r * Math.sin(angle)) / (111320 * Math.cos(baseLat * Math.PI / 180)),
+              });
+            }
           }
         } else {
           // No profile found, redirect to complete signup
@@ -411,13 +402,27 @@ function EnhancedDiscoverPage() {
         }
         
         const familiesData = await familiesRes.json();
-        
+
+        // Fetch founding supporter flags (is_founding lives on supporters table, not profiles)
+        let foundingMap: Record<string, boolean> = {};
+        try {
+          const supRes = await fetch(
+            `${supabaseUrl}/rest/v1/supporters?select=user_id,is_founding`,
+            { headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` } }
+          );
+          if (supRes.ok) {
+            const supData: { user_id: string; is_founding: boolean }[] = await supRes.json();
+            supData.forEach(s => { foundingMap[s.user_id] = s.is_founding; });
+          }
+        } catch { /* non-fatal */ }
+
         // Use real last_active_at for presence indicators
         const familiesWithStatus = familiesData.map((family: Family) => {
           const lastActive = family.last_active_at || family.updated_at;
           const diffMs = lastActive ? Date.now() - new Date(lastActive).getTime() : Infinity;
           return {
             ...family,
+            is_founding_supporter: foundingMap[family.id] ?? false,
             is_online: diffMs < 15 * 60 * 1000, // Active within 15 min
             last_active: lastActive,
             user_type: family.user_type || 'family',
@@ -482,7 +487,7 @@ function EnhancedDiscoverPage() {
           : getLocationCoords(family.location_name);
         // If coords can't be resolved, show them — don't silently hide real users
         if (!familyCoords) return true;
-        const distance = calculateDistance(
+        const distance = distanceKm(
           activeLocation.lat,
           activeLocation.lng,
           familyCoords.lat,
@@ -506,58 +511,71 @@ function EnhancedDiscoverPage() {
       });
     }
 
-    // Account type tab filter
-    if (activeTab !== 'all') {
+    // Main tab filter
+    if (mainTab === 'people') {
       filtered = filtered.filter(family => {
-        const userType = family.user_type || 'family';
-        // facility maps to business; playgroups now have their own tab
-        const effectiveType = userType === 'facility' ? 'business' : userType;
-        return effectiveType === activeTab;
+        const ut = family.user_type || 'family';
+        return ut === 'family' || ut === 'playgroup' || ut === 'teacher';
+      });
+      if (peopleSubFilter === 'family') {
+        filtered = filtered.filter(family => {
+          const ut = family.user_type || 'family';
+          return ut === 'family';
+        });
+      } else if (peopleSubFilter === 'playgroup') {
+        filtered = filtered.filter(family => family.user_type === 'playgroup');
+      } else if (peopleSubFilter === 'teacher') {
+        filtered = filtered.filter(family => family.user_type === 'teacher');
+      }
+    } else if (mainTab === 'business') {
+      filtered = filtered.filter(family => {
+        const ut = family.user_type || 'family';
+        return ut === 'business' || ut === 'facility';
+      });
+    } else if (mainTab === 'activities') {
+      filtered = []; // Activities tab shows posts, not profiles
+    }
+
+    // Family status sub-filter
+    const showFamilyFilters = mainTab === 'people' && peopleSubFilter === 'family';
+    if (showFamilyFilters) {
+      filtered = filtered.filter(family => {
+        const ut = family.user_type || 'family';
+        return ut === 'family' || ut === 'playgroup';
       });
     }
-
-    // Family status sub-filter (only when Families tab is active)
-    // Playgroups now have their own tab — exclude them from Families tab
-    if (activeTab === 'family') {
-      filtered = filtered.filter(family => !family.user_type || family.user_type === 'family');
-    }
-    if (activeTab === 'family' && familyStatusFilter !== 'all') {
-      {
-        filtered = filtered.filter(family => !family.user_type || family.user_type === 'family');
-        const knownStatuses = ['new', 'considering', 'experienced'];
-        if (familyStatusFilter === 'other') {
-          // Show families whose status doesn't match any known value
-          filtered = filtered.filter(family => {
-            const statuses = Array.isArray(family.status)
-              ? family.status
-              : typeof family.status === 'string'
-                ? family.status.split(',').map((s: string) => s.trim())
-                : [];
-            return !statuses.some((s: string) => knownStatuses.includes(s));
-          });
-          // Further narrow by custom text if provided
-          if (familyCustomFilter.trim()) {
-            const q = familyCustomFilter.toLowerCase();
-            filtered = filtered.filter(f =>
-              (f.family_name || '').toLowerCase().includes(q) ||
-              (f.bio || '').toLowerCase().includes(q)
-            );
-          }
-        } else {
-          filtered = filtered.filter(family => {
-            const statuses = Array.isArray(family.status)
-              ? family.status
-              : typeof family.status === 'string'
-                ? family.status.split(',').map((s: string) => s.trim())
-                : [];
-            return statuses.includes(familyStatusFilter);
-          });
+    if (showFamilyFilters && familyStatusFilter !== null) {
+      const knownStatuses = ['new', 'considering', 'experienced'];
+      if (familyStatusFilter === 'other') {
+        filtered = filtered.filter(family => {
+          const statuses = Array.isArray(family.status)
+            ? family.status
+            : typeof family.status === 'string'
+              ? family.status.split(',').map((s: string) => s.trim())
+              : [];
+          return !statuses.some((s: string) => knownStatuses.includes(s));
+        });
+        if (familyCustomFilter.trim()) {
+          const q = familyCustomFilter.toLowerCase();
+          filtered = filtered.filter(f =>
+            (f.family_name || '').toLowerCase().includes(q) ||
+            (f.bio || '').toLowerCase().includes(q)
+          );
         }
+      } else {
+        filtered = filtered.filter(family => {
+          const statuses = Array.isArray(family.status)
+            ? family.status
+            : typeof family.status === 'string'
+              ? family.status.split(',').map((s: string) => s.trim())
+              : [];
+          return statuses.includes(familyStatusFilter);
+        });
       }
-    } // end family status sub-filter
+    }
 
-    // Home education approach filter (only when Families tab is active)
-    if ((activeTab === 'all' || activeTab === 'family') && approachFilter !== 'all') {
+    // Home education approach filter
+    if (showFamilyFilters && approachFilter !== null) {
       filtered = filtered.filter(family => {
         const approaches = family.homeschool_approaches || [];
         if (approachFilter === 'Other') return approaches.some((a: string) => a === 'Other' || a.startsWith('Other: '));
@@ -566,7 +584,8 @@ function EnhancedDiscoverPage() {
     }
 
     // Teacher type sub-filter
-    if (activeTab === 'teacher' && teacherTypeFilter !== 'all') {
+    const showTeacherFilters = mainTab === 'people' && peopleSubFilter === 'teacher';
+    if (showTeacherFilters && teacherTypeFilter !== 'all') {
       const primaryAges = ['5–7', '8–10', '11–13'];
       const highAges = ['14–16', '17–18'];
 
@@ -618,13 +637,22 @@ function EnhancedDiscoverPage() {
       }
     }
 
+    // Business sub-filter (Spaces vs Business accounts)
+    if (mainTab === 'business' && businessSubFilter === 'spaces') {
+      // Commercial spaces = business profiles with venue/space keywords
+      filtered = filtered.filter(family => {
+        const text = ((family.services || '') + ' ' + (family.bio || '')).toLowerCase();
+        return ['venue', 'space', 'hire', 'facility', 'hall', 'studio', 'room'].some(t => text.includes(t));
+      });
+    }
+
     // Business type sub-filter
-    if (activeTab === 'business' && businessTypeFilter !== 'all') {
+    if (mainTab === 'business' && businessSubFilter === 'business' && businessTypeFilter !== null) {
       const typeMap: Record<string, string[]> = {
         'curriculum': ['curriculum', 'resource', 'books', 'materials', 'educational', 'education'],
         'supplies':   ['supplies', 'supply', 'stationery', 'equipment', 'craft'],
+        'spaces':     ['venue', 'space', 'hire', 'facility', 'hall', 'studio', 'room', 'space hire'],
         'classes':    ['classes', 'programs', 'group', 'lessons', 'activities'],
-        'venue':      ['venue', 'space', 'hire', 'facility', 'hall', 'studio'],
         'therapy':    ['therapy', 'support', 'counselling', 'speech', 'occupational', 'psychology'],
       };
       filtered = filtered.filter(family => {
@@ -660,7 +688,7 @@ function EnhancedDiscoverPage() {
         ? { lat: family.location_lat, lng: family.location_lng }
         : getLocationCoords(family.location_name);
       if (!coords) return 9999;
-      return calculateDistance(sortActiveLocation.lat, sortActiveLocation.lng, coords.lat, coords.lng);
+      return distanceKm(sortActiveLocation.lat, sortActiveLocation.lng, coords.lat, coords.lng);
     };
 
     const sortedFamilies = [...filtered].sort((a, b) => {
@@ -693,7 +721,7 @@ function EnhancedDiscoverPage() {
     });
 
     setFilteredFamilies(sortedFamilies);
-  }, [families, locationFilter, ageRange, activeTab, familyStatusFilter, familyCustomFilter, approachFilter, teacherTypeFilter, teacherTypeCustom, teacherSubFilter, teacherSubCustom, businessTypeFilter, businessCustomFilter, hiddenFamilies, profile, userLocation, browseLocation, searchRadius, connectionRequests, searchQuery]);
+  }, [families, locationFilter, ageRange, mainTab, peopleSubFilter, familyStatusFilter, familyCustomFilter, approachFilter, teacherTypeFilter, teacherTypeCustom, teacherSubFilter, teacherSubCustom, businessTypeFilter, businessCustomFilter, hiddenFamilies, profile, userLocation, browseLocation, searchRadius, connectionRequests, searchQuery]);
 
   // Log 'other' box entries to search_insights table (debounced 1.5s)
   useEffect(() => {
@@ -1088,6 +1116,46 @@ function EnhancedDiscoverPage() {
     }
   };
 
+  // Close filter panel on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setShowFilters(false);
+      }
+    };
+    if (showFilters) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showFilters]);
+
+  // Load activity posts for Activities tab
+  useEffect(() => {
+    if (mainTab !== 'activities') return;
+    const load = async () => {
+      setActivityPostsLoading(true);
+      try {
+        const session = getStoredSession();
+        if (!session) return;
+        const sUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const sKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const res = await fetch(
+          `${sUrl}/rest/v1/community_posts?tag=eq.activities&order=created_at.desc&select=*`,
+          { headers: { 'apikey': sKey!, 'Authorization': `Bearer ${session.access_token}` } }
+        );
+        const posts: any[] = res.ok ? await res.json() : [];
+        const activeLocation = browseLocation ?? userLocation;
+        const filtered = posts.filter(post => {
+          if (!activeLocation) return true;
+          if (!post.location_lat || !post.location_lng) return true;
+          return distanceKm(activeLocation.lat, activeLocation.lng, post.location_lat, post.location_lng) <= searchRadius;
+        });
+        setActivityPosts(filtered);
+      } finally {
+        setActivityPostsLoading(false);
+      }
+    };
+    load();
+  }, [mainTab, browseLocation, userLocation, searchRadius]);
+
   const handleShare = async () => {
     const shareData = {
       title: 'Haven – Find your parent community',
@@ -1224,7 +1292,7 @@ function EnhancedDiscoverPage() {
     <ProtectedRoute>
     <div className="min-h-screen bg-transparent">
       <div className="max-w-md mx-auto px-4 pb-8 pt-2">
-        <AppHeader />
+        <AppHeader title="Discover" />
 
         {/* Discoverability warning */}
         {locationMissing && (
@@ -1239,7 +1307,347 @@ function EnhancedDiscoverPage() {
           </div>
         )}
 
-        {/* Search bar */}
+        {/* Main category tabs — always visible */}
+        <div className="flex justify-evenly gap-1 mb-2 bg-white rounded-xl p-1 border border-gray-200">
+          {([
+            { value: 'people', label: 'People' },
+            { value: 'activities', label: 'Activities' },
+            { value: 'business', label: 'Business & Spaces' },
+          ] as const).map(tab => (
+            <button
+              key={tab.value}
+              onClick={() => {
+                const next = mainTab === tab.value ? null : tab.value;
+                setMainTab(next);
+                setShowFilters(false);
+                setPeopleSubFilter(null);
+                setFamilyStatusFilter(null);
+                setFamilyCustomFilter('');
+                setApproachFilter(null);
+                setTeacherTypeFilter('all');
+                setTeacherTypeCustom('');
+                setTeacherSubFilter('all');
+                setTeacherSubCustom('');
+                setBusinessTypeFilter(null);
+                setBusinessSubFilter(null);
+                setSpacesSubFilter(null);
+                setBusinessCustomFilter('');
+                setActivityTagFilter(null);
+              }}
+              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap text-center ${
+                mainTab === tab.value
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Drill-down level 2 — People: Family / Playgroup / Teachers */}
+        {mainTab === 'people' && (
+          <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+            {([
+              { value: 'family' as const, label: 'Family' },
+              { value: 'playgroup' as const, label: 'Playgroup' },
+              { value: 'teacher' as const, label: 'Teachers' },
+            ]).map(f => (
+              <button
+                key={f.value}
+                onClick={() => {
+                  if (peopleSubFilter === f.value) {
+                    setPeopleSubFilter(null);
+                    setFamilyStatusFilter(null);
+                    setFamilyCustomFilter('');
+                    setApproachFilter(null);
+                    setTeacherTypeFilter('all');
+                    setTeacherTypeCustom('');
+                    setTeacherSubFilter('all');
+                    setTeacherSubCustom('');
+                  } else {
+                    setPeopleSubFilter(f.value);
+                    setFamilyStatusFilter(null);
+                    setFamilyCustomFilter('');
+                    setApproachFilter(null);
+                    setTeacherTypeFilter('all');
+                    setTeacherTypeCustom('');
+                    setTeacherSubFilter('all');
+                    setTeacherSubCustom('');
+                  }
+                }}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
+                  peopleSubFilter === f.value
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Drill-down level 3 — Family status */}
+        {mainTab === 'people' && peopleSubFilter === 'family' && (
+          <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+            {([
+              { value: 'new',         label: 'Home-Ed' },
+              { value: 'considering', label: 'Community' },
+              { value: 'new_to_area', label: 'New to Area' },
+              { value: 'other',       label: 'Other' },
+            ]).map(chip => (
+              <button
+                key={chip.value}
+                onClick={() => {
+                  if (familyStatusFilter === chip.value) {
+                    setFamilyStatusFilter(null);
+                    setFamilyCustomFilter('');
+                    setApproachFilter(null);
+                  } else {
+                    setFamilyStatusFilter(chip.value);
+                    setFamilyCustomFilter('');
+                    setApproachFilter(null);
+                  }
+                }}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
+                  familyStatusFilter === chip.value
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {mainTab === 'people' && peopleSubFilter === 'family' && familyStatusFilter === 'other' && (
+          <input
+            type="text"
+            value={familyCustomFilter}
+            onChange={e => setFamilyCustomFilter(e.target.value)}
+            placeholder="Describe what you're looking for..."
+            className="w-full px-3 py-2 mb-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+          />
+        )}
+
+        {/* Drill-down level 4 — Home-Ed approach */}
+        {mainTab === 'people' && peopleSubFilter === 'family' && familyStatusFilter === 'new' && (
+          <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+            {(['Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Other'] as const).map(approach => (
+              <button
+                key={approach}
+                onClick={() => setApproachFilter(approachFilter === approach ? null : approach)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
+                  approachFilter === approach
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                }`}
+              >
+                {approach}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Drill-down level 3 — Teacher type */}
+        {mainTab === 'people' && peopleSubFilter === 'teacher' && (
+          <>
+            <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+              {([
+                { value: 'extracurricular', label: 'Extracurricular' },
+                { value: 'primary',         label: 'Primary School' },
+                { value: 'high',            label: 'High School' },
+                { value: 'other',           label: 'Other' },
+              ] as const).map(chip => (
+                <button
+                  key={chip.value}
+                  onClick={() => {
+                    if (teacherTypeFilter === chip.value) {
+                      setTeacherTypeFilter('all');
+                      setTeacherTypeCustom('');
+                      setTeacherSubFilter('all');
+                      setTeacherSubCustom('');
+                    } else {
+                      setTeacherTypeFilter(chip.value);
+                      setTeacherTypeCustom('');
+                      setTeacherSubFilter('all');
+                      setTeacherSubCustom('');
+                    }
+                  }}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
+                    teacherTypeFilter === chip.value
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            {teacherTypeFilter === 'other' && (
+              <input type="text" value={teacherTypeCustom} onChange={e => setTeacherTypeCustom(e.target.value)}
+                placeholder="Describe what you're looking for..."
+                className="w-full px-3 py-2 mb-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            )}
+            {teacherTypeFilter === 'extracurricular' && (
+              <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+                {(['Music', 'Sport', 'Arts', 'Other'] as const).map(sub => (
+                  <button key={sub}
+                    onClick={() => { setTeacherSubFilter(teacherSubFilter === sub ? 'all' : sub); setTeacherSubCustom(''); }}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${teacherSubFilter === sub ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'}`}>
+                    {sub}
+                  </button>
+                ))}
+              </div>
+            )}
+            {teacherTypeFilter === 'extracurricular' && teacherSubFilter === 'Other' && (
+              <input type="text" value={teacherSubCustom} onChange={e => setTeacherSubCustom(e.target.value)}
+                placeholder="Describe what you're looking for..."
+                className="w-full px-3 py-2 mb-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            )}
+            {teacherTypeFilter === 'high' && (
+              <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+                {(['Math', 'English', 'Other'] as const).map(sub => (
+                  <button key={sub}
+                    onClick={() => { setTeacherSubFilter(teacherSubFilter === sub ? 'all' : sub); setTeacherSubCustom(''); }}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${teacherSubFilter === sub ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'}`}>
+                    {sub}
+                  </button>
+                ))}
+              </div>
+            )}
+            {teacherTypeFilter === 'high' && teacherSubFilter === 'Other' && (
+              <input type="text" value={teacherSubCustom} onChange={e => setTeacherSubCustom(e.target.value)}
+                placeholder="Describe what you're looking for..."
+                className="w-full px-3 py-2 mb-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            )}
+          </>
+        )}
+
+        {/* Drill-down — Activities sub-filter */}
+        {mainTab === 'activities' && (
+          <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+            {([
+              { value: 'market', label: 'Market & Fair' },
+              { value: 'local',  label: 'Local' },
+              { value: 'other',  label: 'Other' },
+            ]).map(chip => (
+              <button
+                key={chip.value}
+                onClick={() => setActivityTagFilter(activityTagFilter === chip.value ? null : chip.value)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
+                  activityTagFilter === chip.value
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Drill-down — Business & Spaces level 2 */}
+        {mainTab === 'business' && (
+          <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+            {([
+              { value: 'business' as const, label: 'Business' },
+              { value: 'spaces'   as const, label: 'Spaces' },
+            ]).map(chip => (
+              <button
+                key={chip.value}
+                onClick={() => {
+                  if (businessSubFilter === chip.value) {
+                    setBusinessSubFilter(null);
+                    setBusinessTypeFilter(null);
+                    setSpacesSubFilter(null);
+                    setBusinessCustomFilter('');
+                  } else {
+                    setBusinessSubFilter(chip.value);
+                    setBusinessTypeFilter(null);
+                    setSpacesSubFilter(null);
+                    setBusinessCustomFilter('');
+                  }
+                }}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
+                  businessSubFilter === chip.value
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Drill-down — Business level 3: Curriculum / Supplies / Other */}
+        {mainTab === 'business' && businessSubFilter === 'business' && (
+          <>
+            <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+              {([
+                { value: 'curriculum', label: 'Curriculum' },
+                { value: 'supplies',   label: 'Supplies' },
+                { value: 'other',      label: 'Other' },
+              ]).map(chip => (
+                <button
+                  key={chip.value}
+                  onClick={() => { setBusinessTypeFilter(businessTypeFilter === chip.value ? null : chip.value); setBusinessCustomFilter(''); }}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
+                    businessTypeFilter === chip.value
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            {businessTypeFilter === 'other' && (
+              <input type="text" value={businessCustomFilter} onChange={e => setBusinessCustomFilter(e.target.value)}
+                placeholder="Describe what you're looking for..."
+                className="w-full px-3 py-2 mb-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
+            )}
+          </>
+        )}
+
+        {/* Drill-down — Spaces level 3: Commercial / Private */}
+        {mainTab === 'business' && businessSubFilter === 'spaces' && (
+          <>
+            <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+              {([
+                { value: 'commercial' as const, label: 'Commercial' },
+                { value: 'private'    as const, label: 'Private' },
+              ]).map(chip => (
+                <button
+                  key={chip.value}
+                  onClick={() => setSpacesSubFilter(spacesSubFilter === chip.value ? null : chip.value)}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
+                    spacesSubFilter === chip.value
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            {spacesSubFilter === 'private' && (
+              <div className="flex items-center justify-between mb-2 px-1">
+                <span className="text-xs text-gray-400">Private spaces are listed in the marketplace</span>
+                <button
+                  onClick={() => router.push('/exchange?category=spaces')}
+                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 px-2.5 py-1 bg-emerald-50 rounded-lg border border-emerald-100"
+                >
+                  List a space
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Search bar + Filter toggle */}
         <div className="flex items-center gap-2 mb-2">
           <div className="relative flex-1">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1249,7 +1657,11 @@ function EnhancedDiscoverPage() {
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search families, locations..."
+              placeholder={
+                mainTab === 'activities' ? 'Search activities...' :
+                mainTab === 'business' ? 'Search businesses, spaces...' :
+                'Search people, locations...'
+              }
               className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
             {searchQuery && (
@@ -1265,290 +1677,133 @@ function EnhancedDiscoverPage() {
           </div>
           <button
             onClick={() => setShowFilters(v => !v)}
-            className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 whitespace-nowrap"
+            className={`flex items-center gap-1 px-3 py-2 border rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              showFilters
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-white border-gray-200 text-gray-600'
+            }`}
           >
-            {showFilters ? '- Filter' : '+ Filter'}
+            {showFilters ? '− Filter' : '+ Filter'}
           </button>
         </div>
 
-        {/* Collapsible filter panel */}
-        {showFilters && (<>
-
-        {/* Account type tab bar */}
-        <div className="flex justify-evenly mb-2 bg-white rounded-xl p-0.5 border border-gray-200">
-          {([
-            { value: 'all',       label: 'All' },
-            { value: 'family',    label: 'Families' },
-            { value: 'playgroup', label: 'Playgroup' },
-            { value: 'teacher',   label: 'Teachers' },
-            { value: 'business',  label: 'Business' },
-          ] as const).map(tab => (
+        {/* Contextual action row */}
+        {mainTab === 'activities' && (
+          <div className="flex justify-end mb-2">
             <button
-              key={tab.value}
-              onClick={() => {
-                setActiveTab(tab.value);
-                setFamilyStatusFilter('all');
-                setFamilyCustomFilter('');
-                setApproachFilter('all');
-                setTeacherTypeFilter('all');
-                setTeacherTypeCustom('');
-                setTeacherSubFilter('all');
-                setTeacherSubCustom('');
-                setBusinessTypeFilter('all');
-                setBusinessCustomFilter('');
-              }}
-              className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${
-                activeTab === tab.value
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              onClick={() => router.push('/board?tab=activities')}
+              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 px-3 py-1.5 bg-emerald-50 rounded-xl border border-emerald-100"
             >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Family status chips — shown when Families tab active */}
-        {activeTab === 'family' && (
-          <>
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
-              {([
-                { value: 'all',          label: 'All' },
-                { value: 'new',          label: 'Home Education' },
-                { value: 'social',       label: 'Social Activities' },
-                { value: 'considering',  label: 'Community' },
-                { value: 'new_to_area',  label: 'New to Area' },
-                { value: 'experienced',  label: 'Extracurricular' },
-                { value: 'other',        label: 'Other' },
-              ] as const).map(chip => (
-                <button
-                  key={chip.value}
-                  onClick={() => {
-                    setFamilyStatusFilter(chip.value);
-                    setFamilyCustomFilter('');
-                    if (chip.value !== 'new') setApproachFilter('all');
-                  }}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    familyStatusFilter === chip.value
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-            {/* Custom description input — shown when Other is selected */}
-            {familyStatusFilter === 'other' && (
-              <div className="mb-3">
-                <input
-                  type="text"
-                  value={familyCustomFilter}
-                  onChange={e => setFamilyCustomFilter(e.target.value)}
-                  placeholder="Describe what you're looking for..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Education approach chips — only shown when Home Ed filter is active */}
-        {activeTab === 'family' && familyStatusFilter === 'new' && (
-          <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
-            {(['all', 'Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Other'] as const).map(approach => (
-              <button
-                key={approach}
-                onClick={() => setApproachFilter(approach)}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  approachFilter === approach
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
-                }`}
-              >
-                {approach === 'all' ? 'Any approach' : approach}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Teacher type chips — shown when Teachers tab is active */}
-        {activeTab === 'teacher' && (
-          <>
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
-              {([
-                { value: 'all',             label: 'All' },
-                { value: 'extracurricular', label: 'Extracurricular' },
-                { value: 'primary',         label: 'Primary School' },
-                { value: 'high',            label: 'High School' },
-                { value: 'other',           label: 'Other' },
-              ] as const).map(chip => (
-                <button
-                  key={chip.value}
-                  onClick={() => { setTeacherTypeFilter(chip.value); setTeacherTypeCustom(''); setTeacherSubFilter('all'); setTeacherSubCustom(''); }}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    teacherTypeFilter === chip.value
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-            {teacherTypeFilter === 'other' && (
-              <div className="mb-3">
-                <input type="text" value={teacherTypeCustom} onChange={e => setTeacherTypeCustom(e.target.value)}
-                  placeholder="Describe what you're looking for..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
-              </div>
-            )}
-
-            {/* Extracurricular sub-filter */}
-            {teacherTypeFilter === 'extracurricular' && (
-              <>
-                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
-                  {(['all', 'Music', 'Sport', 'Arts', 'Other'] as const).map(sub => (
-                    <button
-                      key={sub}
-                      onClick={() => { setTeacherSubFilter(sub); setTeacherSubCustom(''); }}
-                      className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                        teacherSubFilter === sub
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
-                      }`}
-                    >
-                      {sub === 'all' ? 'All' : sub}
-                    </button>
-                  ))}
-                </div>
-                {teacherSubFilter === 'Other' && (
-                  <div className="mb-3">
-                    <input type="text" value={teacherSubCustom} onChange={e => setTeacherSubCustom(e.target.value)}
-                      placeholder="Describe what you're looking for..."
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* High School sub-filter */}
-            {teacherTypeFilter === 'high' && (
-              <>
-                <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
-                  {(['all', 'Math', 'English', 'Other'] as const).map(sub => (
-                    <button
-                      key={sub}
-                      onClick={() => { setTeacherSubFilter(sub); setTeacherSubCustom(''); }}
-                      className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                        teacherSubFilter === sub
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
-                      }`}
-                    >
-                      {sub === 'all' ? 'All' : sub}
-                    </button>
-                  ))}
-                </div>
-                {teacherSubFilter === 'Other' && (
-                  <div className="mb-3">
-                    <input type="text" value={teacherSubCustom} onChange={e => setTeacherSubCustom(e.target.value)}
-                      placeholder="Describe what you're looking for..."
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-
-        {/* Business type chips — shown when Business tab is active */}
-        {activeTab === 'business' && (
-          <>
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-hide px-4">
-              {([
-                { value: 'all',        label: 'All' },
-                { value: 'curriculum', label: 'Curriculum' },
-                { value: 'supplies',   label: 'Supplies' },
-                { value: 'classes',    label: 'Classes' },
-                { value: 'venue',      label: 'Venue' },
-                { value: 'therapy',    label: 'Therapy' },
-                { value: 'other',      label: 'Other' },
-              ] as const).map(chip => (
-                <button
-                  key={chip.value}
-                  onClick={() => { setBusinessTypeFilter(chip.value); setBusinessCustomFilter(''); }}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    businessTypeFilter === chip.value
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-            {businessTypeFilter === 'other' && (
-              <div className="mb-3">
-                <input type="text" value={businessCustomFilter} onChange={e => setBusinessCustomFilter(e.target.value)}
-                  placeholder="Describe what you're looking for..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent" />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Hidden families hint — always visible when families are hidden */}
-        {hiddenFamilies.length > 0 && (
-          <div className="flex items-center justify-between mb-3 px-1">
-            <span className="text-xs text-gray-400">
-              {hiddenFamilies.length} {hiddenFamilies.length === 1 ? 'family' : 'families'} hidden
-            </span>
-            <button
-              onClick={() => setShowHiddenModal(true)}
-              className="text-xs text-emerald-600 font-medium hover:text-emerald-700"
-            >
-              Manage hidden
+              + Post an activity
             </button>
           </div>
         )}
 
-        {/* Kids age range + Map view */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Kids ages</span>
-            <input
-              type="number" min="0" max="17" value={ageRange.min}
-              onChange={(e) => { const v = parseInt(e.target.value) || 0; setAgeRange(prev => ({ ...prev, min: Math.max(0, Math.min(v, prev.max - 1)) })); }}
-              className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-            />
-            <span className="text-gray-400 text-xs">–</span>
-            <input
-              type="number" min="1" max="18" value={ageRange.max}
-              onChange={(e) => { const v = parseInt(e.target.value) || 18; setAgeRange(prev => ({ ...prev, max: Math.max(prev.min + 1, Math.min(v, 18)) })); }}
-              className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-            />
+
+        {/* Secondary filter panel — radius, age range, location only */}
+        {showFilters && (
+          <div ref={filterPanelRef} className="mb-3 space-y-2 bg-white/60 backdrop-blur-sm rounded-xl border border-white/40 p-3">
+            {hiddenFamilies.length > 0 && mainTab !== 'activities' && (
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs text-gray-400">
+                  {hiddenFamilies.length} {hiddenFamilies.length === 1 ? 'profile' : 'profiles'} hidden
+                </span>
+                <button onClick={() => setShowHiddenModal(true)} className="text-xs text-emerald-600 font-medium hover:text-emerald-700">
+                  Manage hidden
+                </button>
+              </div>
+            )}
+            {mainTab === 'people' && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Kids ages</span>
+                  <input
+                    type="number" min="0" max="17" value={ageRange.min}
+                    onChange={(e) => { const v = parseInt(e.target.value) || 0; setAgeRange(prev => ({ ...prev, min: Math.max(0, Math.min(v, prev.max - 1)) })); }}
+                    className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <span className="text-gray-400 text-xs">–</span>
+                  <input
+                    type="number" min="1" max="18" value={ageRange.max}
+                    onChange={(e) => { const v = parseInt(e.target.value) || 18; setAgeRange(prev => ({ ...prev, max: Math.max(prev.min + 1, Math.min(v, 18)) })); }}
+                    className="w-12 px-1 py-1 text-xs text-center border border-gray-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => setViewMode(v => v === 'list' ? 'map' : 'list')}
+                  className="text-xs text-gray-500 hover:text-emerald-600 transition-colors font-medium whitespace-nowrap"
+                >
+                  {viewMode === 'list' ? 'Map view' : 'List view'}
+                </button>
+              </div>
+            )}
+            <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} alwaysOpen />
           </div>
-          <button
-            onClick={() => setViewMode(v => v === 'list' ? 'map' : 'list')}
-            className="text-xs text-gray-500 hover:text-emerald-600 transition-colors font-medium whitespace-nowrap"
-          >
-            {viewMode === 'list' ? 'Map view' : 'List view'}
-          </button>
-        </div>
-
-        {/* Location search */}
-        <div className="mb-2">
-          <BrowseLocation current={browseLocation} onChange={loc => setBrowseLocation(loc)} alwaysOpen />
-        </div>
-
-        </>)} {/* end collapsible filters */}
+        )}
 
         {/* Content */}
         <div>
 
-        {/* Map View */}
-        {viewMode === 'map' && (
+        {/* Activities Tab — shows board posts */}
+        {mainTab === 'activities' && (
+          <div className="space-y-3">
+            {activityPostsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-white/60 rounded-xl border border-white/40 p-4 animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
+                    <div className="h-3 bg-gray-100 rounded w-1/2 mb-2" />
+                    <div className="h-3 bg-gray-100 rounded w-3/4" />
+                  </div>
+                ))}
+              </div>
+            ) : activityPosts.filter(p => activityTagFilter === null || (p.activity_type || 'other') === activityTagFilter).length === 0 ? (
+              <div className="text-center py-12 px-6">
+                <div className="w-16 h-16 bg-emerald-50 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <p className="font-semibold text-gray-800 mb-1">No activities posted nearby yet</p>
+                <p className="text-sm text-gray-500 mb-4">Know of a market, fair or local activity? Share it with the community.</p>
+                <button
+                  onClick={() => router.push('/board?tab=activities')}
+                  className="px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl"
+                >
+                  Post an activity
+                </button>
+              </div>
+            ) : (
+              activityPosts
+                .filter(p => activityTagFilter === null || (p.activity_type || 'other') === activityTagFilter)
+                .map(post => (
+                  <div key={post.id} className="bg-white/60 backdrop-blur-sm rounded-xl border border-white/40 shadow-sm p-4">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <p className="font-semibold text-gray-900 text-sm leading-tight">{post.title || post.content?.slice(0, 60)}</p>
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg flex-shrink-0 capitalize">
+                        {post.activity_type || 'Activity'}
+                      </span>
+                    </div>
+                    {post.content && post.title && (
+                      <p className="text-xs text-gray-500 line-clamp-2 mb-2">{post.content}</p>
+                    )}
+                    {post.location_name && (
+                      <div className="flex items-center gap-1 text-xs text-gray-400">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        {post.location_name}
+                      </div>
+                    )}
+                  </div>
+                ))
+            )}
+          </div>
+        )}
+
+        {/* Map View — People + Business tabs only */}
+        {mainTab !== 'activities' && viewMode === 'map' && (
           <div className="space-y-4 pb-6">
             <FamilyMap 
               families={filteredFamilies}
@@ -1562,49 +1817,21 @@ function EnhancedDiscoverPage() {
           </div>
         )}
 
-        {/* List View */}
-        {viewMode === 'list' && (
+        {/* List View — People + Business tabs only */}
+        {mainTab !== 'activities' && viewMode === 'list' && (
           <div className="space-y-2">
             {filteredFamilies.length === 0 ? (
-              activeTab === 'playgroup' ? (
-                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">No playgroups nearby yet</p>
-                  <p className="text-sm text-gray-500 mb-4">Run a playgroup? Sign up and list it here so local families can find you.</p>
-                  <button
-                    onClick={handleShare}
-                    className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all"
-                  >
-                    Share Haven
-                  </button>
-                </div>
-              ) : activeTab === 'teacher' ? (
-                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">No teachers nearby yet</p>
-                  <p className="text-sm text-gray-500 mb-4">Know a tutor or educator? Share Haven with them.</p>
-                  <button
-                    onClick={handleShare}
-                    className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all"
-                  >
-                    Share Haven
-                  </button>
-                </div>
-              ) : activeTab === 'business' ? (
-                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">No businesses nearby yet</p>
+              mainTab === 'business' ? (
+                <div className="text-center py-12 px-6">
+                  <p className="font-semibold text-gray-800 mb-1">No businesses or spaces nearby yet</p>
                   <p className="text-sm text-gray-500 mb-4">Home education-friendly businesses will appear here as Haven grows in your area.</p>
-                  <button
-                    onClick={handleShare}
-                    className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all"
-                  >
-                    Share Haven
-                  </button>
+                  <button onClick={handleShare} className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all">Share Haven</button>
                 </div>
               ) : (
-                <div className="text-center py-12 px-6">                  <p className="font-semibold text-gray-800 mb-1">You're one of the first!</p>
+                <div className="text-center py-12 px-6">
+                  <p className="font-semibold text-gray-800 mb-1">You're one of the first!</p>
                   <p className="text-sm text-gray-500 mb-4">Haven is just getting started in your area. Every community starts with one connection.</p>
-                  <button
-                    onClick={handleShare}
-                    className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all"
-                  >
-                    Share Haven
-                  </button>
+                  <button onClick={handleShare} className="inline-flex items-center gap-2 bg-white text-emerald-700 border border-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-50 active:scale-[0.97] transition-all">Share Haven</button>
                 </div>
               )
             ) : (
