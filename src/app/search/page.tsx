@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -16,7 +18,6 @@ type ProfileResult = {
   location_name: string;
   avatar_url?: string;
   bio?: string;
-  interests?: string[];
   kids_ages?: number[];
 };
 

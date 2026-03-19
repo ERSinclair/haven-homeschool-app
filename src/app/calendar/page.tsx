@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -307,6 +309,7 @@ function CalendarContent() {
   const [movingNote, setMovingNote] = useState<CalNote | null>(null);
   const [moveTargetDate, setMoveTargetDate] = useState('');
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
 
   const loadCalendarData = useCallback(async () => {
     const session = getStoredSession();
@@ -933,29 +936,41 @@ function CalendarContent() {
             </div>
           )}
 
-          {upcoming.length > 0 && (
-            <div className="mb-5">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Next 7 days</p>
-              <div className="space-y-2">
-                {upcoming.map(item => (
+          {upcoming.length > 0 && (() => {
+            const UPCOMING_LIMIT = 3;
+            const visibleUpcoming = showAllUpcoming ? upcoming : upcoming.slice(0, UPCOMING_LIMIT);
+            return (
+              <div className="mb-5">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Next 7 days</p>
+                <div className="space-y-2">
+                  {visibleUpcoming.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleItemClick(item)}
+                      className="w-full text-left bg-white border border-gray-100 rounded-xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3"
+                    >
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${DOT_COLORS[item.type]}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 truncate">{item.title}</p>
+                        <p className="text-xs text-gray-500">{formatDateLong(item.date)}{item.time ? ` · ${formatTime(item.time)}` : ''}</p>
+                      </div>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${LABEL_COLORS[item.type]}`}>
+                        {TYPE_LABELS[item.type]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {upcoming.length > UPCOMING_LIMIT && (
                   <button
-                    key={item.id}
-                    onClick={() => handleItemClick(item)}
-                    className="w-full text-left bg-white border border-gray-100 rounded-xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3"
+                    onClick={() => setShowAllUpcoming(v => !v)}
+                    className="mt-2 w-full text-xs font-semibold text-emerald-600 hover:text-emerald-700 py-1.5"
                   >
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${DOT_COLORS[item.type]}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{item.title}</p>
-                      <p className="text-xs text-gray-500">{formatDateLong(item.date)}{item.time ? ` · ${formatTime(item.time)}` : ''}</p>
-                    </div>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${LABEL_COLORS[item.type]}`}>
-                      {TYPE_LABELS[item.type]}
-                    </span>
+                    {showAllUpcoming ? 'Show less' : `Show ${upcoming.length - UPCOMING_LIMIT} more`}
                   </button>
-                ))}
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* View mode toggle */}
           <div className="flex bg-gray-100 rounded-xl p-0.5 mb-3">

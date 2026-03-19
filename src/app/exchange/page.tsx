@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
@@ -381,6 +383,7 @@ function ExchangePageInner() {
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsLoaded, setSkillsLoaded] = useState(false);
   const [skillSearchQuery, setSkillSearchQuery] = useState('');
+  const [skillsRadius, setSkillsRadius] = useState(50);
 
   // ── Market state
   const [marketView, setMarketView] = useState<MarketView>('browse');
@@ -568,6 +571,12 @@ function ExchangePageInner() {
   const filteredSkills = skillProfiles.filter(p => {
     if (skillsFilter === 'teaching' && (!p.skills_offered || p.skills_offered.length === 0)) return false;
     if (skillsFilter === 'learning' && (!p.skills_wanted || p.skills_wanted.length === 0)) return false;
+    // Radius filter
+    if (myProfile?.location_lat && myProfile?.location_lng) {
+      if (p.location_lat && p.location_lng) {
+        if (distanceKm(myProfile.location_lat!, myProfile.location_lng!, p.location_lat, p.location_lng) > skillsRadius) return false;
+      }
+    }
     if (skillSearchQuery.trim()) {
       const q = skillSearchQuery.toLowerCase();
       const offered = (p.skills_offered || []).join(' ').toLowerCase();
@@ -654,8 +663,9 @@ function ExchangePageInner() {
                 </button>
               )}
 
-              <div className="mb-3">
-                <div className="flex bg-white rounded-xl p-0.5 border border-gray-200 mb-2">
+              <div className="mb-3 space-y-2">
+                {/* Teaching/Learning filter */}
+                <div className="flex bg-white rounded-xl p-0.5 border border-gray-200">
                   {(['all', 'teaching', 'learning'] as const).map(f => (
                     <button
                       key={f}
@@ -668,6 +678,22 @@ function ExchangePageInner() {
                     </button>
                   ))}
                 </div>
+                {/* Radius chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+                  <span className="text-xs text-gray-400 flex-shrink-0">Within</span>
+                  {[10, 25, 50, 100, 250].map(r => (
+                    <button
+                      key={r}
+                      onClick={() => setSkillsRadius(r)}
+                      className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        skillsRadius === r ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                      }`}
+                    >
+                      {r}km
+                    </button>
+                  ))}
+                </div>
+                {/* Search */}
                 <input
                   value={skillSearchQuery}
                   onChange={e => setSkillSearchQuery(e.target.value)}
@@ -707,47 +733,65 @@ function ExchangePageInner() {
               ) : (
                 <div className="space-y-3">
                   {filteredSkills.map(p => (
-                    <button
+                    <div
                       key={p.id}
-                      onClick={() => router.push(`/u/${p.id}`)}
-                      className="w-full bg-white/60 backdrop-blur-sm rounded-xl border border-white/40 shadow-sm active:scale-[0.99] transition-all overflow-hidden text-left"
+                      className="bg-white/60 backdrop-blur-sm rounded-xl border border-white/40 shadow-sm overflow-hidden"
                     >
-                      <div className="flex items-start gap-3 px-3 py-3">
-                        <div className="flex-shrink-0">
-                          <AvatarUpload userId={p.id} currentAvatarUrl={p.avatar_url} name={p.family_name || p.display_name || 'Family'} size="lg" editable={false} viewable={false} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 text-sm leading-tight truncate mb-0.5">
-                            {p.display_name || (p.family_name ? p.family_name.split(' ')[0] : '') || p.family_name}
-                          </p>
-                          <div className="flex items-center gap-1 mb-2">
-                            <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            <span className="text-xs text-gray-400 truncate">{p.location_name}</span>
+                      <button
+                        onClick={() => router.push(`/u/${p.id}`)}
+                        className="w-full text-left active:scale-[0.99] transition-all"
+                      >
+                        <div className="flex items-start gap-3 px-3 pt-3 pb-2">
+                          <div className="flex-shrink-0">
+                            <AvatarUpload userId={p.id} currentAvatarUrl={p.avatar_url} name={p.family_name || p.display_name || 'Family'} size="lg" editable={false} viewable={false} />
                           </div>
-                          {p.skills_offered && p.skills_offered.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mb-1">
-                              <span className="text-xs text-gray-400 self-center mr-0.5">Teaches</span>
-                              {p.skills_offered.slice(0, 4).map((s, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">{s}</span>
-                              ))}
-                              {p.skills_offered.length > 4 && <span className="text-xs text-gray-400 self-center">+{p.skills_offered.length - 4}</span>}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 text-sm leading-tight truncate mb-0.5">
+                              {p.display_name || (p.family_name ? p.family_name.split(' ')[0] : '') || p.family_name}
+                            </p>
+                            <div className="flex items-center gap-1 mb-2">
+                              <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                              <span className="text-xs text-gray-400 truncate">{p.location_name}</span>
+                              {myProfile?.location_lat && myProfile?.location_lng && p.location_lat && p.location_lng && (
+                                <span className="text-xs text-gray-300 ml-1">
+                                  · {Math.round(distanceKm(myProfile.location_lat!, myProfile.location_lng!, p.location_lat, p.location_lng))}km
+                                </span>
+                              )}
                             </div>
-                          )}
-                          {p.skills_wanted && p.skills_wanted.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              <span className="text-xs text-gray-400 self-center mr-0.5">Wants</span>
-                              {p.skills_wanted.slice(0, 4).map((s, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">{s}</span>
-                              ))}
-                              {p.skills_wanted.length > 4 && <span className="text-xs text-gray-400 self-center">+{p.skills_wanted.length - 4}</span>}
-                            </div>
-                          )}
+                            {p.skills_offered && p.skills_offered.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-1">
+                                <span className="text-xs text-gray-400 self-center mr-0.5">Teaches</span>
+                                {p.skills_offered.slice(0, 4).map((s, i) => (
+                                  <span key={i} className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">{s}</span>
+                                ))}
+                                {p.skills_offered.length > 4 && <span className="text-xs text-gray-400 self-center">+{p.skills_offered.length - 4}</span>}
+                              </div>
+                            )}
+                            {p.skills_wanted && p.skills_wanted.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                <span className="text-xs text-gray-400 self-center mr-0.5">Wants</span>
+                                {p.skills_wanted.slice(0, 4).map((s, i) => (
+                                  <span key={i} className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">{s}</span>
+                                ))}
+                                {p.skills_wanted.length > 4 && <span className="text-xs text-gray-400 self-center">+{p.skills_wanted.length - 4}</span>}
+                              </div>
+                            )}
+                          </div>
                         </div>
+                      </button>
+                      {/* DM button */}
+                      <div className="px-3 pb-3">
+                        <button
+                          onClick={() => router.push(`/messages?open=${p.id}`)}
+                          className="w-full py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 transition-colors"
+                        >
+                          Message
+                        </button>
                       </div>
-                    </button>
+                    </div>
                   ))}
                   <p className="text-center text-xs text-gray-400 pt-2 pb-4">{filteredSkills.length} {filteredSkills.length === 1 ? 'family' : 'families'} with skills nearby</p>
                 </div>
@@ -790,7 +834,7 @@ function ExchangePageInner() {
                   myUserId={myUserId}
                   onBack={() => setMarketView('browse')}
                   onEdit={() => { setEditingListing(selectedListing); setMarketView('edit'); }}
-                  onContact={() => router.push(`/messages?open=${selectedListing.seller_id}`)}
+                  onContact={() => router.push(`/messages?user=${selectedListing.seller_id}&listing_id=${selectedListing.id}`)}
                 />
               )}
 

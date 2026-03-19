@@ -66,6 +66,11 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <Link href="/login" className="text-sm text-emerald-600 hover:underline">
+              Back to Sign In
+            </Link>
+          </div>
           <div className="flex items-center gap-2 pointer-events-none justify-center mb-6">
             <span className="font-bold text-emerald-600 text-4xl" style={{ fontFamily: 'var(--font-fredoka)' }}>
               Haven

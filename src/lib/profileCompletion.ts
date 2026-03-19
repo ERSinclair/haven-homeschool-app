@@ -6,7 +6,6 @@ export interface ProfileData {
   user_type?: string;
   family_name?: string;
   display_name?: string;
-  username?: string;
   location_name?: string;
   status?: string[] | string;
   bio?: string;
@@ -23,7 +22,7 @@ export const checkProfileCompletion = (profile: ProfileData | null): ProfileComp
 
   // Check basic profile data (name, username, location, status)
   const name = profile.family_name || profile.display_name;
-  if (!name || !profile.username || !profile.location_name || !profile.status || 
+  if (!name || !profile.location_name || !profile.status || 
       (Array.isArray(profile.status) && profile.status.length === 0)) {
     return 'about-you';
   }

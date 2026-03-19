@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getStoredSession } from '@/lib/session';
@@ -44,7 +46,6 @@ const TAGS: { value: string; label: string }[] = [
   { value: 'questions',        label: 'Questions' },
   { value: 'resources',        label: 'Resources' },
   { value: 'news',             label: 'News' },
-  { value: 'activities',       label: 'Activities' },
   { value: 'accomplishments',  label: 'Achievements' },
   { value: 'other',            label: 'Other' },
 ];
@@ -132,6 +133,8 @@ function BoardPageInner() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [showCreateActivity, setShowCreateActivity] = useState(false);
+  const [actType, setActType] = useState<'market' | 'local' | 'other' | ''>('');
+  const [actTypeLabel, setActTypeLabel] = useState('');
   const [actTitle, setActTitle] = useState('');
   const [actDescription, setActDescription] = useState('');
   const [actDate, setActDate] = useState('');
@@ -244,7 +247,7 @@ function BoardPageInner() {
 
   // ─── Create activity ──────────────────────────────────────────────────────
   const createActivity = async () => {
-    if (!actTitle.trim() || actPosting) return;
+    if (!actType || actPosting) return;
     setActPosting(true);
     try {
       const session = getStoredSession();
@@ -275,7 +278,9 @@ function BoardPageInner() {
         },
         body: JSON.stringify({
           author_id: session!.user.id,
-          title: actTitle.trim(),
+          activity_type: actType,
+          title: actTitle.trim() || (actType === 'market' ? 'Market & Fair' : actType === 'local' ? 'Local Activity' : actTypeLabel.trim() || 'Other'),
+          ...(actType === 'other' && actTypeLabel.trim() && { type_label: actTypeLabel.trim() }),
           ...(actDescription.trim() && { description: actDescription.trim() }),
           ...(actDate && { activity_date: actDate }),
           ...(actLocation.trim() && { location_name: actLocation.trim() }),
@@ -284,7 +289,7 @@ function BoardPageInner() {
         }),
       });
       if (res.ok) {
-        setActTitle(''); setActDescription(''); setActDate('');
+        setActType(''); setActTypeLabel(''); setActTitle(''); setActDescription(''); setActDate('');
         setActLocation(''); setActLink('');
         setActImageFile(null); setActImagePreview(null);
         setShowCreateActivity(false);
@@ -409,11 +414,11 @@ function BoardPageInner() {
           {/* ── LOCAL ACTIVITIES TAB ─────────────────────────────────────── */}
           {mainTab === 'activities' && (
             <div>
-              <p className="text-emerald-600 text-sm mb-3">Classes, meetups, events happening near you</p>
+
 
               {/* Post activity button */}
               <button
-                onClick={() => setShowCreateActivity(v => !v)}
+                onClick={() => { setShowCreateActivity(v => !v); setActType(''); setActTypeLabel(''); setActTitle(''); setActDescription(''); }}
                 className={`w-full mb-4 py-3 px-4 rounded-xl text-sm transition-all text-left ${
                   showCreateActivity
                     ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -426,21 +431,64 @@ function BoardPageInner() {
               {/* Create activity form */}
               {showCreateActivity && (
                 <div className="bg-white rounded-2xl shadow-sm p-4 mb-4 space-y-3">
-                  <input
-                    value={actTitle}
-                    onChange={e => setActTitle(e.target.value)}
-                    placeholder="Activity name *"
-                    maxLength={120}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500"
-                  />
-                  <textarea
-                    value={actDescription}
-                    onChange={e => setActDescription(e.target.value)}
-                    placeholder="More details (optional)"
-                    rows={3}
-                    maxLength={1000}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 resize-none"
-                  />
+                  {/* Type chips */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-2">What kind of activity?</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {([
+                        { value: 'market', label: 'Market & Fair' },
+                        { value: 'local',  label: 'Local' },
+                        { value: 'other',  label: 'Other' },
+                      ] as const).map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setActType(opt.value)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
+                            actType === opt.value
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-300 hover:text-emerald-600'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Other — extra tag label field */}
+                  {actType === 'other' && (
+                    <input
+                      value={actTypeLabel}
+                      onChange={e => setActTypeLabel(e.target.value)}
+                      placeholder="Category label (e.g. Workshop, Class, Playdate) *"
+                      maxLength={60}
+                      className="w-full px-3 py-2.5 border border-emerald-200 bg-emerald-50 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500 placeholder-emerald-300"
+                    />
+                  )}
+
+                  {/* Name — all types */}
+                  {actType && (
+                    <input
+                      value={actTitle}
+                      onChange={e => setActTitle(e.target.value)}
+                      placeholder={actType === 'market' ? 'Market or fair name (optional)' : 'Activity name (optional)'}
+                      maxLength={120}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500"
+                    />
+                  )}
+
+                  {/* Details */}
+                  {actType && (
+                    <textarea
+                      value={actDescription}
+                      onChange={e => setActDescription(e.target.value)}
+                      placeholder="More details (optional)"
+                      rows={3}
+                      maxLength={1000}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 resize-none"
+                    />
+                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs text-gray-400 mb-1 px-1">Date (optional)</label>
@@ -501,7 +549,7 @@ function BoardPageInner() {
                   </div>
                   <button
                     onClick={createActivity}
-                    disabled={!actTitle.trim() || actPosting}
+                    disabled={!actType || (actType === 'other' && !actTypeLabel.trim()) || actPosting}
                     className="w-full py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 disabled:bg-gray-300 transition-colors text-sm"
                   >
                     {actPosting ? 'Posting...' : 'Post activity'}
@@ -593,65 +641,34 @@ function BoardPageInner() {
 
           {/* ── COMMUNITY BOARD TAB ──────────────────────────────────────── */}
           {mainTab === 'board' && <>
-          <p className="text-emerald-600 text-sm mb-3">Ask questions, share tips, connect with local families</p>
 
-          {/* Search + filter toggle */}
-          <div className="flex items-center gap-2 mb-2">
+
+          {/* Tag filter bar — always visible, scrollable */}
+          <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+            {TAGS.map(t => (
+              <button
+                key={t.value}
+                onClick={() => setActiveTag(t.value)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTag === t.value
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search bar */}
+          <div className="mb-2">
             <input
               value={boardSearch}
               onChange={e => setBoardSearch(e.target.value)}
               placeholder="Search posts…"
-              className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
-            <button
-              onClick={() => setShowFilters(v => !v)}
-              className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 whitespace-nowrap"
-            >
-              {showFilters ? '- Filter' : '+ Filter'}
-            </button>
           </div>
-
-          {/* Collapsible filter panel */}
-          {showFilters && (
-            <>
-              {/* Category bar — 2 rows of 4, centred */}
-              <div className="mb-3 bg-white rounded-xl p-1 border border-gray-200">
-                <div className="flex justify-center gap-1 mb-1">
-                  {TAGS.slice(0, 4).map(t => (
-                    <button
-                      key={t.value}
-                      onClick={() => setActiveTag(t.value)}
-                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${
-                        activeTag === t.value
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-gray-500 hover:text-gray-700'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-center gap-1">
-                  {TAGS.slice(4).map(t => (
-                    <button
-                      key={t.value}
-                      onClick={() => setActiveTag(t.value)}
-                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${
-                        activeTag === t.value
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-gray-500 hover:text-gray-700'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Browse location */}
-              <BrowseLocation current={browseLocation} onChange={loc => { setBrowseLocation(loc); }} alwaysOpen />
-            </>
-          )}
 
           {/* Create post button */}
           <button

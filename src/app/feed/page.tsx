@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
@@ -39,7 +41,7 @@ export default function FeedPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [notifsShown, setNotifsShown] = useState(4);
-  const [statsShown, setStatsShown] = useState(4);
+  const [statsShown, setStatsShown] = useState(5);
   const [emailVerified, setEmailVerified] = useState(true);
   const [verifyDismissed, setVerifyDismissed] = useState(false);
   const [profile, setProfile] = useState<any>(null);
@@ -203,12 +205,17 @@ export default function FeedPage() {
         let unreadMessages = 0;
         try {
           const convRes = await fetch(
-            `${supabaseUrl}/rest/v1/conversations?or=(participant_1.eq.${session.user.id},participant_2.eq.${session.user.id})&select=last_message_by`,
+            `${supabaseUrl}/rest/v1/conversations?or=(participant_1.eq.${session.user.id},participant_2.eq.${session.user.id})&select=last_message_by,last_read_at_1,last_read_at_2,participant_1,participant_2,last_message_at`,
             { headers }
           );
           if (convRes.ok) {
             const convs = await convRes.json();
-            unreadMessages = Array.isArray(convs) ? convs.filter((c: any) => c.last_message_by && c.last_message_by !== session.user.id).length : 0;
+            unreadMessages = Array.isArray(convs) ? convs.filter((c: any) => {
+              if (!c.last_message_by || c.last_message_by === session.user.id) return false;
+              const myReadAt = c.participant_1 === session.user.id ? c.last_read_at_1 : c.last_read_at_2;
+              if (!myReadAt) return true;
+              return new Date(c.last_message_at) > new Date(myReadAt);
+            }).length : 0;
           }
         } catch { /* keep 0 */ }
 
@@ -239,12 +246,7 @@ export default function FeedPage() {
       body: JSON.stringify({ read: true }),
     });
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    if (stats) setStats({ ...stats, unreadNotifications: 0, pendingConnections: 0, unreadMessages: 0 });
-  };
-
-  const greeting = () => {
-    const name = (profile?.display_name || profile?.family_name || '').split(' ')[0] || '';
-    return `Hi${name ? ` ${name}` : ''}`;
+    if (stats) setStats({ ...stats, unreadNotifications: 0 });
   };
 
   const formatTime = (iso: string) => {

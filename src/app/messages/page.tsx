@@ -1,4 +1,6 @@
 'use client';
+
+export const dynamic = 'force-dynamic';
 import { toast } from '@/lib/toast';
 import { undoDelete } from '@/lib/undo';
 
@@ -29,6 +31,8 @@ type Conversation = {
   last_message_text: string | null;
   last_message_at: string | null;
   unread: boolean;
+  listing_id?: string | null;
+  listing_title?: string | null;
 };
 
 type Message = {
@@ -70,9 +74,8 @@ function MessagesContent() {
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const [showDeleteConversationModal, setShowDeleteConversationModal] = useState(false);
   const [connectionRequests, setConnectionRequests] = useState<Map<string, {status: string, isRequester: boolean}>>(new Map());
-  const [showSearch, setShowSearch] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [savedMessages, setSavedMessages] = useState<Message[]>([]);
   const [showMessageContextMenu, setShowMessageContextMenu] = useState(false);
   const [contextMenuMessage, setContextMenuMessage] = useState<Message | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -81,6 +84,7 @@ function MessagesContent() {
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [hasFamilyChat, setHasFamilyChat] = useState(false);
   
   // New message modal state
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
@@ -108,7 +112,7 @@ function MessagesContent() {
       const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
 
       const res = await fetch(
-        `${supabaseUrl}/rest/v1/conversations?or=(participant_1.eq.${session.user.id},participant_2.eq.${session.user.id})&select=*`,
+        `${supabaseUrl}/rest/v1/conversations?or=(participant_1.eq.${session.user.id},participant_2.eq.${session.user.id})&select=*,market_listings!conversations_listing_id_fkey(title)`,
         { headers, signal }
       );
 
@@ -139,6 +143,8 @@ function MessagesContent() {
           last_message_text: c.last_message_text,
           last_message_at: c.last_message_at,
           unread: c.last_message_by && c.last_message_by !== session.user.id,
+          listing_id: c.listing_id ?? null,
+          listing_title: c.market_listings?.title ?? null,
         };
       });
 
@@ -165,10 +171,10 @@ function MessagesContent() {
       }
       setUserId(session.user.id);
 
-      // Check if new user via profile created_at (works across devices)
+      // Check if new user + family_id
       try {
         const profileRes = await fetch(
-          `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=created_at&limit=1`,
+          `${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=created_at,family_id&limit=1`,
           { headers: { apikey: supabaseKey!, Authorization: `Bearer ${session.access_token}` } }
         );
         if (profileRes.ok) {
@@ -176,6 +182,7 @@ function MessagesContent() {
           if (prof?.created_at && Date.now() - new Date(prof.created_at).getTime() < 7 * 24 * 60 * 60 * 1000) {
             setIsNewUser(true);
           }
+          if (prof?.family_id) setHasFamilyChat(true);
         }
       } catch { /* ignore */ }
 
@@ -191,6 +198,7 @@ function MessagesContent() {
 
         // ?user=<id> — open or create conversation with that user
         const openUserId = searchParams.get('user');
+        const openListingId = searchParams.get('listing_id');
         if (openUserId) {
           const session2 = getStoredSession();
           if (session2) {
@@ -205,10 +213,12 @@ function MessagesContent() {
                 setSelectedId(existing.id);
               } else {
                 // Create new conversation
+                const body: Record<string, string> = { participant_1: session2.user.id, participant_2: openUserId };
+                if (openListingId) body.listing_id = openListingId;
                 const createRes = await fetch(`${supabaseUrl}/rest/v1/conversations`, {
                   method: 'POST',
                   headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session2.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-                  body: JSON.stringify({ participant_1: session2.user.id, participant_2: openUserId }),
+                  body: JSON.stringify(body),
                 });
                 if (createRes.ok) {
                   const [newConvo] = await createRes.json();
@@ -246,11 +256,6 @@ function MessagesContent() {
     const loadMessages = async () => {
       const session = getStoredSession();
       if (!session) return;
-
-      // Handle saved messages separately - don't query the database
-      if (selectedId === 'saved-messages') {
-        return; // Let loadSavedMessages handle this
-      }
 
       try {
         const res = await fetch(
@@ -314,11 +319,7 @@ function MessagesContent() {
       }
     };
 
-    if (selectedId === 'saved-messages') {
-      loadSavedMessages();
-    } else {
-      loadMessages();
-    }
+    loadMessages();
     
     return () => {
       abortController.abort();
@@ -327,7 +328,7 @@ function MessagesContent() {
 
   // Poll for read_at updates on sent messages (so sender sees read receipts update live)
   useEffect(() => {
-    if (!selectedId || selectedId === 'saved-messages' || !userId) return;
+    if (!selectedId || !userId) return;
     const interval = setInterval(async () => {
       const session = getStoredSession();
       if (!session) return;
@@ -852,40 +853,6 @@ function MessagesContent() {
     });
   };
 
-  const saveSelectedMessages = async () => {
-    const existing = JSON.parse(localStorage.getItem('haven-saved-messages') || '[]');
-    const toSave = selectedMessages
-      .map(id => messages.find(m => m.id === id))
-      .filter(Boolean)
-      .map(msg => ({ ...msg, id: `saved-${Date.now()}-${msg!.id}`, savedAt: new Date().toISOString() }));
-    const updated = [...existing, ...toSave];
-    localStorage.setItem('haven-saved-messages', JSON.stringify(updated));
-    setSavedMessages(updated);
-    setSelectedMessages([]);
-    setSelectionMode(false);
-    setSuccessMessage(`${toSave.length} item${toSave.length !== 1 ? 's' : ''} saved!`);
-    setShowSuccessNotification(true);
-    setTimeout(() => setShowSuccessNotification(false), 3000);
-  };
-
-  const saveMessageToSaved = async (message: Message) => {
-    try {
-      const existing = JSON.parse(localStorage.getItem('haven-saved-messages') || '[]');
-      const newSaved = { ...message, id: `saved-${Date.now()}`, savedAt: new Date().toISOString() };
-      const updated = [...existing, newSaved];
-      localStorage.setItem('haven-saved-messages', JSON.stringify(updated));
-      setSavedMessages(updated);
-      setShowMessageContextMenu(false);
-      setContextMenuMessage(null);
-      setSuccessMessage('Message saved!');
-      setShowSuccessNotification(true);
-      setTimeout(() => setShowSuccessNotification(false), 3000);
-    } catch (err) {
-      console.error('Error saving message:', err);
-      toast('Failed to save message', 'error');
-    }
-  };
-
   const handleMessageTap = (messageId: string) => {
     if (selectionMode) {
       setSelectedMessages(prev => 
@@ -897,7 +864,7 @@ function MessagesContent() {
   };
 
   const handleConversationLongPress = (conversationId: string) => {
-    if (!conversationSelectionMode && conversationId !== 'saved-messages') {
+    if (!conversationSelectionMode && conversationId !== 'family-chat') {
       setConversationSelectionMode(true);
       setSelectedConversations([conversationId]);
     }
@@ -911,21 +878,11 @@ function MessagesContent() {
           : [...prev, conversationId]
       );
     } else {
-      if (conversationId === 'saved-messages') {
-        // Load saved messages instead of regular conversation messages
-        loadSavedMessages();
+      if (conversationId === 'family-chat') {
+        router.push('/family-chat');
+        return;
       }
       setSelectedId(conversationId);
-    }
-  };
-
-  const loadSavedMessages = async () => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('haven-saved-messages') || '[]');
-      setMessages(saved);
-      setSavedMessages(saved);
-    } catch (err) {
-      console.error('Error loading saved messages:', err);
     }
   };
 
@@ -1415,16 +1372,7 @@ function MessagesContent() {
     (connection.location_name?.toLowerCase() || '').includes(contactSearchTerm.toLowerCase())
   );
 
-  const savedMessagesConvoStub = {
-    id: 'saved-messages',
-    other_user: { id: 'saved', family_name: 'Saved Messages', display_name: 'Saved Messages', avatar_url: null, location_name: '', last_active_at: undefined as string | undefined },
-    last_message_text: 'Your saved messages appear here',
-    last_message_at: new Date().toISOString(),
-    unread: false
-  };
-  const selected = selectedId === 'saved-messages'
-    ? savedMessagesConvoStub
-    : conversations.find(c => c.id === selectedId);
+  const selected = conversations.find(c => c.id === selectedId);
 
   const isOnline = (lastActiveAt?: string) => {
     if (!lastActiveAt) return false;
@@ -1516,11 +1464,6 @@ function MessagesContent() {
                 <button onClick={cancelSelection} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-500 hover:text-gray-700">
                   Cancel
                 </button>
-                {selectedMessages.length > 0 && (
-                  <button onClick={saveSelectedMessages} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all bg-emerald-600 text-white shadow-sm">
-                    Save
-                  </button>
-                )}
                 {selectedMessages.length > 0 && selectedMessages.some(id => {
                   const msg = messages.find(m => m.id === id);
                   return msg && getMessageFileUrl(msg) !== null;
@@ -1659,19 +1602,6 @@ function MessagesContent() {
               >
                 Download
               </button>
-              {lightboxMsgId && (
-                <button
-                  onClick={() => {
-                    const msg = messages.find(m => m.id === lightboxMsgId);
-                    if (msg) saveMessageToSaved(msg);
-                    setLightboxUrl(null);
-                    setLightboxMsgId(null);
-                  }}
-                  className="px-5 py-2 bg-white/20 text-white rounded-xl font-medium hover:bg-white/30 text-sm"
-                >
-                  Save
-                </button>
-              )}
             </div>
           </div>
         )}
@@ -1740,12 +1670,6 @@ function MessagesContent() {
                     </button>
                   );
                 })()}
-                <button
-                  onClick={() => saveMessageToSaved(contextMenuMessage)}
-                  className="w-full px-6 py-4 text-left text-gray-900 font-medium text-sm hover:bg-gray-50 active:bg-gray-100"
-                >
-                  Save message
-                </button>
                 {/* Delete — only for own messages */}
                 {contextMenuMessage.sender_id === userId && (
                   <button
@@ -1848,18 +1772,24 @@ function MessagesContent() {
         </div>
 
         {/* Search + New row */}
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setShowSearch(!showSearch)}
-            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all border ${
-              showSearch ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'
-            }`}
-          >
-            Search
-          </button>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+            />
+          </div>
           <button
             onClick={() => setShowNewMessageModal(true)}
-            className="flex-1 py-2 bg-white text-gray-500 border border-gray-200 rounded-xl text-xs font-semibold hover:text-gray-700 transition-all"
+            className="flex-shrink-0 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors"
           >
             + New
           </button>
@@ -1881,44 +1811,10 @@ function MessagesContent() {
           </div>
         )}
 
-        {/* Expandable Search Bar */}
-        {showSearch && (
-          <div className="mb-6">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                placeholder="Search conversations..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                autoFocus
-              />
-            </div>
-          </div>
-        )}
+
 
         {/* Filter conversations by search term */}
         {(() => {
-          // Create saved messages conversation
-          const savedMessagesConvo = {
-            id: 'saved-messages',
-            other_user: {
-              id: 'saved',
-              family_name: 'Saved Messages',
-              display_name: 'Saved Messages',
-              avatar_url: null,
-              location_name: ''
-            },
-            last_message_text: 'Your saved messages appear here',
-            last_message_at: new Date().toISOString(),
-            unread: false
-          };
-
           // Helper function to extract last name
           const getLastName = (conversation: Conversation) => {
             const fullName = conversation.other_user.family_name || conversation.other_user.display_name || '';
@@ -1943,13 +1839,19 @@ function MessagesContent() {
           // Sort filtered conversations by last name
           const sortedConversations = sortConversationsByLastName(filteredConversations);
 
-          // Always add saved messages at the top (unless searching and it doesn't match)
-          const shouldShowSaved = !searchTerm || 
-            'saved messages'.includes(searchTerm.toLowerCase());
+          const shouldShowFamilyChat = hasFamilyChat && (!searchTerm || 'family chat'.includes(searchTerm.toLowerCase()));
+
+          const pinnedConvos: Conversation[] = [
+            ...(shouldShowFamilyChat ? [{
+              id: 'family-chat',
+              other_user: { id: 'family', family_name: 'Family Chat', display_name: 'Family Chat', avatar_url: null, location_name: '' },
+              last_message_text: 'Private chat with your linked family',
+              last_message_at: new Date().toISOString(),
+              unread: false,
+            } as unknown as Conversation] : []),
+          ];
           
-          const allConversations = shouldShowSaved 
-            ? [savedMessagesConvo, ...sortedConversations]
-            : sortedConversations;
+          const allConversations = [...pinnedConvos, ...sortedConversations];
 
           return allConversations.length === 0 && !isNewUser ? (
             <div className="text-center py-12">
@@ -1984,31 +1886,7 @@ function MessagesContent() {
             </div>
           ) : (
             <div className="space-y-2 mt-6">
-              {/* Welcome message card for new users */}
-              {isNewUser && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-2">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center flex-shrink-0">
-                      <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-fredoka)' }}>H</span>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900 text-sm">Haven</p>
-                      <p className="text-xs text-gray-400">Just now</p>
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-700 leading-relaxed">
-                    Welcome to Haven! You're one of the first families here. Head to Discover to find families near you, or create an event or circle to get things started.
-                  </p>
-                  <div className="flex gap-2 mt-3">
-                    <button onClick={() => router.push('/discover')} className="flex-1 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 transition-colors">
-                      Find Families
-                    </button>
-                    <button onClick={() => router.push('/events')} className="flex-1 py-2 bg-white text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-xl hover:bg-emerald-50 transition-colors">
-                      Create Event
-                    </button>
-                  </div>
-                </div>
-              )}
+
               {allConversations.map((convo) => (
               <div key={convo.id} className="relative">
                 {conversationSelectionMode && (
@@ -2035,7 +1913,7 @@ function MessagesContent() {
                   onTouchStart={(e) => {
                     touchStartPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
                     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-                    if (!conversationSelectionMode && convo.id !== 'saved-messages') {
+                    if (!conversationSelectionMode) {
                       longPressTimerRef.current = setTimeout(() => handleConversationLongPress(convo.id), 800);
                     }
                   }}
@@ -2084,6 +1962,11 @@ function MessagesContent() {
                   <p className={`text-sm truncate ${convo.unread ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
                     {convo.last_message_text || 'No messages yet'}
                   </p>
+                  {convo.listing_id && convo.listing_title && (
+                    <span className="inline-flex items-center text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5 mt-0.5 max-w-[180px] truncate">
+                      Re: {convo.listing_title}
+                    </span>
+                  )}
                 </div>
                 {convo.unread && !conversationSelectionMode && (
                   <div className="w-3 h-3 bg-emerald-600 rounded-full flex-shrink-0"></div>
@@ -2265,12 +2148,6 @@ function MessagesContent() {
                   </button>
                 );
               })()}
-              <button
-                onClick={() => saveMessageToSaved(contextMenuMessage)}
-                className="w-full px-6 py-4 text-left text-gray-900 font-medium text-sm hover:bg-gray-50 active:bg-gray-100"
-              >
-                Save message
-              </button>
               {/* Delete — only for own messages */}
               {contextMenuMessage.sender_id === userId && (
                 <button
@@ -2338,19 +2215,6 @@ function MessagesContent() {
             >
               Download
             </a>
-            {lightboxMsgId && (
-              <button
-                onClick={() => {
-                  const msg = messages.find(m => m.id === lightboxMsgId);
-                  if (msg) saveMessageToSaved(msg);
-                  setLightboxUrl(null);
-                  setLightboxMsgId(null);
-                }}
-                className="px-5 py-2 bg-white/20 text-white rounded-xl font-medium hover:bg-white/30 text-sm"
-              >
-                Save
-              </button>
-            )}
             <button
               onClick={() => { setLightboxUrl(null); setLightboxMsgId(null); }}
               className="px-5 py-2 bg-white/20 text-white rounded-xl font-medium hover:bg-white/30 text-sm"

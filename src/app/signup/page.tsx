@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -30,9 +32,7 @@ function SignupPageInner() {
   // Step 2: About you
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [username, setUsername] = useState('');
-  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
-  const [checkingUsername, setCheckingUsername] = useState(false);
+
   const [location, setLocation] = useState(', VIC'); // Default to VIC state
   const [locationData, setLocationData] = useState<{
     name: string;
@@ -133,57 +133,6 @@ function SignupPageInner() {
     window.addEventListener('beforeunload', handleUnload);
     return () => window.removeEventListener('beforeunload', handleUnload);
   }, [step, userType]);
-
-  // Check username availability
-  const checkUsernameAvailability = useCallback(async (usernameToCheck: string) => {
-    if (!usernameToCheck || usernameToCheck.length < 3) {
-      setUsernameAvailable(null);
-      return;
-    }
-
-    setCheckingUsername(true);
-    try {
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/profiles?username=eq.${encodeURIComponent(usernameToCheck)}&select=id`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      const data = await response.json();
-      
-      // If column doesn't exist, treat all usernames as available for now
-      if (data.code === "42703") {
-        setUsernameAvailable(true);
-        return;
-      }
-      
-      setUsernameAvailable(Array.isArray(data) && data.length === 0);
-    } catch (error) {
-      console.error('Error checking username:', error);
-      // Default to available if check fails
-      setUsernameAvailable(true);
-    } finally {
-      setCheckingUsername(false);
-    }
-  }, [supabaseUrl, supabaseKey]);
-
-  // Debounced username check
-  useEffect(() => {
-    if (!username || username.length < 3) {
-      setUsernameAvailable(null);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      checkUsernameAvailability(username);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [username, checkUsernameAvailability]);
 
   // Save email when it changes
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -344,7 +293,6 @@ function SignupPageInner() {
             ? firstName.trim()
             : firstName,
         email,
-        username,
         location_name: location.trim(),
         location_lat: signupCoords?.lat ?? null,
         location_lng: signupCoords?.lng ?? null,
@@ -516,11 +464,9 @@ function SignupPageInner() {
 
   const isStep2Valid = () => {
     if (userType === 'playgroup') {
-      return firstName.trim() && username.trim() && usernameAvailable === true && location.split(',')[0]?.trim() && !checkingUsername;
+      return firstName.trim() && location.split(',')[0]?.trim();
     }
-    const baseValid = firstName.trim() && lastName.trim() && username.trim() &&
-      usernameAvailable === true && location.split(',')[0]?.trim() &&
-      status.length > 0 && !checkingUsername;
+    const baseValid = firstName.trim() && lastName.trim() && location.split(',')[0]?.trim() && status.length > 0;
     if (userType === 'family' || userType === 'teacher') {
       return baseValid && dob.trim() !== '';
     }
@@ -578,7 +524,7 @@ function SignupPageInner() {
       setError('Please complete previous steps before continuing');
       return;
     }
-    if (targetStep === 4 && (!isStep1Valid() || !isStep2Valid() || !isStep3Valid())) {
+    if (targetStep === 4 && (!isStep1Valid() || !isStep2Valid() || (userType !== 'business' && !isStep3Valid()))) {
       setError('Please complete previous steps before continuing');
       return;
     }
@@ -632,7 +578,7 @@ function SignupPageInner() {
           ) : (
             <button
               type="button"
-              onClick={() => setStep(step - 1)}
+              onClick={() => setStep(userType === 'business' && step === 4 ? 2 : step - 1)}
               className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-emerald-50 transition-colors text-gray-500 hover:text-emerald-600"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
@@ -847,52 +793,7 @@ function SignupPageInner() {
                     />
                   </div>
                 </div>
-                <div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={username}
-                        autoCapitalize="words"
-                      onChange={(e) => {
-                        const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
-                        setUsername(value);
-                      }}
-                      className={`w-full p-3.5 border rounded-xl focus:ring-2 pr-10 ${
-                        usernameAvailable === false
-                          ? 'border-red-300 focus:ring-red-500' 
-                          : username && username.length >= 3 && usernameAvailable === true
-                          ? 'border-green-300 focus:ring-green-500' 
-                          : 'border-gray-200 focus:ring-emerald-500'
-                      }`}
-                      placeholder="Username"
-                      minLength={3}
-                      maxLength={20}
-                    />
-                    {checkingUsername && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        <div className="w-5 h-5 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                    {!checkingUsername && usernameAvailable === true && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-600">
-                        ✓
-                      </div>
-                    )}
-                    {!checkingUsername && usernameAvailable === false && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-600">
-                        ✗
-                      </div>
-                    )}
-                  </div>
-                  {username && username.length < 3 && (
-                    <p className="text-sm text-gray-500 mt-1">Username must be at least 3 characters</p>
-                  )}
-                  {checkingUsername && (
-                    <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                      <div className="text-sm font-medium text-emerald-900">Checking username availability...</div>
-                    </div>
-                  )}
-                </div>
+
                 <div>
                   <div className="grid grid-cols-2 gap-3">
                     <input
@@ -971,10 +872,8 @@ function SignupPageInner() {
                   <label className="block text-sm font-medium text-gray-700 mb-3">Why I'm here</label>
                   <div className="space-y-2">
                     {[
-                      { value: 'considering', label: 'Community', icon: '' },
                       { value: 'new', label: 'Home Education', icon: '' },
-                      { value: 'social', label: 'Social Activities', icon: '' },
-                      { value: 'experienced', label: 'Extracurricular', icon: '' },
+                      { value: 'considering', label: 'Community', icon: '' },
                       { value: 'new_to_area', label: 'New to Area', icon: '' },
                       { value: 'other', label: 'Other', icon: '' }
                     ].map((opt) => (
@@ -1063,7 +962,7 @@ function SignupPageInner() {
                 <div>
                   <button
                     onClick={() => setStep(3)}
-                    disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim())) || !dob.trim()}
+                    disabled={!firstName.trim() || !lastName.trim() || !location.split(',')[0]?.trim() || status.length === 0 || (status.includes('other') && !customDescriptions.some(desc => desc.trim())) || !dob.trim()}
                     className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                   >
                     Continue
@@ -1088,30 +987,7 @@ function SignupPageInner() {
                 />
               </div>
 
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-3.5 pt-3 pb-1">Username</p>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={username}
-                        autoCapitalize="none"
-                    onChange={(e) => {
-                      const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
-                      setUsername(value);
-                      setUsernameAvailable(null);
-                      checkUsernameAvailability(value);
-                    }}
-                    className={`w-full px-3.5 pb-3 pt-1 border-0 focus:ring-0 outline-none text-gray-900 placeholder-gray-400 bg-transparent pr-10`}
-                    placeholder="e.g. littleexplorers"
-                    minLength={3}
-                    maxLength={20}
-                  />
-                  {checkingUsername && <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="w-5 h-5 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin" /></div>}
-                  {!checkingUsername && usernameAvailable === true && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600">✓</div>}
-                  {!checkingUsername && usernameAvailable === false && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-red-600">✗</div>}
-                </div>
-              </div>
-              {usernameAvailable === false && <p className="text-red-600 text-sm -mt-2">Username already taken</p>}
+
 
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Location</p>
@@ -1176,7 +1052,7 @@ function SignupPageInner() {
 
               <button
                 onClick={() => setStep(3)}
-                disabled={!firstName.trim() || !username.trim() || username.length < 3 || usernameAvailable === false || !location.split(',')[0]?.trim() || checkingUsername}
+                disabled={!firstName.trim() || !location.split(',')[0]?.trim()}
                 className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
               >
                 Continue
@@ -1211,46 +1087,6 @@ function SignupPageInner() {
                   </div>
                 </div>
                 
-                <div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Username"
-                      value={username}
-                        autoCapitalize="words"
-                      onChange={(e) => {
-                        setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''));
-                        setUsernameAvailable(null);
-                        checkUsernameAvailability(e.target.value);
-                      }}
-                      className="w-full p-3 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400"
-                    />
-                    {checkingUsername && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        <div className="w-4 h-4 border border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                    {!checkingUsername && usernameAvailable === true && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-emerald-600">
-                        ✓
-                      </div>
-                    )}
-                    {!checkingUsername && usernameAvailable === false && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-600">
-                        ✗
-                      </div>
-                    )}
-                  </div>
-                  {checkingUsername && (
-                    <div className="mt-1 flex items-center gap-2">
-                      <div className="text-sm font-medium text-emerald-900">Checking username availability...</div>
-                    </div>
-                  )}
-                  {usernameAvailable === false && (
-                    <p className="text-red-600 text-sm mt-1">Username is already taken</p>
-                  )}
-                </div>
-
                 <div>
                   <div className="grid grid-cols-2 gap-3">
                     <input
@@ -1308,28 +1144,29 @@ function SignupPageInner() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Services offered</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">What do you offer?</label>
                   <div className="space-y-2">
                     {[
-                      { value: 'curriculum', label: 'Curriculum & Resources', icon: '' },
-                      { value: 'supplies', label: 'Supplies & Materials', icon: '' },
+                      { value: 'tutoring', label: 'Tutoring', icon: '' },
+                      { value: 'group-lessons', label: 'Group Lessons', icon: '' },
                       { value: 'classes', label: 'Classes & Programs', icon: '' },
-                      { value: 'venue', label: 'Venue / Space Hire', icon: '' },
-                      { value: 'therapy', label: 'Therapy & Support', icon: '' },
-                      { value: 'other', label: 'Other', icon: '' }
+                      { value: 'curriculum', label: 'Curriculum Help', icon: '' },
+                      { value: 'music', label: 'Music', icon: '' },
+                      { value: 'sport', label: 'Sport & Physical Education', icon: '' },
+                      { value: 'other', label: 'Other', icon: '' },
                     ].map((opt) => (
-                      <label 
+                      <label
                         key={opt.value}
                         className={`flex items-center p-3.5 rounded-xl border-2 cursor-pointer ${
-                          status.includes(opt.value) 
-                            ? 'border-emerald-600 bg-emerald-50' 
+                          status.includes(opt.value)
+                            ? 'border-emerald-600 bg-emerald-50'
                             : 'border-gray-100'
                         }`}
                       >
-                        <input 
-                          type="checkbox" 
-                          className="sr-only" 
-                          checked={status.includes(opt.value)} 
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={status.includes(opt.value)}
                           onChange={() => {
                             if (status.includes(opt.value)) {
                               setStatus(status.filter(s => s !== opt.value));
@@ -1421,7 +1258,7 @@ function SignupPageInner() {
 
                 <button
                   onClick={() => setStep(3)}
-                  disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim())) || !dob.trim()}
+                  disabled={!firstName.trim() || !lastName.trim() || !location.split(',')[0]?.trim() || status.length === 0 || (status.includes('other') && !customDescriptions.some(desc => desc.trim())) || !dob.trim()}
                   className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   Continue
@@ -1470,46 +1307,6 @@ function SignupPageInner() {
                   />
                 </div>
                 
-                <div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Username"
-                      value={username}
-                        autoCapitalize="words"
-                      onChange={(e) => {
-                        setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''));
-                        setUsernameAvailable(null);
-                        checkUsernameAvailability(e.target.value);
-                      }}
-                      className="w-full p-3 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400"
-                    />
-                    {checkingUsername && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        <div className="w-4 h-4 border border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                    {!checkingUsername && usernameAvailable === true && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-emerald-600">
-                        ✓
-                      </div>
-                    )}
-                    {!checkingUsername && usernameAvailable === false && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-600">
-                        ✗
-                      </div>
-                    )}
-                  </div>
-                  {checkingUsername && (
-                    <div className="mt-1 flex items-center gap-2">
-                      <div className="text-sm font-medium text-emerald-900">Checking username availability...</div>
-                    </div>
-                  )}
-                  {usernameAvailable === false && (
-                    <p className="text-red-600 text-sm mt-1">Username is already taken</p>
-                  )}
-                </div>
-
                 <div>
                   <div className="grid grid-cols-2 gap-3">
                     <input
@@ -1661,7 +1458,7 @@ function SignupPageInner() {
                 <div>
                   <button
                     onClick={() => setStep(4)}
-                    disabled={!firstName.trim() || !lastName.trim() || !username.trim() || usernameAvailable === false || !location.split(',')[0]?.trim() || status.length === 0 || checkingUsername || (status.includes('other') && !customDescriptions.some(desc => desc.trim()))}
+                    disabled={!firstName.trim() || !lastName.trim() || !location.split(',')[0]?.trim() || status.length === 0 || (status.includes('other') && !customDescriptions.some(desc => desc.trim()))}
                     className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                   >
                     Continue
@@ -1872,13 +1669,14 @@ function SignupPageInner() {
               <div className="space-y-6 mb-6">
                 {/* Tell us about your family */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Tell us about your family</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tell us about your family <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <p className="text-xs text-gray-400 mb-3">You can always add this later from your profile.</p>
                   <textarea autoCapitalize="sentences"
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-gray-700"
-                    rows={6}
-                    placeholder="Share what makes your family unique. Your interests, values, what you're looking for in a community, or anything else you'd like other families to know..."
+                    rows={5}
+                    placeholder="Share what makes your family unique. Your interests, values, what you're looking for in a community..."
                   />
                 </div>
               </div>
@@ -1902,7 +1700,7 @@ function SignupPageInner() {
               </div>
               <button
                   onClick={handleSaveProfile}
-                  disabled={loading || !bio.trim() || !acceptedTerms}
+                  disabled={loading || !acceptedTerms}
                   className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {loading ? 'Creating your account...' : 'Create Account & Finish'}

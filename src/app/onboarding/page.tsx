@@ -1,18 +1,20 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getStoredSession } from '@/lib/session';
 import { geocodeSuburb } from '@/lib/geocode';
 import { toast } from '@/lib/toast';
+import { fetchTags, AppTag } from '@/lib/tags';
 import AvatarUpload from '@/components/AvatarUpload';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const APPROACHES = ['Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Other'];
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 const TOTAL_STEPS = 5;
 
@@ -38,6 +40,7 @@ export default function OnboardingPage() {
   // Step 4 — Approach
   const [approaches, setApproaches] = useState<string[]>([]);
   const [otherApproachText, setOtherApproachText] = useState('');
+  const [approachTags, setApproachTags] = useState<AppTag[]>([]);
 
   // Step 5 — Circle suggestions
   const [suggestedCircles, setSuggestedCircles] = useState<any[]>([]);
@@ -45,6 +48,8 @@ export default function OnboardingPage() {
   const [loadingCircles, setLoadingCircles] = useState(false);
 
   useEffect(() => {
+    fetchTags('homeschool_approach').then(setApproachTags);
+
     const session = getStoredSession();
     if (!session?.user) { router.push('/login'); return; }
     setUserId(session.user.id);
@@ -335,9 +340,9 @@ export default function OnboardingPage() {
                 <p className="text-gray-500 text-sm">Pick all that describe your style. Helps families with similar values find you.</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {APPROACHES.map(a => (
-                  <button key={a} onClick={() => toggleApproach(a)} className={approaches.includes(a) ? pillActive : pillInactive}>
-                    {a}
+                {approachTags.map(tag => (
+                  <button key={tag.value} onClick={() => toggleApproach(tag.value)} className={approaches.includes(tag.value) ? pillActive : pillInactive}>
+                    {tag.label}
                   </button>
                 ))}
               </div>

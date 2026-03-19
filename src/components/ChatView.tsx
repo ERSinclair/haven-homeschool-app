@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import EmojiPicker from '@/components/EmojiPicker';
 import ImageCropModal from '@/components/ImageCropModal';
@@ -188,25 +188,44 @@ export default function ChatView({
     }
   };
 
-  return (
-    <div className="flex flex-col h-full">
-
-      {/* ── Messages ── */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full py-16">
-            <p className="text-gray-400 text-sm text-center">{emptyText}</p>
-          </div>
-        ) : (
-          messages.map(msg => {
+  // Build message list with date dividers
+  let lastDateStr = '';
+  const renderedMessages = messages.map(msg => {
             const isMe = msg.sender_id === currentUserId;
             const msgReactions = reactions[msg.id] || [];
             const senderName = getSenderName(msg);
             const avatarUrl = msg.sender_profile?.avatar_url;
 
+            // Date divider logic
+            const msgDate = new Date(msg.created_at);
+            const msgDateStr = msgDate.toDateString();
+            let dateDivider: React.ReactNode = null;
+            if (msgDateStr !== lastDateStr) {
+              lastDateStr = msgDateStr;
+              const today = new Date();
+              const yesterday = new Date(today);
+              yesterday.setDate(today.getDate() - 1);
+              let label: string;
+              if (msgDateStr === today.toDateString()) {
+                label = 'Today';
+              } else if (msgDateStr === yesterday.toDateString()) {
+                label = 'Yesterday';
+              } else {
+                label = msgDate.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+              }
+              dateDivider = (
+                <div className="flex items-center gap-2 my-3 px-2">
+                  <div className="flex-1 h-px bg-gray-200"/>
+                  <span className="text-xs text-gray-400 whitespace-nowrap">{label}</span>
+                  <div className="flex-1 h-px bg-gray-200"/>
+                </div>
+              );
+            }
+
             return (
+              <React.Fragment key={`${msg.id}-wrapper`}>
+                {dateDivider}
               <div
-                key={msg.id}
                 className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}${selectedMessageIds?.includes(msg.id) ? ' ring-2 ring-emerald-300' : ''}`}
                 onClick={() => onMessageClick?.(msg.id)}
                 onTouchStart={e => handleLongPressStart(msg, e)}
@@ -299,9 +318,20 @@ export default function ChatView({
                   )}
                 </div>
               </div>
+              </React.Fragment>
             );
-          })
-        )}
+  });
+
+  return (
+    <div className="flex flex-col h-full">
+
+      {/* ── Messages ── */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full py-16">
+            <p className="text-gray-400 text-sm text-center">{emptyText}</p>
+          </div>
+        ) : renderedMessages}
         <div ref={messagesEndRef} />
       </div>
 

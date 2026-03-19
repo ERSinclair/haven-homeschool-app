@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/session';
@@ -112,19 +114,18 @@ export default function FamilyPage() {
     finally { setUpdatingId(null); }
   };
 
-  const removeLink = async (linkId: string) => {
-    if (!true) return;
+  const removeLink = (linkId: string) => {
+    if (!window.confirm('Remove this family link?')) return;
     const session = getStoredSession();
     if (!session) return;
     setUpdatingId(linkId);
-    try {
-      await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${linkId}`, {
-        method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
-      });
+    fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${linkId}`, {
+      method: 'DELETE', headers: { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` },
+    }).then(() => {
       setLinks(prev => prev.filter(l => l.id !== linkId));
       toast('Family link removed');
-    } catch { toast('Failed', 'error'); }
-    finally { setUpdatingId(null); }
+    }).catch(() => toast('Failed', 'error'))
+    .finally(() => setUpdatingId(null));
   };
 
   const toggleCalendarShare = async (link: FamilyLink) => {

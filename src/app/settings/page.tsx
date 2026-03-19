@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -31,6 +33,10 @@ export default function SettingsPage() {
   const [userData, setUserData] = useState<any>(null);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [showBlocked, setShowBlocked] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [showIOSInstructions, setShowIOSInstructions] = useState(false);
 
   const loadBlockedUsers = async () => {
     const session = getStoredSession();
@@ -93,6 +99,20 @@ export default function SettingsPage() {
   const router = useRouter();
 
   useEffect(() => {
+    // PWA install detection
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    setIsIOS(ios);
+    setIsInstalled(window.matchMedia('(display-mode: standalone)').matches);
+
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler as EventListener);
+    return () => window.removeEventListener('beforeinstallprompt', handler as EventListener);
+  }, []);
+
+  useEffect(() => {
     const savedSettings = localStorage.getItem('familyFinderSettings');
     if (savedSettings) setSettings(JSON.parse(savedSettings));
 
@@ -139,6 +159,20 @@ export default function SettingsPage() {
           body: JSON.stringify({ notification_prefs: updatedPrefs }),
         }).catch(() => {});
       }
+    }
+  };
+
+  const handleInstall = async () => {
+    if (isIOS) {
+      setShowIOSInstructions(true);
+      return;
+    }
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+      setIsInstalled(true);
     }
   };
 
@@ -259,6 +293,12 @@ export default function SettingsPage() {
               <span className="flex-1 text-gray-700">Family on Haven</span>
               <span className="text-gray-300">→</span>
             </a>
+            {!isInstalled && (deferredPrompt || isIOS) && (
+              <button onClick={handleInstall} className="flex items-center w-full p-4 hover:bg-gray-50 text-left">
+                <span className="flex-1 text-gray-700">Add Haven to Home Screen</span>
+                <span className="text-gray-300">→</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -634,6 +674,36 @@ export default function SettingsPage() {
       {/* Bottom spacing for mobile nav */}
       <div className="h-20"></div>
     </div>
+
+      {/* iOS Install Instructions Modal */}
+      {showIOSInstructions && (
+        <div className="fixed inset-0 bg-black/50 flex items-end justify-center p-4 z-50" onClick={() => setShowIOSInstructions(false)}>
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 mb-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Add to Home Screen</h3>
+            <p className="text-sm text-gray-600 mb-4">To install Haven on your iPhone:</p>
+            <ol className="space-y-3 text-sm text-gray-700">
+              <li className="flex gap-3">
+                <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">1</span>
+                <span>Tap the <strong>Share</strong> button at the bottom of Safari (the box with an arrow pointing up)</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">2</span>
+                <span>Scroll down and tap <strong>Add to Home Screen</strong></span>
+              </li>
+              <li className="flex gap-3">
+                <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">3</span>
+                <span>Tap <strong>Add</strong> in the top right</span>
+              </li>
+            </ol>
+            <button
+              onClick={() => setShowIOSInstructions(false)}
+              className="mt-6 w-full py-3 bg-emerald-600 text-white font-semibold rounded-xl"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Change Password Modal */}
       {showChangePassword && (

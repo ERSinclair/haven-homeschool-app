@@ -26,10 +26,6 @@ export default function LoginPage() {
     const newEmail = e.target.value;
     setEmail(newEmail);
     
-    // Save to localStorage when it looks like a valid email
-    if (typeof window !== 'undefined' && newEmail.includes('@') && newEmail.includes('.')) {
-      localStorage.setItem('haven-saved-email', newEmail);
-    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {

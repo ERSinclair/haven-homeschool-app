@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -204,13 +206,9 @@ export default function NotificationsPage() {
   const handleMarkAllRead = async () => {
     const session = getStoredSession();
     if (!session) return;
-    setNotifications(prev => {
-      const updated = prev.map(n => ({ ...n, read: true }));
-      setCached('notifications:list', updated);
-      return updated;
-    });
-    clearCached('notifications:list');
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     await markAllNotificationsRead(session.user.id, session.access_token);
+    clearCached('notifications:list');
   };
 
 
@@ -340,7 +338,7 @@ export default function NotificationsPage() {
             {unreadCount > 0 && (
               <button onClick={handleMarkAllRead}
                 className="px-4 py-1.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors">
-                Read
+                Mark all read
               </button>
             )}
           </div>

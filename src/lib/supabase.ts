@@ -31,7 +31,7 @@ export type Profile = {
   email?: string
   family_name: string
   display_name?: string
-  username?: string
+
   avatar_url?: string
   banner_url?: string
   bio?: string

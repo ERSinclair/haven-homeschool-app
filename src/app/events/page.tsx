@@ -1,4 +1,6 @@
 'use client';
+
+export const dynamic = 'force-dynamic';
 import { toast } from '@/lib/toast';
 
 import { useState, useEffect, useRef } from 'react';

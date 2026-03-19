@@ -75,7 +75,7 @@ export default function WelcomePage() {
       const headers = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${accessToken}` };
 
       const familiesRes = await fetch(
-        `${supabaseUrl}/rest/v1/profiles?id=neq.${userId}&select=id,kids_ages`,
+        `${supabaseUrl}/rest/v1/profiles?id=neq.${userId}&select=id,kids_ages&limit=500`,
         { headers }
       );
       const families = familiesRes.ok ? await familiesRes.json() : [];

@@ -1,4 +1,6 @@
 'use client';
+
+export const dynamic = 'force-dynamic';
 import { toast } from '@/lib/toast';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
@@ -22,6 +24,7 @@ import ReportBlockModal from '@/components/ReportBlockModal';
 import { DiscoverPageSkeleton } from '@/components/SkeletonLoader';
 import { getCached, setCached } from '@/lib/pageCache';
 import { distanceKm, geocodeSuburb } from '@/lib/geocode';
+import { fetchTags, AppTag } from '@/lib/tags';
 
 
 type Family = {
@@ -170,17 +173,21 @@ function EnhancedDiscoverPage() {
   const [activityTagFilter, setActivityTagFilter] = useState<string | null>(null);
   const [activityPostsLoading, setActivityPostsLoading] = useState(false);
   const filterPanelRef = useRef<HTMLDivElement>(null);
+  const filterToggleRef = useRef<HTMLButtonElement>(null);
   const [birthdayConfirm, setBirthdayConfirm] = useState<{ name: string; onConfirm: () => void } | null>(null);
   const [familyStatusFilter, setFamilyStatusFilter] = useState<string | null>(null);
   const [familyCustomFilter, setFamilyCustomFilter] = useState<string>('');
   const [approachFilter, setApproachFilter] = useState<string | null>(null);
+  const [approachTags, setApproachTags] = useState<AppTag[]>([]);
   const [teacherTypeFilter, setTeacherTypeFilter] = useState<'all' | 'extracurricular' | 'primary' | 'high' | 'other'>('all');
   const [teacherTypeCustom, setTeacherTypeCustom] = useState('');
   const [teacherSubFilter, setTeacherSubFilter] = useState<string>('all');
   const [teacherSubCustom, setTeacherSubCustom] = useState('');
   const [businessTypeFilter, setBusinessTypeFilter] = useState<string | null>(null);
   const [businessSubFilter, setBusinessSubFilter] = useState<'business' | 'spaces' | null>(null);
-  const [spacesSubFilter, setSpacesSubFilter] = useState<'commercial' | 'private' | null>(null);
+  const [spacesSubFilter, setSpacesSubFilter] = useState<'venue' | 'private' | null>(null);
+  const [spaceListings, setSpaceListings] = useState<any[]>([]);
+  const [spaceListingsLoading, setSpaceListingsLoading] = useState(false);
   const [businessCustomFilter, setBusinessCustomFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -203,6 +210,8 @@ function EnhancedDiscoverPage() {
 
 // Hydrate client-only state from cache/localStorage after mount (avoids SSR hydration mismatch)
   useEffect(() => {
+    fetchTags('homeschool_approach').then(setApproachTags);
+
     const cachedFamilies = getCached<Family[]>('discover:families');
     if (cachedFamilies?.length) { setFamilies(cachedFamilies); setIsLoading(false); }
 
@@ -637,12 +646,11 @@ function EnhancedDiscoverPage() {
       }
     }
 
-    // Business sub-filter (Spaces vs Business accounts)
-    if (mainTab === 'business' && businessSubFilter === 'spaces') {
-      // Commercial spaces = business profiles with venue/space keywords
+    // Spaces > Venue — filter business profiles with venue keywords
+    if (mainTab === 'business' && businessSubFilter === 'spaces' && spacesSubFilter === 'venue') {
       filtered = filtered.filter(family => {
         const text = ((family.services || '') + ' ' + (family.bio || '')).toLowerCase();
-        return ['venue', 'space', 'hire', 'facility', 'hall', 'studio', 'room'].some(t => text.includes(t));
+        return ['venue', 'space hire', 'hire', 'facility', 'hall', 'studio', 'room', 'function'].some(t => text.includes(t));
       });
     }
 
@@ -1119,13 +1127,51 @@ function EnhancedDiscoverPage() {
   // Close filter panel on click outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+      if (
+        filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node) &&
+        filterToggleRef.current && !filterToggleRef.current.contains(e.target as Node)
+      ) {
         setShowFilters(false);
       }
     };
     if (showFilters) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showFilters]);
+
+  // Load private space listings when spacesSubFilter === 'private'
+  useEffect(() => {
+    if (mainTab !== 'business' || businessSubFilter !== 'spaces' || spacesSubFilter !== 'private') return;
+    const load = async () => {
+      setSpaceListingsLoading(true);
+      try {
+        const session = getStoredSession();
+        if (!session) return;
+        const sUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const sKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const h = { 'apikey': sKey!, 'Authorization': `Bearer ${session.access_token}` };
+        const res = await fetch(
+          `${sUrl}/rest/v1/market_listings?status=eq.active&category=eq.spaces&order=created_at.desc&select=*`,
+          { headers: h }
+        );
+        const listings: any[] = res.ok ? await res.json() : [];
+        // Attach seller profiles
+        const sellerIds = [...new Set(listings.map((l: any) => l.seller_id))];
+        if (sellerIds.length > 0) {
+          const sellersRes = await fetch(
+            `${sUrl}/rest/v1/profiles?id=in.(${sellerIds.join(',')})&select=id,family_name,display_name,avatar_url,location_name`,
+            { headers: h }
+          );
+          const sellers: any[] = sellersRes.ok ? await sellersRes.json() : [];
+          const sellerMap = Object.fromEntries(sellers.map((s: any) => [s.id, s]));
+          listings.forEach((l: any) => { l.seller = sellerMap[l.seller_id]; });
+        }
+        setSpaceListings(listings);
+      } finally {
+        setSpaceListingsLoading(false);
+      }
+    };
+    load();
+  }, [mainTab, businessSubFilter, spacesSubFilter]);
 
   // Load activity posts for Activities tab
   useEffect(() => {
@@ -1334,7 +1380,7 @@ function EnhancedDiscoverPage() {
                 setBusinessCustomFilter('');
                 setActivityTagFilter(null);
               }}
-              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap text-center ${
+              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all text-center leading-tight ${
                 mainTab === tab.value
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
@@ -1434,17 +1480,17 @@ function EnhancedDiscoverPage() {
         {/* Drill-down level 4 — Home-Ed approach */}
         {mainTab === 'people' && peopleSubFilter === 'family' && familyStatusFilter === 'new' && (
           <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
-            {(['Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Other'] as const).map(approach => (
+            {approachTags.map(tag => (
               <button
-                key={approach}
-                onClick={() => setApproachFilter(approachFilter === approach ? null : approach)}
+                key={tag.value}
+                onClick={() => setApproachFilter(approachFilter === tag.value ? null : tag.value)}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
-                  approachFilter === approach
+                  approachFilter === tag.value
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
                 }`}
               >
-                {approach}
+                {tag.label}
               </button>
             ))}
           </div>
@@ -1548,7 +1594,7 @@ function EnhancedDiscoverPage() {
           </div>
         )}
 
-        {/* Drill-down — Business & Spaces level 2 */}
+        {/* Drill-down — Business level 2 */}
         {mainTab === 'business' && (
           <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
             {([
@@ -1572,6 +1618,28 @@ function EnhancedDiscoverPage() {
                 }}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
                   businessSubFilter === chip.value
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Drill-down — Spaces level 3: Venue / Private */}
+        {mainTab === 'business' && businessSubFilter === 'spaces' && (
+          <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
+            {([
+              { value: 'venue'   as const, label: 'Venue' },
+              { value: 'private' as const, label: 'Private' },
+            ]).map(chip => (
+              <button
+                key={chip.value}
+                onClick={() => setSpacesSubFilter(spacesSubFilter === chip.value ? null : chip.value)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
+                  spacesSubFilter === chip.value
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
                 }`}
@@ -1612,41 +1680,6 @@ function EnhancedDiscoverPage() {
           </>
         )}
 
-        {/* Drill-down — Spaces level 3: Commercial / Private */}
-        {mainTab === 'business' && businessSubFilter === 'spaces' && (
-          <>
-            <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide">
-              {([
-                { value: 'commercial' as const, label: 'Commercial' },
-                { value: 'private'    as const, label: 'Private' },
-              ]).map(chip => (
-                <button
-                  key={chip.value}
-                  onClick={() => setSpacesSubFilter(spacesSubFilter === chip.value ? null : chip.value)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${
-                    spacesSubFilter === chip.value
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-            {spacesSubFilter === 'private' && (
-              <div className="flex items-center justify-between mb-2 px-1">
-                <span className="text-xs text-gray-400">Private spaces are listed in the marketplace</span>
-                <button
-                  onClick={() => router.push('/exchange?category=spaces')}
-                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 px-2.5 py-1 bg-emerald-50 rounded-lg border border-emerald-100"
-                >
-                  List a space
-                </button>
-              </div>
-            )}
-          </>
-        )}
-
         {/* Search bar + Filter toggle */}
         <div className="flex items-center gap-2 mb-2">
           <div className="relative flex-1">
@@ -1676,6 +1709,7 @@ function EnhancedDiscoverPage() {
             )}
           </div>
           <button
+            ref={filterToggleRef}
             onClick={() => setShowFilters(v => !v)}
             className={`flex items-center gap-1 px-3 py-2 border rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
               showFilters
@@ -1683,7 +1717,7 @@ function EnhancedDiscoverPage() {
                 : 'bg-white border-gray-200 text-gray-600'
             }`}
           >
-            {showFilters ? '− Filter' : '+ Filter'}
+            {showFilters ? '− More' : '+ More'}
           </button>
         </div>
 
@@ -1817,8 +1851,69 @@ function EnhancedDiscoverPage() {
           </div>
         )}
 
+        {/* Private space listings — inline marketplace listings when Spaces > Private selected */}
+        {mainTab === 'business' && businessSubFilter === 'spaces' && spacesSubFilter === 'private' && (
+          <div className="space-y-3 mb-2">
+            {spaceListingsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-white/60 rounded-xl border border-white/40 p-4 animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
+                    <div className="h-3 bg-gray-100 rounded w-1/3 mb-2" />
+                    <div className="h-3 bg-gray-100 rounded w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : spaceListings.length === 0 ? (
+              <div className="text-center py-12 px-6">
+                <div className="w-14 h-14 bg-emerald-50 rounded-2xl mx-auto mb-3 flex items-center justify-center">
+                  <svg className="w-7 h-7 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                <p className="font-semibold text-gray-800 mb-1">No private spaces listed yet</p>
+                <p className="text-sm text-gray-500 mb-4">Have a space to hire? List it in the marketplace.</p>
+                <button onClick={() => router.push('/exchange?category=spaces')} className="px-5 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl">List a space</button>
+              </div>
+            ) : (
+              <>
+                {spaceListings.map((l: any) => (
+                  <button
+                    key={l.id}
+                    onClick={() => router.push('/exchange?category=spaces')}
+                    className="w-full bg-white/60 backdrop-blur-sm rounded-xl border border-white/40 shadow-sm active:scale-[0.99] transition-all overflow-hidden text-left"
+                  >
+                    <div className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="font-semibold text-gray-900 text-sm leading-tight flex-1 min-w-0">{l.title}</p>
+                        <span className={`text-sm font-bold flex-shrink-0 ${
+                          l.listing_type === 'free' ? 'text-emerald-600' :
+                          l.listing_type === 'swap' ? 'text-amber-600' : 'text-gray-900'
+                        }`}>
+                          {l.listing_type === 'free' ? 'Free' : l.listing_type === 'swap' ? 'Swap' : l.price != null ? `$${Number(l.price).toFixed(0)}` : 'POA'}
+                        </span>
+                      </div>
+                      {l.description && <p className="text-xs text-gray-500 line-clamp-2 mb-2">{l.description}</p>}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">Space for hire</span>
+                        {l.location_name && <span className="text-xs text-gray-400">{l.location_name}</span>}
+                      </div>
+                      {l.seller && (
+                        <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-100">
+                          <span className="text-xs text-gray-500">{l.seller.display_name || l.seller.family_name}</span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+                <p className="text-center text-xs text-gray-400 pt-1 pb-2">{spaceListings.length} space{spaceListings.length !== 1 ? 's' : ''} listed</p>
+              </>
+            )}
+          </div>
+        )}
+
         {/* List View — People + Business tabs only */}
-        {mainTab !== 'activities' && viewMode === 'list' && (
+        {mainTab !== 'activities' && viewMode === 'list' && !(mainTab === 'business' && businessSubFilter === 'spaces' && spacesSubFilter === 'private') && (
           <div className="space-y-2">
             {filteredFamilies.length === 0 ? (
               mainTab === 'business' ? (

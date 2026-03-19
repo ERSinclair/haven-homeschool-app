@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -23,8 +25,7 @@ const STORAGE_KEY = 'sb-auth-token';
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [username, setUsername] = useState('');
-  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [location, setLocation] = useState('');
   const [selectedLocationCoords, setSelectedLocationCoords] = useState<{ lat: number; lng: number } | null>(null);

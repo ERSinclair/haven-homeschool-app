@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
 import { getCached, setCached } from '@/lib/pageCache';
 import { useRouter } from 'next/navigation';

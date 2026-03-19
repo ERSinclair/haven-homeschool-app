@@ -1,4 +1,6 @@
 'use client';
+
+export const dynamic = 'force-dynamic';
 import { toast } from '@/lib/toast';
 
 import { useState, useEffect, Suspense, useRef } from 'react';
@@ -23,6 +25,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import { sendFamilyLinkRequest, RELATIONSHIPS, type RelationshipValue, getFamilyLinks } from '@/lib/familyLinks';
 import { ProfilePageSkeleton } from '@/components/SkeletonLoader';
 import { getCached, setCached, clearCached } from '@/lib/pageCache';
+import { fetchTags, AppTag } from '@/lib/tags';
 
 type Profile = {
   id: string;
@@ -83,6 +86,7 @@ function ProfilePageInner() {
   // Home education approach (families)
   const [homeschoolApproaches, setHomeschoolApproaches] = useState<string[]>([]);
   const [otherApproachText, setOtherApproachText] = useState('');
+  const [approachTags, setApproachTags] = useState<AppTag[]>([]);
   // Teacher-specific fields
   const [subjects, setSubjects] = useState<string[]>([]);
   const [ageGroupsTaught, setAgeGroupsTaught] = useState<string[]>([]);
@@ -111,6 +115,10 @@ function ProfilePageInner() {
   const [avatarHistory, setAvatarHistory] = useState<{ id: string; avatar_url: string; created_at: string }[]>([]);
   const [avatarHistoryIndex, setAvatarHistoryIndex] = useState(0);
   const [showAvatarHistory, setShowAvatarHistory] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [showIOSInstallInstructions, setShowIOSInstallInstructions] = useState(false);
 
   // ── Haven Family (linked accounts) ──────────────────────────────────────────
   type FamilyLink = {
@@ -173,9 +181,19 @@ function ProfilePageInner() {
   const [pendingConnections, setPendingConnections] = useState(0);
   const router = useRouter();
 
+  // PWA install detection
+  useEffect(() => {
+    setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent));
+    setIsInstalled(window.matchMedia('(display-mode: standalone)').matches);
+    const handler = (e: Event) => { e.preventDefault(); setDeferredPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler as EventListener);
+    return () => window.removeEventListener('beforeinstallprompt', handler as EventListener);
+  }, []);
+
   // Load user and profile
   // Apply cache immediately after mount (client-only, avoids SSR hydration mismatch)
   useEffect(() => {
+    fetchTags('homeschool_approach').then(setApproachTags);
     const cached = getCached<Profile>('profile:own');
     if (cached) {
       setProfile(cached);
@@ -244,16 +262,25 @@ function ProfilePageInner() {
           setProfile(cleanedProfile);
           if (!viewingOtherUser) setMyUserType(cleanedProfile.user_type || 'family');
           setCached('profile:own', cleanedProfile);
-          // Handle edit data status properly
-          const predefinedStatuses = ['considering', 'new', 'social', 'experienced', 'new_to_area', 'connecting', 'group-lessons', 'tutoring', 'sport', 'music', 'supplies'];
-          const hasValidPredefinedStatus = cleanedStatus.some(s => predefinedStatuses.includes(s));
+          // Handle edit data status properly — filter to valid options for this user type
+          const uType = profileData.user_type || 'family';
+          const validStatusesForType: Record<string, string[]> = {
+            family:    ['new', 'considering', 'new_to_area'],
+            teacher:   ['tutoring', 'group-lessons', 'classes', 'curriculum', 'music', 'sport', 'other', 'online', 'in-home', 'connecting'],
+            business:  ['curriculum', 'supplies', 'classes', 'venue', 'therapy'],
+            playgroup: ['open', 'waitlist', 'full', 'social', 'educational'],
+          };
+          const validStatuses = validStatusesForType[uType] || validStatusesForType.family;
+          const filteredStatus = cleanedStatus.filter(s => validStatuses.includes(s));
+          const hasCustom = cleanedStatus.some(s => !validStatuses.includes(s) && s !== 'other');
+          const hasOther = cleanedStatus.includes('other') || hasCustom;
           
           setEditData({
             name: profileData.family_name || profileData.display_name || '',
             location_name: profileData.location_name || '',
             bio: profileData.bio || '',
             kids_ages: profileData.kids_ages || [],
-            status: hasValidPredefinedStatus ? cleanedStatus.filter(s => predefinedStatuses.includes(s)) : ['other'],
+            status: filteredStatus.length > 0 ? (hasOther ? [...filteredStatus, 'other'] : filteredStatus) : (hasOther ? ['other'] : []),
           });
 
           // Load type-specific fields
@@ -270,11 +297,12 @@ function ProfilePageInner() {
           setDob(profileData.dob || '');
           setShowBirthday(profileData.show_birthday || false);
           
-          // If no predefined status, set up custom descriptions
-          if (!hasValidPredefinedStatus && profileData.status) {
+          // If no valid predefined status, set up custom descriptions
+          if (hasOther && profileData.status) {
             const actualStatus = typeof profileData.status === 'string' ? profileData.status : '';
-            const descriptions = actualStatus.split(',').map((desc: string) => desc.trim()).filter(Boolean);
-            setCustomDescriptions(descriptions.length > 0 ? descriptions : ['']);
+            const allValues = actualStatus.split(',').map((desc: string) => desc.trim()).filter(Boolean);
+            const customValues = allValues.filter((s: string) => !validStatuses.includes(s) && s !== 'other');
+            setCustomDescriptions(customValues.length > 0 ? customValues : ['']);
           }
           
           // Convert kids_ages to children format
@@ -507,7 +535,40 @@ function ProfilePageInner() {
   const acceptFamilyLink = async (linkId: string) => {
     const session = getStoredSession(); if (!session) return;
     const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+
+    // Accept the link
     await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${linkId}`, { method: 'PATCH', headers: h, body: JSON.stringify({ status: 'accepted' }) });
+
+    // Get the other user's id from the link
+    const link = familyLinks.find(l => l.id === linkId);
+    const otherId = link?.other?.id;
+
+    if (otherId) {
+      // Get both users' current family_id
+      const hJson = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+      const [myRes, otherRes] = await Promise.all([
+        fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}&select=family_id&limit=1`, { headers: hJson }),
+        fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${otherId}&select=family_id&limit=1`, { headers: hJson }),
+      ]);
+      const [myProf] = await myRes.json();
+      const [otherProf] = await otherRes.json();
+
+      // Use existing family_id if either has one, otherwise generate a new one
+      const sharedFamilyId = myProf?.family_id || otherProf?.family_id || crypto.randomUUID();
+
+      // Set family_id on both profiles
+      await Promise.all([
+        fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}`, {
+          method: 'PATCH', headers: { ...hJson, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ family_id: sharedFamilyId }),
+        }),
+        fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${otherId}`, {
+          method: 'PATCH', headers: { ...hJson, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ family_id: sharedFamilyId }),
+        }),
+      ]);
+    }
+
     setFamilyLinks(prev => prev.map(l => l.id === linkId ? { ...l, status: 'accepted' } : l));
     toast('Family linked', 'success');
   };
@@ -515,8 +576,34 @@ function ProfilePageInner() {
   const removeFamilyLink = (linkId: string) => {
     havenConfirm('Remove this family link?', async () => {
       const session = getStoredSession(); if (!session) return;
-      const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}` };
+      const h = { 'apikey': supabaseKey!, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+
+      const link = familyLinks.find(l => l.id === linkId);
+      const otherId = link?.other?.id;
+
       await fetch(`${supabaseUrl}/rest/v1/family_links?id=eq.${linkId}`, { method: 'DELETE', headers: h });
+
+      const remaining = familyLinks.filter(l => l.id !== linkId && l.status === 'accepted');
+
+      // If no accepted links remain, clear family_id from this user
+      if (remaining.length === 0) {
+        await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${session.user.id}`, {
+          method: 'PATCH', headers: h, body: JSON.stringify({ family_id: null }),
+        });
+      }
+      // Clear family_id from the other user if they have no other accepted links either
+      if (otherId) {
+        const otherRemainingLinks = familyLinks.filter(l =>
+          l.id !== linkId && l.status === 'accepted' &&
+          (l.requester_id === otherId || l.receiver_id === otherId)
+        );
+        if (otherRemainingLinks.length === 0) {
+          await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${otherId}`, {
+            method: 'PATCH', headers: h, body: JSON.stringify({ family_id: null }),
+          });
+        }
+      }
+
       setFamilyLinks(prev => prev.filter(l => l.id !== linkId));
       toast('Link removed');
     }, { confirmLabel: 'Remove', destructive: true });
@@ -699,6 +786,14 @@ function ProfilePageInner() {
       setIsSaving(false);
       clearCached('profile:own'); // force fresh load next visit
     }
+  };
+
+  const handleInstall = async () => {
+    if (isIOS) { setShowIOSInstallInstructions(true); return; }
+    if (!deferredPrompt) return;
+    (deferredPrompt as any).prompt();
+    const { outcome } = await (deferredPrompt as any).userChoice;
+    if (outcome === 'accepted') { setDeferredPrompt(null); setIsInstalled(true); }
   };
 
   const handleLogout = () => {
@@ -950,17 +1045,9 @@ function ProfilePageInner() {
           )}
         </div>
 
-        {/* Nav chips — Calendar, Connections, Education, Board */}
+        {/* Nav chips — Calendar, Exchange, Board */}
         {!isEditing && !isViewingOtherUser && (
           <div className="flex gap-1 mb-3 bg-white rounded-xl p-1 border border-gray-200">
-            <Link href="/connections?tab=pending" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 text-gray-500 hover:text-gray-700 relative">
-              Connections
-              {pendingConnections > 0 && (
-                <span className="min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
-                  {pendingConnections > 9 ? '9+' : pendingConnections}
-                </span>
-              )}
-            </Link>
             <Link href="/calendar" className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center text-gray-500 hover:text-gray-700">
               Calendar
             </Link>
@@ -1141,7 +1228,7 @@ function ProfilePageInner() {
                   <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">Teacher</span>
                 )}
                 {(profile.user_type === 'business' || profile.user_type === 'facility') && (
-                  <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded">Business</span>
+                  <span className="inline-block mt-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded">Business</span>
                 )}
                 {/* Admin Badge */}
                 {profile.admin_level && (
@@ -1195,9 +1282,10 @@ function ProfilePageInner() {
                   ] : profile?.user_type === 'teacher' ? [
                     { value: 'tutoring', label: 'Tutoring', icon: '' },
                     { value: 'group-lessons', label: 'Group Lessons', icon: '' },
-                    { value: 'online', label: 'Online', icon: '' },
-                    { value: 'in-home', label: 'In-Home', icon: '' },
+                    { value: 'classes', label: 'Classes & Programs', icon: '' },
                     { value: 'curriculum', label: 'Curriculum Help', icon: '' },
+                    { value: 'music', label: 'Music', icon: '' },
+                    { value: 'sport', label: 'Sport & Physical Education', icon: '' },
                     { value: 'other', label: 'Other', icon: '' },
                   ] : profile?.user_type === 'playgroup' ? [
                     { value: 'open', label: 'Open to Join', icon: '' },
@@ -1207,10 +1295,8 @@ function ProfilePageInner() {
                     { value: 'educational', label: 'Educational Focus', icon: '' },
                     { value: 'other', label: 'Other', icon: '' },
                   ] : [
-                    { value: 'considering', label: 'Community', icon: '' },
                     { value: 'new', label: 'Home Education', icon: '' },
-                    { value: 'social', label: 'Social Activities', icon: '' },
-                    { value: 'experienced', label: 'Extracurricular', icon: '' },
+                    { value: 'considering', label: 'Community', icon: '' },
                     { value: 'new_to_area', label: 'New to Area', icon: '' },
                     { value: 'other', label: 'Other', icon: '' },
                   ]).map((opt) => (
@@ -1288,11 +1374,19 @@ function ProfilePageInner() {
             ) : (
               <div className="flex flex-wrap gap-2 justify-center">
                 {profileStatus.length > 0 ? profileStatus.map((status) => {
+                  if (status === 'other') return null; // 'other' itself is just a flag
                   const info = getStatusInfo(status);
-                  if (!info) return null;
+                  if (info) {
+                    return (
+                      <span key={status} className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${info.color}`}>
+                        {info.label}
+                      </span>
+                    );
+                  }
+                  // Custom description text (not in the map)
                   return (
-                    <span key={status} className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${info.color}`}>
-                      {info.label}
+                    <span key={status} className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-600">
+                      {status}
                     </span>
                   );
                 }) : (
@@ -1442,20 +1536,20 @@ function ProfilePageInner() {
               {isEditing ? (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-2">
-                    {['Unschooling', 'Eclectic', 'Montessori', 'Waldorf/Steiner', 'Relaxed', 'Other'].map(approach => (
+                    {approachTags.map(tag => (
                       <button
-                        key={approach}
+                        key={tag.value}
                         type="button"
                         onClick={() => setHomeschoolApproaches(prev =>
-                          prev.includes(approach) ? prev.filter(a => a !== approach) : [...prev, approach]
+                          prev.includes(tag.value) ? prev.filter(a => a !== tag.value) : [...prev, tag.value]
                         )}
                         className={`p-2 rounded-lg border-2 text-sm text-center transition-colors ${
-                          homeschoolApproaches.includes(approach)
+                          homeschoolApproaches.includes(tag.value)
                             ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
                             : 'border-gray-200 hover:border-gray-300'
                         }`}
                       >
-                        {approach}
+                        {tag.label}
                       </button>
                     ))}
                   </div>
@@ -1616,9 +1710,9 @@ function ProfilePageInner() {
                   <div>
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {skillsOffered.map((s, i) => (
-                        <span key={i} className="flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
+                        <span key={i} className="flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
                           {s}
-                          <button onClick={() => setSkillsOffered(prev => prev.filter((_, idx) => idx !== i))} className="text-emerald-500 hover:text-emerald-700 ml-0.5">×</button>
+                          <button onClick={() => setSkillsOffered(prev => prev.filter((_, idx) => idx !== i))} className="text-blue-500 hover:text-blue-700 ml-0.5">×</button>
                         </span>
                       ))}
                     </div>
@@ -1634,7 +1728,7 @@ function ProfilePageInner() {
                           }
                         }}
                         placeholder="e.g. piano, woodworking… press Enter"
-                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                       <button
                         onClick={() => {
@@ -1642,7 +1736,7 @@ function ProfilePageInner() {
                           if (val && !skillsOffered.includes(val)) setSkillsOffered(prev => [...prev, val]);
                           setSkillOfferedInput('');
                         }}
-                        className="px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-medium"
+                        className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium"
                       >Add</button>
                     </div>
                   </div>
@@ -1650,7 +1744,7 @@ function ProfilePageInner() {
                   <div className="flex flex-wrap gap-1.5">
                     {skillsOffered.length > 0
                       ? skillsOffered.map((s, i) => (
-                          <span key={i} className="px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">{s}</span>
+                          <span key={i} className="px-2.5 py-1 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">{s}</span>
                         ))
                       : <p className="text-sm text-gray-400">Nothing listed yet.</p>
                     }
@@ -1665,9 +1759,9 @@ function ProfilePageInner() {
                   <div>
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {skillsWanted.map((s, i) => (
-                        <span key={i} className="flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                        <span key={i} className="flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
                           {s}
-                          <button onClick={() => setSkillsWanted(prev => prev.filter((_, idx) => idx !== i))} className="text-amber-500 hover:text-amber-700 ml-0.5">×</button>
+                          <button onClick={() => setSkillsWanted(prev => prev.filter((_, idx) => idx !== i))} className="text-emerald-500 hover:text-emerald-700 ml-0.5">×</button>
                         </span>
                       ))}
                     </div>
@@ -1691,7 +1785,7 @@ function ProfilePageInner() {
                           if (val && !skillsWanted.includes(val)) setSkillsWanted(prev => [...prev, val]);
                           setSkillWantedInput('');
                         }}
-                        className="px-3 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm font-medium"
+                        className="px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-medium"
                       >Add</button>
                     </div>
                   </div>
@@ -1699,7 +1793,7 @@ function ProfilePageInner() {
                   <div className="flex flex-wrap gap-1.5">
                     {skillsWanted.length > 0
                       ? skillsWanted.map((s, i) => (
-                          <span key={i} className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">{s}</span>
+                          <span key={i} className="px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">{s}</span>
                         ))
                       : <p className="text-sm text-gray-400">Nothing listed yet.</p>
                     }
@@ -1717,7 +1811,7 @@ function ProfilePageInner() {
                   setIsEditing(false);
                   if (profile) {
                     // Handle status - check if it's a predefined value or custom description
-                    const predefinedStatuses = ['considering', 'new', 'experienced', 'social', 'new_to_area', 'other'];
+                    const predefinedStatuses = ['considering', 'new', 'new_to_area', 'other', 'connecting', 'group-lessons', 'tutoring', 'sport', 'music', 'supplies', 'curriculum', 'classes', 'venue', 'therapy', 'open', 'waitlist', 'full', 'social', 'educational', 'online', 'in-home'];
                     const profileStatus = parseStatus(profile.status);
                     const predefinedSelected = profileStatus.filter(s => predefinedStatuses.includes(s));
                     const customSelected = profileStatus.filter(s => !predefinedStatuses.includes(s));
@@ -2089,6 +2183,16 @@ function ProfilePageInner() {
           />
         )}
 
+        {/* Add to Home Screen */}
+        {!isInstalled && !isViewingOtherUser && (deferredPrompt || isIOS) && (
+          <button
+            onClick={handleInstall}
+            className="w-full py-3 text-gray-700 font-medium bg-white hover:bg-gray-50 rounded-xl transition-colors border border-gray-200 mb-3 text-center"
+          >
+            Add Haven to Home Screen
+          </button>
+        )}
+
         {/* Feedback button */}
         <button
           onClick={() => { setReportType('bug'); setReportSubject(''); setReportMessage(''); setShowReportModal(true); }}
@@ -2096,6 +2200,33 @@ function ProfilePageInner() {
         >
           Feedback & Support
         </button>
+
+        {/* iOS Install Instructions Modal */}
+        {showIOSInstallInstructions && (
+          <div className="fixed inset-0 bg-black/50 flex items-end justify-center p-4 z-50" onClick={() => setShowIOSInstallInstructions(false)}>
+            <div className="bg-white rounded-2xl max-w-sm w-full p-6 mb-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Add to Home Screen</h3>
+              <p className="text-sm text-gray-600 mb-4">To install Haven on your iPhone:</p>
+              <ol className="space-y-3 text-sm text-gray-700">
+                <li className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">1</span>
+                  <span>Tap the <strong>Share</strong> button at the bottom of Safari (the box with an arrow pointing up)</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">2</span>
+                  <span>Scroll down and tap <strong>Add to Home Screen</strong></span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">3</span>
+                  <span>Tap <strong>Add</strong> in the top right</span>
+                </li>
+              </ol>
+              <button onClick={() => setShowIOSInstallInstructions(false)} className="mt-6 w-full py-3 bg-emerald-600 text-white font-semibold rounded-xl">
+                Got it
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Sign out button */}
         <button
