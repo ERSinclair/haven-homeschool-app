@@ -790,10 +790,14 @@ function ProfilePageInner() {
 
   const handleInstall = async () => {
     if (isIOS) { setShowIOSInstallInstructions(true); return; }
-    if (!deferredPrompt) return;
-    (deferredPrompt as any).prompt();
-    const { outcome } = await (deferredPrompt as any).userChoice;
-    if (outcome === 'accepted') { setDeferredPrompt(null); setIsInstalled(true); }
+    if (deferredPrompt) {
+      (deferredPrompt as any).prompt();
+      const { outcome } = await (deferredPrompt as any).userChoice;
+      if (outcome === 'accepted') { setDeferredPrompt(null); setIsInstalled(true); }
+    } else {
+      // No prompt available — show manual instructions
+      setShowIOSInstallInstructions(true);
+    }
   };
 
   const handleLogout = () => {
@@ -2184,7 +2188,7 @@ function ProfilePageInner() {
         )}
 
         {/* Add to Home Screen */}
-        {!isInstalled && !isViewingOtherUser && (deferredPrompt || isIOS) && (
+        {!isInstalled && !isViewingOtherUser && (
           <button
             onClick={handleInstall}
             className="w-full py-3 text-gray-700 font-medium bg-white hover:bg-gray-50 rounded-xl transition-colors border border-gray-200 mb-3 text-center"
@@ -2206,21 +2210,43 @@ function ProfilePageInner() {
           <div className="fixed inset-0 bg-black/50 flex items-end justify-center p-4 z-50" onClick={() => setShowIOSInstallInstructions(false)}>
             <div className="bg-white rounded-2xl max-w-sm w-full p-6 mb-4" onClick={e => e.stopPropagation()}>
               <h3 className="text-lg font-bold text-gray-900 mb-2">Add to Home Screen</h3>
-              <p className="text-sm text-gray-600 mb-4">To install Haven on your iPhone:</p>
-              <ol className="space-y-3 text-sm text-gray-700">
-                <li className="flex gap-3">
-                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">1</span>
-                  <span>Tap the <strong>Share</strong> button at the bottom of Safari (the box with an arrow pointing up)</span>
-                </li>
-                <li className="flex gap-3">
-                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">2</span>
-                  <span>Scroll down and tap <strong>Add to Home Screen</strong></span>
-                </li>
-                <li className="flex gap-3">
-                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">3</span>
-                  <span>Tap <strong>Add</strong> in the top right</span>
-                </li>
-              </ol>
+              {isIOS ? (
+                <>
+                  <p className="text-sm text-gray-600 mb-4">To install Haven on your iPhone:</p>
+                  <ol className="space-y-3 text-sm text-gray-700">
+                    <li className="flex gap-3">
+                      <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">1</span>
+                      <span>Tap the <strong>Share</strong> button at the bottom of Safari (the box with an arrow pointing up)</span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">2</span>
+                      <span>Scroll down and tap <strong>Add to Home Screen</strong></span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">3</span>
+                      <span>Tap <strong>Add</strong> in the top right</span>
+                    </li>
+                  </ol>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600 mb-4">To install Haven on Android:</p>
+                  <ol className="space-y-3 text-sm text-gray-700">
+                    <li className="flex gap-3">
+                      <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">1</span>
+                      <span>Tap the <strong>three dots menu</strong> in Chrome (top right)</span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">2</span>
+                      <span>Tap <strong>Add to Home screen</strong></span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">3</span>
+                      <span>Tap <strong>Add</strong> to confirm</span>
+                    </li>
+                  </ol>
+                </>
+              )}
               <button onClick={() => setShowIOSInstallInstructions(false)} className="mt-6 w-full py-3 bg-emerald-600 text-white font-semibold rounded-xl">
                 Got it
               </button>

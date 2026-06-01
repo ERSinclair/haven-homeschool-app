@@ -98,9 +98,11 @@ body {
   box-sizing: border-box;
 }
 
-/* Ensure no element exceeds viewport width */
-.container, .max-w-4xl, .max-w-2xl, .max-w-md {
-  max-width: calc(100vw - 2rem);
+/* Ensure no element exceeds viewport width — mobile only */
+@media (max-width: 639px) {
+  .container, .max-w-4xl, .max-w-2xl, .max-w-md {
+    max-width: calc(100vw - 2rem);
+  }
 }
 
 /* Fix for range sliders on mobile */
@@ -493,6 +495,34 @@ input[type="checkbox"], input[type="radio"] {
 }
 .btn-3d:disabled {
   box-shadow: none;
+}
+
+/* ============================================================
+   DESKTOP — Constrained mobile app layout
+   Centres the app in a 430px column on wider screens so it
+   looks intentional rather than stretched.
+   ============================================================ */
+@media (min-width: 640px) {
+  body {
+    background: #f0f4f2; /* neutral warm frame — visible on sides */
+  }
+
+  main {
+    max-width: 430px;
+    margin: 0 auto;
+    background: white;
+    min-height: 100vh;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Constrain bottom nav to match the app column */
+  #bottom-navigation-v2 {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: 430px !important;
+    max-width: 430px !important;
+  }
 }
 
 /* Apply 3D effect to all primary emerald buttons automatically */

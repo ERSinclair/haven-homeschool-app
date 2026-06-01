@@ -167,12 +167,15 @@ export default function SettingsPage() {
       setShowIOSInstructions(true);
       return;
     }
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-      setIsInstalled(true);
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        setIsInstalled(true);
+      }
+    } else {
+      setShowIOSInstructions(true);
     }
   };
 
@@ -293,7 +296,7 @@ export default function SettingsPage() {
               <span className="flex-1 text-gray-700">Family on Haven</span>
               <span className="text-gray-300">→</span>
             </a>
-            {!isInstalled && (deferredPrompt || isIOS) && (
+            {!isInstalled && (
               <button onClick={handleInstall} className="flex items-center w-full p-4 hover:bg-gray-50 text-left">
                 <span className="flex-1 text-gray-700">Add Haven to Home Screen</span>
                 <span className="text-gray-300">→</span>
