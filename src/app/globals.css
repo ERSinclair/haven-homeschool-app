@@ -510,7 +510,12 @@ input[type="checkbox"], input[type="radio"] {
   main {
     max-width: 430px;
     margin: 0 auto;
-    background: white;
+    background: repeating-linear-gradient(
+      to bottom,
+      #ecfdf5 0px,
+      #ffffff 1400px,
+      #ecfdf5 3200px
+    );
     min-height: 100vh;
     box-shadow: 0 0 60px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
   }
